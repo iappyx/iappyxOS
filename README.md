@@ -78,6 +78,17 @@ Every generated app is a real signed APK that appears in your Android launcher. 
 - **Manual (recommended)** — copy the generated prompt, paste it into any AI chat (Claude, ChatGPT, Gemini, etc.), paste the HTML back, preview, build
 - **Automatic** — add your API key in Settings (Anthropic or OpenRouter), then tap "Generate" in the Create flow
 
+## Sharing apps
+
+Share your generated apps with others — multiple ways, no account needed:
+
+- **Share APK** — send the compiled app file via any app (WhatsApp, email, Drive, Bluetooth)
+- **Share Nearby** — transfer directly to another device via WiFi Direct, no internet required
+- **Share via QR** — beam your app to another device using animated QR codes — no WiFi, no Bluetooth, just two screens
+- **Share HTML** — export the source code so others can preview, modify, and rebuild it in their own iappyxOS
+
+Recipients with iappyxOS installed can rebuild shared apps with their own icon and name.
+
 ## Native bridges
 
 Generated apps access device hardware through a JavaScript bridge (`window.iappyx`):
