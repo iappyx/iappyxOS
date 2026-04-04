@@ -8,6 +8,8 @@ import '../services/p2p_service.dart';
 import '../widgets/build_log.dart';
 import '../models/icon_config.dart';
 import 'icon_editor_screen.dart';
+import 'qr_transfer_screen.dart';
+import '../services/error_helper.dart';
 
 class MyAppsScreen extends StatefulWidget {
   final void Function(AppData app)? onEditApp;
@@ -71,7 +73,7 @@ class MyAppsScreenState extends State<MyAppsScreen> {
       ));
       refresh();
     } on PlatformException catch (e) {
-      _addLog('\u274C ${e.message}');
+      final err = friendlyError(e.message); _addLog('\u274C ${err.message}'); if (err.hint != null) _addLog('   ${err.hint}');
     } finally {
       if (mounted) setState(() => _rebuildingId = null);
     }
@@ -213,6 +215,16 @@ class MyAppsScreenState extends State<MyAppsScreen> {
                   _showShareNearbySheet(app);
                 },
               ),
+              if (app.html.isNotEmpty)
+                ListTile(
+                  leading: const Icon(Icons.qr_code_2, color: Color(0xFF4FC3F7)),
+                  title: const Text('Share via QR'),
+                  subtitle: const Text('Transfer app with animated QR codes', style: TextStyle(fontSize: 12, color: Colors.white38)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => QRSendScreen(app: app)));
+                  },
+                ),
               if (app.html.isNotEmpty) ...[
                 ListTile(
                   leading: const Icon(Icons.code, color: Color(0xFF4FC3F7)),
@@ -274,9 +286,15 @@ class MyAppsScreenState extends State<MyAppsScreen> {
                             Text('My Apps', style: TextStyle(fontSize: 12, color: Colors.white38)),
                           ])),
                           IconButton(
+                            onPressed: () => Navigator.push(context, MaterialPageRoute(
+                              builder: (_) => QRReceiveScreen(onReceived: refresh))),
+                            icon: const Icon(Icons.qr_code_scanner, color: Colors.white54, size: 24),
+                            tooltip: 'Receive via QR',
+                          ),
+                          IconButton(
                             onPressed: _showReceiveNearbySheet,
                             icon: const Icon(Icons.wifi_tethering, color: Colors.white54, size: 26),
-                            tooltip: 'Receive App',
+                            tooltip: 'Receive Nearby',
                           ),
                           if (widget.onCreateTap != null)
                             IconButton(

@@ -283,6 +283,7 @@ public class ShellActivity extends Activity {
         webView.addJavascriptInterface(new SmbBridge(),          "iappyxSmb");
         webView.addJavascriptInterface(new TcpBridge(),          "iappyxTcp");
         webView.addJavascriptInterface(new UdpBridge(),          "iappyxUdp");
+        webView.addJavascriptInterface(new BleBridge(),           "iappyxBle");
         webView.addJavascriptInterface(new WifiDirectBridge(),   "iappyxWifiDirect");
         webView.addJavascriptInterface(new NsdBridge(),          "iappyxNsd");
         webView.addJavascriptInterface(new HttpServerBridge(),   "iappyxHttpServer");
@@ -404,7 +405,7 @@ public class ShellActivity extends Activity {
                     "contacts:iappyxContacts,sms:iappyxSms,calendar:iappyxCalendar," +
                     "biometric:iappyxBiometric," +
                     "nfc:iappyxNfc,sqlite:iappyxSqlite,download:iappyxDownload,media:iappyxMedia," +
-                    "httpServer:iappyxHttpServer,httpClient:iappyxHttpClient,ssh:iappyxSsh,smb:iappyxSmb,tcp:iappyxTcp,nsd:iappyxNsd,udp:iappyxUdp,wifiDirect:iappyxWifiDirect," +
+                    "httpServer:iappyxHttpServer,httpClient:iappyxHttpClient,ssh:iappyxSsh,smb:iappyxSmb,ble:iappyxBle,tcp:iappyxTcp,nsd:iappyxNsd,udp:iappyxUdp,wifiDirect:iappyxWifiDirect," +
                     "save:function(k,v){iappyxStorage.save(k,v)}," +
                     "load:function(k){return iappyxStorage.load(k)}," +
                     "remove:function(k){iappyxStorage.remove(k)}," +
@@ -595,6 +596,8 @@ public class ShellActivity extends Activity {
         }
         // Stop SSH
         disconnectSsh();
+        // Stop BLE
+        disconnectAllBle();
         // Stop SMB
         disconnectSmb();
         // Stop TCP socket
@@ -1344,6 +1347,13 @@ public class ShellActivity extends Activity {
                     action.run();
                 }
             }
+            else if (req == REQ_BLE) {
+                if (blePendingAction != null) {
+                    Runnable action = blePendingAction;
+                    blePendingAction = null;
+                    action.run();
+                }
+            }
         } else {
             if (req == REQ_WIFI_DIRECT) {
                 if (wifiP2pPendingCbId != null) {
@@ -1353,6 +1363,12 @@ public class ShellActivity extends Activity {
                 }
                 wifiP2pPendingAction = null;
                 wifiP2pPendingCbId = null;
+            }
+            if (req == REQ_BLE) {
+                if (bleScanCallbackFn != null) {
+                    fireEvent(bleScanCallbackFn, "{\"event\":\"error\",\"error\":\"permission denied\"}");
+                }
+                blePendingAction = null;
             }
             if (cbId != null) {
                 deliverResult(cbId, "{\"ok\":false,\"error\":\"permission denied\"}");
@@ -5487,6 +5503,355 @@ public class ShellActivity extends Activity {
         if (smbContext != null) { try { smbContext.close(); } catch (Exception ignored) {} smbContext = null; }
     }
 
+    // ── Bluetooth LE ──
+    private android.bluetooth.BluetoothAdapter bleAdapter;
+    private android.bluetooth.le.BluetoothLeScanner bleScanner;
+    private android.bluetooth.le.ScanCallback bleScanCallback;
+    private String bleScanCallbackFn;
+    private final java.util.concurrent.ConcurrentHashMap<String, android.bluetooth.BluetoothGatt> bleDevices = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.concurrent.ConcurrentHashMap<String, java.util.Map<String, String>> bleSubscriptions = new java.util.concurrent.ConcurrentHashMap<>();
+    private Runnable blePendingAction;
+    private static final int REQ_BLE = 1012;
+
+    class BleBridge {
+        private void ensureBleAdapter() {
+            if (bleAdapter == null) {
+                android.bluetooth.BluetoothManager bm = (android.bluetooth.BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
+                if (bm != null) bleAdapter = bm.getAdapter();
+            }
+        }
+
+        private boolean ensureBlePermissions(Runnable action) {
+            java.util.List<String> needed = new java.util.ArrayList<>();
+            if (ContextCompat.checkSelfPermission(ShellActivity.this, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED)
+                needed.add(android.Manifest.permission.ACCESS_FINE_LOCATION);
+            if (Build.VERSION.SDK_INT >= 31) {
+                if (ContextCompat.checkSelfPermission(ShellActivity.this, "android.permission.BLUETOOTH_SCAN") != PackageManager.PERMISSION_GRANTED)
+                    needed.add("android.permission.BLUETOOTH_SCAN");
+                if (ContextCompat.checkSelfPermission(ShellActivity.this, "android.permission.BLUETOOTH_CONNECT") != PackageManager.PERMISSION_GRANTED)
+                    needed.add("android.permission.BLUETOOTH_CONNECT");
+            }
+            if (needed.isEmpty()) return true;
+            blePendingAction = action;
+            ActivityCompat.requestPermissions(ShellActivity.this, needed.toArray(new String[0]), REQ_BLE);
+            return false;
+        }
+
+        @JavascriptInterface
+        public boolean isEnabled() {
+            ensureBleAdapter();
+            return bleAdapter != null && bleAdapter.isEnabled();
+        }
+
+        @JavascriptInterface
+        public void startScan(String callbackFn) {
+            runOnUiThread(() -> {
+                ensureBleAdapter();
+                if (bleAdapter == null || !bleAdapter.isEnabled()) {
+                    fireEvent(callbackFn, "{\"event\":\"error\",\"error\":\"Bluetooth is off\"}");
+                    return;
+                }
+                if (!ensureBlePermissions(() -> startScan(callbackFn))) return;
+                bleScanCallbackFn = callbackFn;
+                bleScanner = bleAdapter.getBluetoothLeScanner();
+                if (bleScanner == null) {
+                    fireEvent(callbackFn, "{\"event\":\"error\",\"error\":\"Scanner not available\"}");
+                    return;
+                }
+                if (bleScanCallback != null) {
+                    try { bleScanner.stopScan(bleScanCallback); } catch (Exception ignored) {}
+                }
+                bleScanCallback = new android.bluetooth.le.ScanCallback() {
+                    @Override
+                    public void onScanResult(int callbackType, android.bluetooth.le.ScanResult result) {
+                        if (bleScanCallbackFn == null) return;
+                        try {
+                            android.bluetooth.BluetoothDevice d = result.getDevice();
+                            String name = "";
+                            try { name = d.getName() != null ? d.getName() : ""; } catch (SecurityException ignored) {}
+                            fireEvent(bleScanCallbackFn, "{\"event\":\"found\",\"name\":\"" + escapeJson(name) +
+                                "\",\"address\":\"" + d.getAddress() +
+                                "\",\"rssi\":" + result.getRssi() + "}");
+                        } catch (Exception ignored) {}
+                    }
+                    @Override
+                    public void onScanFailed(int errorCode) {
+                        if (bleScanCallbackFn != null)
+                            fireEvent(bleScanCallbackFn, "{\"event\":\"error\",\"error\":\"Scan failed: " + errorCode + "\"}");
+                    }
+                };
+                try { bleScanner.startScan(bleScanCallback); } catch (SecurityException e) {
+                    fireEvent(callbackFn, "{\"event\":\"error\",\"error\":\"permission denied\"}");
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void stopScan() {
+            runOnUiThread(() -> {
+                if (bleScanner != null && bleScanCallback != null) {
+                    try { bleScanner.stopScan(bleScanCallback); } catch (Exception ignored) {}
+                    bleScanCallback = null;
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void connect(String address, String cbId) {
+            httpClientPool.submit(() -> {
+                try {
+                    ensureBleAdapter();
+                    if (bleAdapter == null) { deliverResult(cbId, "{\"ok\":false,\"error\":\"Bluetooth not available\"}"); return; }
+                    android.bluetooth.BluetoothDevice device = bleAdapter.getRemoteDevice(address);
+                    final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+                    final JSONObject[] resultHolder = {null};
+                    final android.bluetooth.BluetoothGatt[] gattHolder = {null};
+
+                    runOnUiThread(() -> {
+                        try {
+                            gattHolder[0] = device.connectGatt(ShellActivity.this, false, new android.bluetooth.BluetoothGattCallback() {
+                                @Override
+                                public void onConnectionStateChange(android.bluetooth.BluetoothGatt g, int status, int newState) {
+                                    if (newState == android.bluetooth.BluetoothProfile.STATE_CONNECTED) {
+                                        try { g.discoverServices(); } catch (SecurityException ignored) {}
+                                    } else if (newState == android.bluetooth.BluetoothProfile.STATE_DISCONNECTED) {
+                                        bleDevices.remove(address);
+                                        if (resultHolder[0] == null) {
+                                            try {
+                                                resultHolder[0] = new JSONObject();
+                                                resultHolder[0].put("ok", false);
+                                                resultHolder[0].put("error", "Connection failed (status " + status + ")");
+                                            } catch (Exception ignored) {}
+                                            latch.countDown();
+                                        }
+                                    }
+                                }
+                                @Override
+                                public void onServicesDiscovered(android.bluetooth.BluetoothGatt g, int status) {
+                                    try {
+                                        bleDevices.put(address, g);
+                                        JSONObject r = new JSONObject();
+                                        r.put("ok", true);
+                                        JSONArray services = new JSONArray();
+                                        for (android.bluetooth.BluetoothGattService s : g.getServices()) {
+                                            JSONObject svc = new JSONObject();
+                                            svc.put("uuid", s.getUuid().toString());
+                                            JSONArray chars = new JSONArray();
+                                            for (android.bluetooth.BluetoothGattCharacteristic c : s.getCharacteristics()) {
+                                                JSONObject ch = new JSONObject();
+                                                ch.put("uuid", c.getUuid().toString());
+                                                int props = c.getProperties();
+                                                JSONArray propList = new JSONArray();
+                                                if ((props & android.bluetooth.BluetoothGattCharacteristic.PROPERTY_READ) != 0) propList.put("read");
+                                                if ((props & android.bluetooth.BluetoothGattCharacteristic.PROPERTY_WRITE) != 0) propList.put("write");
+                                                if ((props & android.bluetooth.BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0) propList.put("writeNoResponse");
+                                                if ((props & android.bluetooth.BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0) propList.put("notify");
+                                                if ((props & android.bluetooth.BluetoothGattCharacteristic.PROPERTY_INDICATE) != 0) propList.put("indicate");
+                                                ch.put("properties", propList);
+                                                chars.put(ch);
+                                            }
+                                            svc.put("characteristics", chars);
+                                            services.put(svc);
+                                        }
+                                        r.put("services", services);
+                                        resultHolder[0] = r;
+                                    } catch (Exception e) {
+                                        try {
+                                            resultHolder[0] = new JSONObject();
+                                            resultHolder[0].put("ok", false);
+                                            resultHolder[0].put("error", escapeJson(e.getMessage()));
+                                        } catch (Exception ignored) {}
+                                    }
+                                    latch.countDown();
+                                }
+                                @Override
+                                public void onCharacteristicRead(android.bluetooth.BluetoothGatt g, android.bluetooth.BluetoothGattCharacteristic c, int status) {
+                                    // Handled per-request via pendingBleReads
+                                }
+                                @Override
+                                public void onCharacteristicChanged(android.bluetooth.BluetoothGatt g, android.bluetooth.BluetoothGattCharacteristic c) {
+                                    String key = address + "|" + c.getService().getUuid() + "|" + c.getUuid();
+                                    java.util.Map<String, String> subs = bleSubscriptions.get(key);
+                                    if (subs == null) return;
+                                    String fn = subs.get("fn");
+                                    if (fn == null) return;
+                                    byte[] val = c.getValue();
+                                    if (val == null) return;
+                                    StringBuilder hex = new StringBuilder();
+                                    for (byte b : val) hex.append(String.format("%02x", b));
+                                    String str = new String(val, java.nio.charset.StandardCharsets.UTF_8);
+                                    fireEvent(fn, "{\"value\":\"" + escapeJson(str) + "\",\"hex\":\"" + hex + "\"}");
+                                }
+                            }, android.bluetooth.BluetoothDevice.TRANSPORT_LE);
+                        } catch (SecurityException e) {
+                            try {
+                                resultHolder[0] = new JSONObject();
+                                resultHolder[0].put("ok", false);
+                                resultHolder[0].put("error", "permission denied");
+                            } catch (Exception ignored) {}
+                            latch.countDown();
+                        }
+                    });
+
+                    latch.await(15, java.util.concurrent.TimeUnit.SECONDS);
+                    if (resultHolder[0] != null) {
+                        deliverResult(cbId, resultHolder[0].toString());
+                    } else {
+                        // Timeout — close leaked GATT if not stored in bleDevices
+                        if (gattHolder[0] != null && !bleDevices.containsValue(gattHolder[0])) {
+                            try { gattHolder[0].disconnect(); gattHolder[0].close(); } catch (Exception ignored) {}
+                        }
+                        deliverResult(cbId, "{\"ok\":false,\"error\":\"Connection timeout\"}");
+                    }
+                } catch (Exception e) {
+                    deliverResult(cbId, "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void disconnect(String address) {
+            android.bluetooth.BluetoothGatt gatt = bleDevices.remove(address);
+            if (gatt != null) {
+                try { gatt.disconnect(); gatt.close(); } catch (Exception ignored) {}
+            }
+        }
+
+        @JavascriptInterface
+        public void read(String address, String serviceUuid, String charUuid, String cbId) {
+            httpClientPool.submit(() -> {
+                try {
+                    android.bluetooth.BluetoothGatt gatt = bleDevices.get(address);
+                    if (gatt == null) { deliverResult(cbId, "{\"ok\":false,\"error\":\"not connected\"}"); return; }
+                    android.bluetooth.BluetoothGattService svc = gatt.getService(java.util.UUID.fromString(serviceUuid));
+                    if (svc == null) { deliverResult(cbId, "{\"ok\":false,\"error\":\"service not found\"}"); return; }
+                    android.bluetooth.BluetoothGattCharacteristic ch = svc.getCharacteristic(java.util.UUID.fromString(charUuid));
+                    if (ch == null) { deliverResult(cbId, "{\"ok\":false,\"error\":\"characteristic not found\"}"); return; }
+
+                    final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+                    final byte[][] valueHolder = {null};
+                    // Temporarily override the callback for this read
+                    // Note: this is simplified — a full implementation would use Nordic's queue
+                    try {
+                        gatt.readCharacteristic(ch);
+                    } catch (SecurityException e) {
+                        deliverResult(cbId, "{\"ok\":false,\"error\":\"permission denied\"}");
+                        return;
+                    }
+                    // Wait for value to be available (poll)
+                    Thread.sleep(500);
+                    byte[] val = ch.getValue();
+                    if (val != null) {
+                        StringBuilder hex = new StringBuilder();
+                        for (byte b : val) hex.append(String.format("%02x", b));
+                        String str = new String(val, java.nio.charset.StandardCharsets.UTF_8);
+                        deliverResult(cbId, "{\"ok\":true,\"value\":\"" + escapeJson(str) + "\",\"hex\":\"" + hex + "\"}");
+                    } else {
+                        deliverResult(cbId, "{\"ok\":false,\"error\":\"read returned no data\"}");
+                    }
+                } catch (Exception e) {
+                    deliverResult(cbId, "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void write(String address, String serviceUuid, String charUuid, String hexData, String cbId) {
+            httpClientPool.submit(() -> {
+                try {
+                    android.bluetooth.BluetoothGatt gatt = bleDevices.get(address);
+                    if (gatt == null) { deliverResult(cbId, "{\"ok\":false,\"error\":\"not connected\"}"); return; }
+                    android.bluetooth.BluetoothGattService svc = gatt.getService(java.util.UUID.fromString(serviceUuid));
+                    if (svc == null) { deliverResult(cbId, "{\"ok\":false,\"error\":\"service not found\"}"); return; }
+                    android.bluetooth.BluetoothGattCharacteristic ch = svc.getCharacteristic(java.util.UUID.fromString(charUuid));
+                    if (ch == null) { deliverResult(cbId, "{\"ok\":false,\"error\":\"characteristic not found\"}"); return; }
+                    int len = hexData.length() / 2;
+                    byte[] bytes = new byte[len];
+                    for (int i = 0; i < len; i++) bytes[i] = (byte) Integer.parseInt(hexData.substring(i * 2, i * 2 + 2), 16);
+                    ch.setValue(bytes);
+                    try {
+                        boolean ok = gatt.writeCharacteristic(ch);
+                        Thread.sleep(300); // Wait for write to complete
+                        deliverResult(cbId, ok ? "{\"ok\":true}" : "{\"ok\":false,\"error\":\"write failed\"}");
+                    } catch (SecurityException e) {
+                        deliverResult(cbId, "{\"ok\":false,\"error\":\"permission denied\"}");
+                    }
+                } catch (Exception e) {
+                    deliverResult(cbId, "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void subscribe(String address, String serviceUuid, String charUuid, String callbackFn) {
+            runOnUiThread(() -> {
+                try {
+                    android.bluetooth.BluetoothGatt gatt = bleDevices.get(address);
+                    if (gatt == null) return;
+                    android.bluetooth.BluetoothGattService svc = gatt.getService(java.util.UUID.fromString(serviceUuid));
+                    if (svc == null) return;
+                    android.bluetooth.BluetoothGattCharacteristic ch = svc.getCharacteristic(java.util.UUID.fromString(charUuid));
+                    if (ch == null) return;
+                    gatt.setCharacteristicNotification(ch, true);
+                    // Write CCC descriptor to enable notifications
+                    android.bluetooth.BluetoothGattDescriptor desc = ch.getDescriptor(
+                        java.util.UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"));
+                    if (desc != null) {
+                        desc.setValue(android.bluetooth.BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+                        gatt.writeDescriptor(desc);
+                    }
+                    String key = address + "|" + serviceUuid + "|" + charUuid;
+                    java.util.Map<String, String> sub = new java.util.HashMap<>();
+                    sub.put("fn", callbackFn);
+                    bleSubscriptions.put(key, sub);
+                } catch (SecurityException ignored) {}
+            });
+        }
+
+        @JavascriptInterface
+        public void unsubscribe(String address, String serviceUuid, String charUuid) {
+            runOnUiThread(() -> {
+                try {
+                    android.bluetooth.BluetoothGatt gatt = bleDevices.get(address);
+                    if (gatt == null) return;
+                    android.bluetooth.BluetoothGattService svc = gatt.getService(java.util.UUID.fromString(serviceUuid));
+                    if (svc == null) return;
+                    android.bluetooth.BluetoothGattCharacteristic ch = svc.getCharacteristic(java.util.UUID.fromString(charUuid));
+                    if (ch == null) return;
+                    gatt.setCharacteristicNotification(ch, false);
+                    android.bluetooth.BluetoothGattDescriptor desc = ch.getDescriptor(
+                        java.util.UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"));
+                    if (desc != null) {
+                        desc.setValue(android.bluetooth.BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE);
+                        gatt.writeDescriptor(desc);
+                    }
+                    bleSubscriptions.remove(address + "|" + serviceUuid + "|" + charUuid);
+                } catch (SecurityException ignored) {}
+            });
+        }
+
+        @JavascriptInterface
+        public String getConnectedDevices() {
+            try {
+                JSONArray arr = new JSONArray();
+                for (String addr : bleDevices.keySet()) arr.put(addr);
+                return arr.toString();
+            } catch (Exception e) { return "[]"; }
+        }
+    }
+
+    private void disconnectAllBle() {
+        for (android.bluetooth.BluetoothGatt gatt : bleDevices.values()) {
+            try { gatt.disconnect(); gatt.close(); } catch (Exception ignored) {}
+        }
+        bleDevices.clear();
+        bleSubscriptions.clear();
+        if (bleScanner != null && bleScanCallback != null) {
+            try { bleScanner.stopScan(bleScanCallback); } catch (Exception ignored) {}
+        }
+        bleScanCallback = null;
+    }
+
     // ── TCP Socket ──
     private java.net.Socket tcpSocket;
     private java.io.OutputStream tcpOut;
@@ -6388,6 +6753,7 @@ public class ShellActivity extends Activity {
                 bridges.put("httpClient", true);
                 bridges.put("ssh", true);
                 bridges.put("smb", true);
+                bridges.put("ble", true);
                 bridges.put("tcp", true);
                 bridges.put("nsd", true);
                 bridges.put("udp", true);

@@ -195,6 +195,7 @@ class AppGenerator(private val context: Context) {
             "wallpaper"    -> getWallpaperApp(label)
             "mediagallery" -> getMediaGalleryApp(label)
             "downloadmgr"  -> getDownloadMgrApp(label)
+            "blescan"      -> getBleScanApp(label)
             "lanshare"     -> getLanShareApp(label)
             "wifidirect"   -> getWifiDirectApp(label)
             "httpclient"   -> getHttpClientApp(label)
@@ -5570,6 +5571,221 @@ function formatSize(b) {
   return (b/1073741824).toFixed(1) + ' GB';
 }
 function esc(s) { return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;') : ''; }
+
+window.addEventListener('load', function() { setTimeout(init, 200); });
+</script></body></html>""".trimIndent()
+
+    fun getBleScanApp(label: String) = """<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>$label</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;padding:16px;display:flex;flex-direction:column;gap:10px}
+h1{font-size:1.2rem;text-align:center}
+.card{background:#1a1a2e;border-radius:12px;padding:12px}
+.card h3{font-size:.85rem;margin-bottom:6px;color:rgba(255,255,255,.6)}
+.btn{background:#0f3460;border:none;border-radius:10px;padding:8px 14px;color:#fff;font-size:.8rem;cursor:pointer}
+.btn:active{opacity:.7}
+.btn.danger{background:#c62828}
+.btn.sm{padding:6px 10px;font-size:.75rem}
+.row{display:flex;gap:6px;align-items:center}
+.device{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer}
+.device:last-child{border:none}
+.device:active{opacity:.7}
+.device .icon{font-size:1.2rem}
+.device .info{flex:1}
+.device .name{font-size:.85rem}
+.device .addr{font-size:.7rem;color:rgba(255,255,255,.3)}
+.rssi{font-size:.7rem;color:#4fc3f7;min-width:40px;text-align:right}
+.svc{margin-top:6px;padding:8px;background:#0d0d1a;border-radius:8px;font-size:.8rem}
+.svc-title{color:#4fc3f7;font-size:.75rem;margin-bottom:4px}
+.char{padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:.75rem}
+.char:last-child{border:none}
+.char-uuid{color:rgba(255,255,255,.4);font-family:monospace;font-size:.65rem}
+.char-props{color:#69f0ae;font-size:.65rem}
+.char-val{color:#4fc3f7;font-family:monospace;margin-top:2px}
+.status{text-align:center;font-size:.75rem;color:rgba(255,255,255,.3);padding:12px}
+input{background:#0d0d1a;border:none;border-radius:6px;padding:6px 8px;color:#fff;font-size:.8rem;outline:none;font-family:monospace;width:100%}
+</style></head><body>
+<h1>🔵 $label</h1>
+
+<div class="row">
+  <button class="btn" onclick="startScan()" id="scanBtn" style="flex:1">🔍 Scan</button>
+  <button class="btn danger" onclick="stopScan()" style="flex:1">Stop</button>
+</div>
+
+<div class="card" id="deviceCard">
+  <h3>Devices <span id="devCount" style="color:rgba(255,255,255,.3);font-weight:normal"></span></h3>
+  <input id="filter" placeholder="Filter by name or address..." oninput="renderDevices()" style="margin-bottom:8px">
+  <div id="deviceList"><div class="status">Tap Scan to find BLE devices</div></div>
+</div>
+
+<div class="card" id="connCard" style="display:none">
+  <h3>Connected: <span id="connName"></span></h3>
+  <button class="btn sm danger" onclick="doDisconnect()" style="margin-bottom:8px">Disconnect</button>
+  <div id="serviceList"></div>
+</div>
+
+<script>
+var devices = {};
+var connectedAddr = null;
+
+function init() {
+  if (typeof iappyx === 'undefined') { setTimeout(init, 50); return; }
+}
+
+function startScan() {
+  devices = {};
+  document.getElementById('deviceList').innerHTML = '<div class="status">Scanning...</div>';
+  iappyx.ble.startScan('onBleEvent');
+}
+
+function stopScan() {
+  iappyx.ble.stopScan();
+}
+
+function onBleEvent(evt) {
+  if (evt.event === 'error') {
+    document.getElementById('deviceList').innerHTML = '<div class="status" style="color:#ff6b6b">' + esc(evt.error) + '</div>';
+    return;
+  }
+  if (evt.event === 'found') {
+    devices[evt.address] = {name: evt.name || 'Unknown', address: evt.address, rssi: evt.rssi};
+    renderDevices();
+  }
+}
+
+function renderDevices() {
+  var el = document.getElementById('deviceList');
+  var q = (document.getElementById('filter').value || '').toLowerCase();
+  var arr = Object.values(devices).filter(function(d) {
+    if (!q) return true;
+    return (d.name || '').toLowerCase().indexOf(q) >= 0 || d.address.toLowerCase().indexOf(q) >= 0;
+  }).sort(function(a,b) { return b.rssi - a.rssi; });
+  document.getElementById('devCount').textContent = '(' + Object.keys(devices).length + ' total' + (q ? ', ' + arr.length + ' matched' : '') + ')';
+  if (arr.length === 0) { el.innerHTML = '<div class="status">' + (q ? 'No matches for "' + esc(q) + '"' : 'No devices found') + '</div>'; return; }
+  el.innerHTML = arr.map(function(d) {
+    var icon = d.name && d.name.length > 0 ? '📱' : '📡';
+    var signal = d.rssi > -50 ? '▰▰▰▰' : d.rssi > -70 ? '▰▰▰▱' : d.rssi > -85 ? '▰▰▱▱' : '▰▱▱▱';
+    return '<div class="device" onclick="connectTo(\'' + d.address + '\')">' +
+      '<div class="icon">' + icon + '</div>' +
+      '<div class="info"><div class="name">' + esc(d.name || 'Unknown') + '</div>' +
+      '<div class="addr">' + d.address + '</div></div>' +
+      '<div class="rssi">' + signal + ' ' + d.rssi + '</div></div>';
+  }).join('');
+}
+
+function connectTo(addr) {
+  iappyx.ble.stopScan();
+  document.getElementById('deviceList').innerHTML = '<div class="status">Connecting to ' + addr + '...</div>';
+  var cbId = 'ble_' + Date.now();
+  window._iappyxCb = window._iappyxCb || {};
+  window._iappyxCb[cbId] = function(r) {
+    if (r.ok) {
+      connectedAddr = addr;
+      var dev = devices[addr] || {name: 'Device'};
+      document.getElementById('connName').textContent = dev.name || addr;
+      document.getElementById('connCard').style.display = '';
+      renderServices(r.services);
+    } else {
+      document.getElementById('deviceList').innerHTML = '<div class="status" style="color:#ff6b6b">' + esc(r.error) + '</div>';
+    }
+  };
+  iappyx.ble.connect(addr, cbId);
+}
+
+function renderServices(services) {
+  var el = document.getElementById('serviceList');
+  if (!services || services.length === 0) { el.innerHTML = '<div class="status">No services found</div>'; return; }
+  el.innerHTML = services.map(function(s) {
+    var sName = knownService(s.uuid) || s.uuid;
+    var chars = s.characteristics.map(function(c) {
+      var cName = knownChar(c.uuid) || '';
+      var props = c.properties.join(', ');
+      var actions = '';
+      if (c.properties.indexOf('read') >= 0) actions += '<button class="btn sm" onclick="doRead(\'' + s.uuid + '\',\'' + c.uuid + '\')">Read</button> ';
+      if (c.properties.indexOf('notify') >= 0 || c.properties.indexOf('indicate') >= 0)
+        actions += '<button class="btn sm" onclick="doSubscribe(\'' + s.uuid + '\',\'' + c.uuid + '\')">Subscribe</button> ';
+      if (c.properties.indexOf('write') >= 0 || c.properties.indexOf('writeNoResponse') >= 0)
+        actions += '<div class="row" style="margin-top:4px"><input id="w_' + c.uuid.substring(0,8) + '" placeholder="hex bytes (e.g. 01ff)"><button class="btn sm" onclick="doWrite(\'' + s.uuid + '\',\'' + c.uuid + '\')">Write</button></div>';
+      return '<div class="char">' + (cName ? '<b>' + cName + '</b><br>' : '') +
+        '<div class="char-uuid">' + c.uuid + '</div>' +
+        '<div class="char-props">' + props + '</div>' +
+        '<div class="row" style="margin-top:4px;flex-wrap:wrap">' + actions + '</div>' +
+        '<div class="char-val" id="v_' + c.uuid.substring(0,8) + '"></div></div>';
+    }).join('');
+    return '<div class="svc"><div class="svc-title">' + esc(sName) + '</div>' + chars + '</div>';
+  }).join('');
+}
+
+function doRead(svc, ch) {
+  var cbId = 'rd_' + Date.now();
+  window._iappyxCb[cbId] = function(r) {
+    var el = document.getElementById('v_' + ch.substring(0,8));
+    if (el) el.textContent = r.ok ? r.hex + ' (' + r.value + ')' : r.error;
+  };
+  iappyx.ble.read(connectedAddr, svc, ch, cbId);
+}
+
+function doWrite(svc, ch) {
+  var hex = document.getElementById('w_' + ch.substring(0,8)).value.replace(/\s/g,'');
+  if (!hex) return;
+  var cbId = 'wr_' + Date.now();
+  window._iappyxCb[cbId] = function(r) {
+    var el = document.getElementById('v_' + ch.substring(0,8));
+    if (el) el.textContent = r.ok ? 'Written!' : r.error;
+  };
+  iappyx.ble.write(connectedAddr, svc, ch, hex, cbId);
+}
+
+function doSubscribe(svc, ch) {
+  iappyx.ble.subscribe(connectedAddr, svc, ch, 'onBleNotify_' + ch.substring(0,8));
+  window['onBleNotify_' + ch.substring(0,8)] = function(evt) {
+    var el = document.getElementById('v_' + ch.substring(0,8));
+    if (el) el.textContent = evt.hex + ' (' + evt.value + ')';
+  };
+  var el = document.getElementById('v_' + ch.substring(0,8));
+  if (el) el.textContent = 'Subscribed, waiting...';
+}
+
+function doDisconnect() {
+  if (connectedAddr) iappyx.ble.disconnect(connectedAddr);
+  connectedAddr = null;
+  document.getElementById('connCard').style.display = 'none';
+}
+
+function knownService(uuid) {
+  var u=uuid.toLowerCase(),p='0000-1000-8000-00805f9b34fb',map={
+    ['00001800-'+p]:'Generic Access',['00001801-'+p]:'Generic Attribute',['00001802-'+p]:'Immediate Alert',
+    ['00001803-'+p]:'Link Loss',['00001804-'+p]:'Tx Power',['00001805-'+p]:'Current Time',
+    ['00001806-'+p]:'Reference Time',['00001808-'+p]:'Glucose',['00001809-'+p]:'Health Thermometer',
+    ['0000180a-'+p]:'Device Info',['0000180d-'+p]:'Heart Rate',['0000180e-'+p]:'Phone Alert',
+    ['0000180f-'+p]:'Battery',['00001810-'+p]:'Blood Pressure',['00001811-'+p]:'Alert Notification',
+    ['00001812-'+p]:'HID',['00001813-'+p]:'Scan Parameters',['00001814-'+p]:'Running Speed',
+    ['00001816-'+p]:'Cycling Speed',['00001818-'+p]:'Cycling Power',['0000181a-'+p]:'Environment Sensing',
+    ['0000181c-'+p]:'User Data',['0000181d-'+p]:'Weight Scale',['0000181e-'+p]:'Bond Management',
+    ['00001822-'+p]:'Pulse Oximeter',['0000fe95-'+p]:'Xiaomi',['0000fee0-'+p]:'Mi Band'};
+  return map[u]||null;
+}
+function knownChar(uuid) {
+  var u=uuid.toLowerCase(),p='0000-1000-8000-00805f9b34fb',map={
+    ['00002a00-'+p]:'Device Name',['00002a01-'+p]:'Appearance',['00002a04-'+p]:'Connection Params',
+    ['00002a05-'+p]:'Service Changed',['00002a19-'+p]:'Battery Level',['00002a23-'+p]:'System ID',
+    ['00002a24-'+p]:'Model Number',['00002a25-'+p]:'Serial Number',['00002a26-'+p]:'Firmware Rev',
+    ['00002a27-'+p]:'Hardware Rev',['00002a28-'+p]:'Software Rev',['00002a29-'+p]:'Manufacturer',
+    ['00002a37-'+p]:'Heart Rate',['00002a38-'+p]:'Body Sensor Location',['00002a39-'+p]:'HR Control Point',
+    ['00002a49-'+p]:'Blood Pressure Feature',['00002a35-'+p]:'Blood Pressure',
+    ['00002a1c-'+p]:'Temperature',['00002a1d-'+p]:'Temp Type',['00002a1e-'+p]:'Intermediate Temp',
+    ['00002a6d-'+p]:'Pressure',['00002a6e-'+p]:'Temperature (env)',['00002a6f-'+p]:'Humidity',
+    ['00002a70-'+p]:'True Wind Speed',['00002a76-'+p]:'UV Index',['00002a77-'+p]:'Irradiance',
+    ['00002a9d-'+p]:'Weight',['00002a9e-'+p]:'Weight Scale Feature',['00002a98-'+p]:'Weight Resolution',
+    ['00002a5b-'+p]:'CSC Measurement',['00002a5d-'+p]:'Sensor Location',
+    ['00002a53-'+p]:'RSC Measurement',['00002a63-'+p]:'Cycling Power',
+    ['00002a5a-'+p]:'Aggregate Input',['00002a58-'+p]:'Analog Input',['00002a56-'+p]:'Digital Input'};
+  return map[u]||null;
+}
+function esc(s) { return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
 
 window.addEventListener('load', function() { setTimeout(init, 200); });
 </script></body></html>""".trimIndent()

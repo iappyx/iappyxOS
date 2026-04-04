@@ -271,6 +271,14 @@ class MainActivity : FlutterActivity() {
                         result.error("FAILED", e.message, null)
                     }
                 }
+                "keepScreenOn" -> {
+                    window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    result.success(null)
+                }
+                "releaseScreenOn" -> {
+                    window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    result.success(null)
+                }
                 "getInstalledApkPath" -> {
                     val pkg = call.argument<String>("packageName") ?: ""
                     if (pkg.isBlank()) { result.error("INVALID", "packageName required", null); return@setMethodCallHandler }

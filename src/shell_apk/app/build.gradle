@@ -41,4 +41,5 @@ dependencies {
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'com.github.mwiede:jsch:0.2.21'
     implementation 'eu.agno3.jcifs:jcifs-ng:2.1.10'
+    implementation 'no.nordicsemi.android:ble:2.11.0'
 }

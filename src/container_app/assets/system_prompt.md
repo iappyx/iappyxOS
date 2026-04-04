@@ -329,6 +329,19 @@ SFTP (file transfer over SSH):
 `iappyx.smb.disconnect()` | `iappyx.smb.isConnected()` → bool
 Supports SMB2/SMB3 (Windows 10/11, modern NAS devices). Remote paths are relative to the share root.
 
+### Bluetooth LE (async — scan, connect, read/write characteristics)
+`iappyx.ble.isEnabled()` → bool (sync) — is Bluetooth on?
+`iappyx.ble.startScan('window.onBle')` — discover nearby BLE devices. Events: `{event:"found", name, address, rssi}` or `{event:"error", error}`. Auto-requests permissions.
+`iappyx.ble.stopScan()`
+`iappyx.ble.connect(address, cbId)` → `{ok, services:[{uuid, characteristics:[{uuid, properties:["read","write","notify",...]}]}]}` — connect + discover services
+`iappyx.ble.disconnect(address)`
+`iappyx.ble.read(address, serviceUuid, charUuid, cbId)` → `{ok, value, hex}` — read characteristic
+`iappyx.ble.write(address, serviceUuid, charUuid, hexData, cbId)` → `{ok}` — write hex bytes
+`iappyx.ble.subscribe(address, serviceUuid, charUuid, 'window.onBleData')` — subscribe to notifications: `{value, hex}`
+`iappyx.ble.unsubscribe(address, serviceUuid, charUuid)`
+`iappyx.ble.getConnectedDevices()` → JSON array of connected addresses (sync)
+Common UUIDs: Heart Rate Service `0000180d-...`, Heart Rate Measurement `00002a37-...`, Battery Service `0000180f-...`, Battery Level `00002a19-...`.
+
 ### TCP Socket (async — persistent bidirectional connection)
 `iappyx.tcp.open(host, port, useTls, cbId)` → `{ok, localAddress, localPort}` — connect to host. useTls: `"true"`/`"false"` (trusts all certs when TLS).
 `iappyx.tcp.openTrustPin(host, port, fingerprint, cbId)` → `{ok}` — TLS with cert pinning (SHA-256 fingerprint)

@@ -13,6 +13,7 @@ import '../models/icon_config.dart';
 import '../models/ai_provider.dart';
 import 'preview_screen.dart';
 import 'icon_editor_screen.dart';
+import '../services/error_helper.dart';
 import 'flows/create_helpers.dart' as h;
 
 class CreateScreen extends StatefulWidget {
@@ -223,7 +224,7 @@ class CreateScreenState extends State<CreateScreen> {
     } catch (e) {
       if (!mounted || thisGenId != _genId) return;
       setState(() => _aiGenerating = false);
-      _snack('AI error: $e');
+      _snack(friendlyError(e.toString()).toString());
     }
   }
 
@@ -256,7 +257,7 @@ class CreateScreenState extends State<CreateScreen> {
     } catch (e) {
       if (!mounted || thisGenId != _genId) return;
       setState(() => _aiGenerating = false);
-      _snack('AI error: $e');
+      _snack(friendlyError(e.toString()).toString());
     }
   }
 
@@ -356,7 +357,7 @@ class CreateScreenState extends State<CreateScreen> {
       _existingPackageName = result.packageName;
       _addLog('\u2705 Build complete! App saved.');
       widget.onAppSaved?.call();
-    } on PlatformException catch (e) { _addLog('\u274C ${e.message}'); }
+    } on PlatformException catch (e) { final err = friendlyError(e.message); _addLog('\u274C ${err.message}'); if (err.hint != null) _addLog('   ${err.hint}'); }
     finally { setState(() => _isBuilding = false); }
   }
 
@@ -381,7 +382,7 @@ class CreateScreenState extends State<CreateScreen> {
       _existingPackageName = result.packageName;
       _addLog('\u2705 Build complete! App saved.');
       widget.onAppSaved?.call();
-    } on PlatformException catch (e) { _addLog('\u274C ${e.message}'); }
+    } on PlatformException catch (e) { final err = friendlyError(e.message); _addLog('\u274C ${err.message}'); if (err.hint != null) _addLog('   ${err.hint}'); }
     finally { setState(() => _isBuilding = false); }
   }
 

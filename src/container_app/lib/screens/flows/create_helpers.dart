@@ -140,6 +140,7 @@ const demoTemplates = [
   ('smstest',    '\uD83D\uDCAC', 'Send SMS',      'Send real SMS'),
   ('calendartest','\uD83D\uDCC5', 'Calendar',     'Read and add events'),
   ('nfctest',    '\uD83D\uDCE1', 'NFC Scanner',   'Read & write NFC tags'),
+  ('blescan',    '\uD83D\uDD35', 'BLE Scanner',  'Scan & connect Bluetooth LE'),
   ('biotest',    '\uD83D\uDD10', 'Biometric',     'Fingerprint / face auth'),
   // ── Data & Export ──
   ('',           '\u2500', '── Data & Export',   ''),
