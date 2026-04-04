@@ -4657,16 +4657,14 @@ public class ShellActivity extends Activity {
             if (!pin.isEmpty()) {
                 return buildClient(timeout, pinTrustManager(pin));
             } else if (trustAll) {
-                if (trustAllClient == null) trustAllClient = buildClient(timeout, trustAllTrustManager());
-                return trustAllClient;
+                return buildClient(timeout, trustAllTrustManager());
             } else {
-                if (defaultClient == null) defaultClient = new okhttp3.OkHttpClient.Builder()
+                return new okhttp3.OkHttpClient.Builder()
                     .cookieJar(cookieJar)
                     .connectTimeout(timeout, java.util.concurrent.TimeUnit.MILLISECONDS)
                     .readTimeout(timeout, java.util.concurrent.TimeUnit.MILLISECONDS)
                     .writeTimeout(timeout, java.util.concurrent.TimeUnit.MILLISECONDS)
                     .followRedirects(true).followSslRedirects(true).build();
-                return defaultClient;
             }
         }
 
@@ -5012,7 +5010,14 @@ public class ShellActivity extends Activity {
 
                     String stdout = readStream(stdoutStream);
                     String stderr = readStream(stderrStream);
+                    // Wait for exit status to arrive (up to 1s after streams close)
                     int exitCode = ch.getExitStatus();
+                    if (exitCode == -1) {
+                        for (int i = 0; i < 10 && exitCode == -1; i++) {
+                            Thread.sleep(100);
+                            exitCode = ch.getExitStatus();
+                        }
+                    }
                     ch.disconnect();
 
                     JSONObject result = new JSONObject();
@@ -5512,6 +5517,11 @@ public class ShellActivity extends Activity {
     private final java.util.concurrent.ConcurrentHashMap<String, java.util.Map<String, String>> bleSubscriptions = new java.util.concurrent.ConcurrentHashMap<>();
     private Runnable blePendingAction;
     private static final int REQ_BLE = 1012;
+    private final Object bleOpLock = new Object(); // serialize GATT read/write (Android allows only one at a time)
+    private volatile java.util.concurrent.CountDownLatch bleReadLatch;
+    private volatile byte[] bleReadValue;
+    private volatile java.util.concurrent.CountDownLatch bleWriteLatch;
+    private volatile boolean bleWriteOk;
 
     class BleBridge {
         private void ensureBleAdapter() {
@@ -5666,7 +5676,17 @@ public class ShellActivity extends Activity {
                                 }
                                 @Override
                                 public void onCharacteristicRead(android.bluetooth.BluetoothGatt g, android.bluetooth.BluetoothGattCharacteristic c, int status) {
-                                    // Handled per-request via pendingBleReads
+                                    if (bleReadLatch != null) {
+                                        bleReadValue = (status == android.bluetooth.BluetoothGatt.GATT_SUCCESS) ? c.getValue() : null;
+                                        bleReadLatch.countDown();
+                                    }
+                                }
+                                @Override
+                                public void onCharacteristicWrite(android.bluetooth.BluetoothGatt g, android.bluetooth.BluetoothGattCharacteristic c, int status) {
+                                    if (bleWriteLatch != null) {
+                                        bleWriteOk = (status == android.bluetooth.BluetoothGatt.GATT_SUCCESS);
+                                        bleWriteLatch.countDown();
+                                    }
                                 }
                                 @Override
                                 public void onCharacteristicChanged(android.bluetooth.BluetoothGatt g, android.bluetooth.BluetoothGattCharacteristic c) {
@@ -5720,37 +5740,38 @@ public class ShellActivity extends Activity {
         @JavascriptInterface
         public void read(String address, String serviceUuid, String charUuid, String cbId) {
             httpClientPool.submit(() -> {
-                try {
-                    android.bluetooth.BluetoothGatt gatt = bleDevices.get(address);
-                    if (gatt == null) { deliverResult(cbId, "{\"ok\":false,\"error\":\"not connected\"}"); return; }
-                    android.bluetooth.BluetoothGattService svc = gatt.getService(java.util.UUID.fromString(serviceUuid));
-                    if (svc == null) { deliverResult(cbId, "{\"ok\":false,\"error\":\"service not found\"}"); return; }
-                    android.bluetooth.BluetoothGattCharacteristic ch = svc.getCharacteristic(java.util.UUID.fromString(charUuid));
-                    if (ch == null) { deliverResult(cbId, "{\"ok\":false,\"error\":\"characteristic not found\"}"); return; }
-
-                    final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
-                    final byte[][] valueHolder = {null};
-                    // Temporarily override the callback for this read
-                    // Note: this is simplified — a full implementation would use Nordic's queue
+                synchronized (bleOpLock) {
                     try {
-                        gatt.readCharacteristic(ch);
-                    } catch (SecurityException e) {
-                        deliverResult(cbId, "{\"ok\":false,\"error\":\"permission denied\"}");
-                        return;
+                        android.bluetooth.BluetoothGatt gatt = bleDevices.get(address);
+                        if (gatt == null) { deliverResult(cbId, "{\"ok\":false,\"error\":\"not connected\"}"); return; }
+                        android.bluetooth.BluetoothGattService svc = gatt.getService(java.util.UUID.fromString(serviceUuid));
+                        if (svc == null) { deliverResult(cbId, "{\"ok\":false,\"error\":\"service not found\"}"); return; }
+                        android.bluetooth.BluetoothGattCharacteristic ch = svc.getCharacteristic(java.util.UUID.fromString(charUuid));
+                        if (ch == null) { deliverResult(cbId, "{\"ok\":false,\"error\":\"characteristic not found\"}"); return; }
+
+                        bleReadLatch = new java.util.concurrent.CountDownLatch(1);
+                        bleReadValue = null;
+                        try {
+                            gatt.readCharacteristic(ch);
+                        } catch (SecurityException e) {
+                            bleReadLatch = null;
+                            deliverResult(cbId, "{\"ok\":false,\"error\":\"permission denied\"}");
+                            return;
+                        }
+                        bleReadLatch.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                        byte[] val = bleReadValue;
+                        bleReadLatch = null;
+                        if (val != null) {
+                            StringBuilder hex = new StringBuilder();
+                            for (byte b : val) hex.append(String.format("%02x", b));
+                            String str = new String(val, java.nio.charset.StandardCharsets.UTF_8);
+                            deliverResult(cbId, "{\"ok\":true,\"value\":\"" + escapeJson(str) + "\",\"hex\":\"" + hex + "\"}");
+                        } else {
+                            deliverResult(cbId, "{\"ok\":false,\"error\":\"read returned no data\"}");
+                        }
+                    } catch (Exception e) {
+                        deliverResult(cbId, "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
                     }
-                    // Wait for value to be available (poll)
-                    Thread.sleep(500);
-                    byte[] val = ch.getValue();
-                    if (val != null) {
-                        StringBuilder hex = new StringBuilder();
-                        for (byte b : val) hex.append(String.format("%02x", b));
-                        String str = new String(val, java.nio.charset.StandardCharsets.UTF_8);
-                        deliverResult(cbId, "{\"ok\":true,\"value\":\"" + escapeJson(str) + "\",\"hex\":\"" + hex + "\"}");
-                    } else {
-                        deliverResult(cbId, "{\"ok\":false,\"error\":\"read returned no data\"}");
-                    }
-                } catch (Exception e) {
-                    deliverResult(cbId, "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
                 }
             });
         }
@@ -5758,26 +5779,33 @@ public class ShellActivity extends Activity {
         @JavascriptInterface
         public void write(String address, String serviceUuid, String charUuid, String hexData, String cbId) {
             httpClientPool.submit(() -> {
-                try {
-                    android.bluetooth.BluetoothGatt gatt = bleDevices.get(address);
-                    if (gatt == null) { deliverResult(cbId, "{\"ok\":false,\"error\":\"not connected\"}"); return; }
-                    android.bluetooth.BluetoothGattService svc = gatt.getService(java.util.UUID.fromString(serviceUuid));
-                    if (svc == null) { deliverResult(cbId, "{\"ok\":false,\"error\":\"service not found\"}"); return; }
-                    android.bluetooth.BluetoothGattCharacteristic ch = svc.getCharacteristic(java.util.UUID.fromString(charUuid));
-                    if (ch == null) { deliverResult(cbId, "{\"ok\":false,\"error\":\"characteristic not found\"}"); return; }
-                    int len = hexData.length() / 2;
-                    byte[] bytes = new byte[len];
-                    for (int i = 0; i < len; i++) bytes[i] = (byte) Integer.parseInt(hexData.substring(i * 2, i * 2 + 2), 16);
-                    ch.setValue(bytes);
+                synchronized (bleOpLock) {
                     try {
-                        boolean ok = gatt.writeCharacteristic(ch);
-                        Thread.sleep(300); // Wait for write to complete
-                        deliverResult(cbId, ok ? "{\"ok\":true}" : "{\"ok\":false,\"error\":\"write failed\"}");
-                    } catch (SecurityException e) {
-                        deliverResult(cbId, "{\"ok\":false,\"error\":\"permission denied\"}");
+                        android.bluetooth.BluetoothGatt gatt = bleDevices.get(address);
+                        if (gatt == null) { deliverResult(cbId, "{\"ok\":false,\"error\":\"not connected\"}"); return; }
+                        android.bluetooth.BluetoothGattService svc = gatt.getService(java.util.UUID.fromString(serviceUuid));
+                        if (svc == null) { deliverResult(cbId, "{\"ok\":false,\"error\":\"service not found\"}"); return; }
+                        android.bluetooth.BluetoothGattCharacteristic ch = svc.getCharacteristic(java.util.UUID.fromString(charUuid));
+                        if (ch == null) { deliverResult(cbId, "{\"ok\":false,\"error\":\"characteristic not found\"}"); return; }
+                        int len = hexData.length() / 2;
+                        byte[] bytes = new byte[len];
+                        for (int i = 0; i < len; i++) bytes[i] = (byte) Integer.parseInt(hexData.substring(i * 2, i * 2 + 2), 16);
+                        ch.setValue(bytes);
+                        bleWriteLatch = new java.util.concurrent.CountDownLatch(1);
+                        bleWriteOk = false;
+                        try {
+                            boolean queued = gatt.writeCharacteristic(ch);
+                            if (!queued) { deliverResult(cbId, "{\"ok\":false,\"error\":\"write not queued\"}"); bleWriteLatch = null; return; }
+                            bleWriteLatch.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                            deliverResult(cbId, bleWriteOk ? "{\"ok\":true}" : "{\"ok\":false,\"error\":\"write failed on device\"}");
+                            bleWriteLatch = null;
+                        } catch (SecurityException e) {
+                            bleWriteLatch = null;
+                            deliverResult(cbId, "{\"ok\":false,\"error\":\"permission denied\"}");
+                        }
+                    } catch (Exception e) {
+                        deliverResult(cbId, "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
                     }
-                } catch (Exception e) {
-                    deliverResult(cbId, "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
                 }
             });
         }
@@ -6099,28 +6127,32 @@ public class ShellActivity extends Activity {
         public void send(String host, String portStr, String data) {
             java.net.MulticastSocket sock = udpSocket;
             if (sock == null || sock.isClosed()) return;
-            try {
-                int port = Integer.parseInt(portStr);
-                byte[] bytes = data.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-                java.net.DatagramPacket pkt = new java.net.DatagramPacket(bytes, bytes.length,
-                    java.net.InetAddress.getByName(host), port);
-                sock.send(pkt);
-            } catch (Exception e) { Log.e("iappyxOS", "UDP send: " + e.getMessage()); }
+            httpClientPool.submit(() -> {
+                try {
+                    int port = Integer.parseInt(portStr);
+                    byte[] bytes = data.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    java.net.DatagramPacket pkt = new java.net.DatagramPacket(bytes, bytes.length,
+                        java.net.InetAddress.getByName(host), port);
+                    sock.send(pkt);
+                } catch (Exception e) { Log.e("iappyxOS", "UDP send: " + e.getMessage()); }
+            });
         }
 
         @JavascriptInterface
         public void sendHex(String host, String portStr, String hexData) {
             java.net.MulticastSocket sock = udpSocket;
             if (sock == null || sock.isClosed()) return;
-            try {
-                int port = Integer.parseInt(portStr);
-                int len = hexData.length() / 2;
-                byte[] bytes = new byte[len];
-                for (int i = 0; i < len; i++) bytes[i] = (byte) Integer.parseInt(hexData.substring(i * 2, i * 2 + 2), 16);
-                java.net.DatagramPacket pkt = new java.net.DatagramPacket(bytes, bytes.length,
-                    java.net.InetAddress.getByName(host), port);
-                sock.send(pkt);
-            } catch (Exception e) { Log.e("iappyxOS", "UDP sendHex: " + e.getMessage()); }
+            httpClientPool.submit(() -> {
+                try {
+                    int port = Integer.parseInt(portStr);
+                    int len = hexData.length() / 2;
+                    byte[] bytes = new byte[len];
+                    for (int i = 0; i < len; i++) bytes[i] = (byte) Integer.parseInt(hexData.substring(i * 2, i * 2 + 2), 16);
+                    java.net.DatagramPacket pkt = new java.net.DatagramPacket(bytes, bytes.length,
+                        java.net.InetAddress.getByName(host), port);
+                    sock.send(pkt);
+                } catch (Exception e) { Log.e("iappyxOS", "UDP sendHex: " + e.getMessage()); }
+            });
         }
 
         @JavascriptInterface

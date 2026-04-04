@@ -186,7 +186,11 @@ class Settings {
       prefix = _generatePrefix();
       await prefs.setString('package_prefix', prefix);
     }
-    return validatePrefix(prefix) ? prefix : _generatePrefix();
+    if (!validatePrefix(prefix)) {
+      prefix = _generatePrefix();
+      await prefs.setString('package_prefix', prefix);
+    }
+    return prefix;
   }
 
   static Future<void> setPackagePrefix(String prefix) async {

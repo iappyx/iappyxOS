@@ -28,7 +28,7 @@ class ApkInstaller(private val context: Context) {
 
     companion object {
         private const val TAG = "iappyxOS"
-        private const val ACTION_INSTALL_RESULT = "com.iappyx.container.INSTALL_RESULT"
+        private const val ACTION_INSTALL_RESULT = "com.iappyx.os.INSTALL_RESULT"
     }
 
     /**

@@ -49,7 +49,7 @@
             android:name=".InstallResultReceiver"
             android:exported="false">
             <intent-filter>
-                <action android:name="com.iappyx.container.INSTALL_RESULT" />
+                <action android:name="com.iappyx.os.INSTALL_RESULT" />
             </intent-filter>
         </receiver>
 

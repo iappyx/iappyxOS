@@ -37,7 +37,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.iappyx.container"
+        applicationId = "com.iappyx.os"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
