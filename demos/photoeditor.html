@@ -1,0 +1,359 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Photoeditor</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;display:flex;flex-direction:column;overflow:hidden;user-select:none}
+
+/* Header */
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,.08)}
+.header-title{font-size:1rem;font-weight:600}
+.btn-text{background:none;border:none;color:#4FC3F7;font-size:.9rem;cursor:pointer;padding:6px 10px;border-radius:8px}
+.btn-text:disabled{color:rgba(255,255,255,.2)}
+
+/* Canvas area */
+.canvas-wrap{flex:1;display:flex;align-items:center;justify-content:center;background:#0a0a12;position:relative;overflow:hidden}
+canvas{max-width:100%;max-height:100%;display:block}
+.placeholder{display:flex;flex-direction:column;align-items:center;gap:12px;color:rgba(255,255,255,.3)}
+.placeholder-icon{font-size:4rem}
+.placeholder-text{font-size:.9rem}
+
+/* Bottom toolbar */
+.toolbar{flex-shrink:0;background:#0d0d1a;border-top:1px solid rgba(255,255,255,.08)}
+.tool-row{display:flex;gap:0;overflow-x:auto;padding:8px 12px;scrollbar-width:none}
+.tool-row::-webkit-scrollbar{display:none}
+.tool-btn{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 12px;border:none;background:none;color:rgba(255,255,255,.6);cursor:pointer;border-radius:10px;flex-shrink:0;min-width:56px;transition:.15s}
+.tool-btn.active{background:rgba(79,195,247,.15);color:#4FC3F7}
+.tool-btn .icon{font-size:1.5rem}
+.tool-btn .lbl{font-size:.65rem}
+
+/* Emoji picker */
+.emoji-tray{display:none;flex-wrap:wrap;gap:6px;padding:10px 12px;max-height:120px;overflow-y:auto;border-top:1px solid rgba(255,255,255,.08)}
+.emoji-tray.open{display:flex}
+.emoji-btn{font-size:1.8rem;background:none;border:none;cursor:pointer;padding:4px;border-radius:8px;line-height:1}
+.emoji-btn:active{background:rgba(255,255,255,.1)}
+
+/* Filter row */
+.filter-tray{display:none;gap:8px;padding:10px 12px;overflow-x:auto;scrollbar-width:none;border-top:1px solid rgba(255,255,255,.08)}
+.filter-tray::-webkit-scrollbar{display:none}
+.filter-tray.open{display:flex}
+.filter-btn{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:2px solid transparent;border-radius:10px;padding:6px 10px;cursor:pointer;color:rgba(255,255,255,.6);font-size:.7rem;transition:.15s}
+.filter-btn.active{border-color:#4FC3F7;color:#4FC3F7}
+
+/* Placed emoji on canvas */
+.emoji-overlay{position:absolute;font-size:2.5rem;cursor:grab;line-height:1;touch-action:none}
+.emoji-overlay.selected{outline:2px dashed rgba(79,195,247,.8);border-radius:4px}
+
+/* Action buttons */
+.actions{display:flex;gap:8px;padding:10px 12px;border-top:1px solid rgba(255,255,255,.08)}
+.action-btn{flex:1;padding:13px;border:none;border-radius:12px;font-size:.9rem;font-weight:600;cursor:pointer;transition:.15s}
+.action-btn:active{opacity:.7}
+.btn-primary{background:#0f3460;color:#fff}
+.btn-success{background:#1a5c3a;color:#fff}
+</style></head><body>
+
+<header>
+  <div class="header-title">📸 Photoeditor</div>
+  <button class="btn-text" id="shareBtn" onclick="sharePhoto()" disabled>Share ↗</button>
+</header>
+
+<div class="canvas-wrap" id="canvasWrap">
+  <div class="placeholder" id="placeholder">
+    <div class="placeholder-icon">📷</div>
+    <div class="placeholder-text">Take a photo to get started</div>
+  </div>
+  <canvas id="canvas" style="display:none"></canvas>
+  <!-- Emoji overlays rendered here as DOM elements for easy dragging -->
+  <div id="emojiLayer" style="position:absolute;inset:0;pointer-events:none"></div>
+</div>
+
+<div class="toolbar">
+  <!-- Filter tray -->
+  <div class="filter-tray" id="filterTray">
+    <button class="filter-btn active" onclick="applyFilter('none',this)">Original</button>
+    <button class="filter-btn" onclick="applyFilter('grayscale',this)">B&W</button>
+    <button class="filter-btn" onclick="applyFilter('sepia',this)">Sepia</button>
+    <button class="filter-btn" onclick="applyFilter('vivid',this)">Vivid</button>
+    <button class="filter-btn" onclick="applyFilter('cool',this)">Cool</button>
+    <button class="filter-btn" onclick="applyFilter('warm',this)">Warm</button>
+    <button class="filter-btn" onclick="applyFilter('fade',this)">Fade</button>
+    <button class="filter-btn" onclick="applyFilter('noir',this)">Noir</button>
+  </div>
+
+  <!-- Emoji tray -->
+  <div class="emoji-tray" id="emojiTray">
+    ${listOf("😂","😍","🔥","💯","✨","🎉","❤️","😎","🤩","👑","💀","🫡",
+             "🌈","⚡","🎸","🍕","🐶","🦋","🌸","💎","🚀","🎯","💪","🙌",
+             "👀","🤔","😴","🥳","😤","🫶").joinToString("") {
+        "<button class='emoji-btn' onclick='addEmoji(\"$it\")'>$it</button>"
+    }}
+  </div>
+
+  <!-- Tool buttons -->
+  <div class="tool-row">
+    <button class="tool-btn" onclick="takePhoto()">
+      <span class="icon">📷</span><span class="lbl">Camera</span>
+    </button>
+    <button class="tool-btn" id="filterToolBtn" onclick="toggleTray('filter')">
+      <span class="icon">🎨</span><span class="lbl">Filter</span>
+    </button>
+    <button class="tool-btn" id="emojiToolBtn" onclick="toggleTray('emoji')">
+      <span class="icon">😊</span><span class="lbl">Emoji</span>
+    </button>
+    <button class="tool-btn" onclick="rotatePhoto()">
+      <span class="icon">🔄</span><span class="lbl">Rotate</span>
+    </button>
+    <button class="tool-btn" onclick="clearEmojis()">
+      <span class="icon">🗑️</span><span class="lbl">Clear</span>
+    </button>
+  </div>
+
+  <div class="actions">
+    <button class="action-btn btn-primary" onclick="takePhoto()">📷 Take Photo</button>
+    <button class="action-btn btn-success" id="shareBtn2" onclick="sharePhoto()" disabled>↗ Share</button>
+  </div>
+</div>
+
+<script>
+var originalImage = null;
+var currentFilter = 'none';
+var rotation = 0;
+var emojis = []; // {el, x, y, emoji, size}
+var hasPhoto = false;
+
+// ── Wait for bridge ──
+function init() {
+  if (typeof iappyx === 'undefined') { setTimeout(init, 50); return; }
+}
+window.addEventListener('load', () => setTimeout(init, 100));
+
+// ── Camera ──
+function takePhoto() {
+  var cbId = 'photo_' + Date.now();
+  window._iappyxCb = window._iappyxCb || {};
+  window._iappyxCb[cbId] = function(r) {
+    if (!r.ok) { alert('Camera error: ' + r.error); return; }
+    loadPhoto(r.dataUrl);
+  };
+  iappyx.camera.takePhoto(cbId);
+}
+
+function loadPhoto(dataUrl) {
+  var img = new Image();
+  img.onload = function() {
+    originalImage = img;
+    rotation = 0;
+    currentFilter = 'none';
+    document.querySelectorAll('.filter-btn').forEach(function(b,i){b.classList.toggle('active',i===0)});
+    clearEmojis();
+    renderCanvas();
+    document.getElementById('placeholder').style.display = 'none';
+    document.getElementById('canvas').style.display = 'block';
+    document.getElementById('shareBtn').disabled = false;
+    document.getElementById('shareBtn2').disabled = false;
+    hasPhoto = true;
+  };
+  img.src = dataUrl;
+}
+
+// ── Canvas rendering ──
+function renderCanvas() {
+  if (!originalImage) return;
+  var canvas = document.getElementById('canvas');
+  var wrap = document.getElementById('canvasWrap');
+  var ww = wrap.clientWidth, wh = wrap.clientHeight;
+
+  var sw = rotation % 180 === 0 ? originalImage.width : originalImage.height;
+  var sh = rotation % 180 === 0 ? originalImage.height : originalImage.width;
+  var scale = Math.min(ww / sw, wh / sh, 1);
+  canvas.width  = Math.round(sw * scale);
+  canvas.height = Math.round(sh * scale);
+
+  var ctx = canvas.getContext('2d');
+  ctx.save();
+  ctx.translate(canvas.width/2, canvas.height/2);
+  ctx.rotate(rotation * Math.PI / 180);
+  ctx.drawImage(originalImage,
+    -originalImage.width/2 * scale, -originalImage.height/2 * scale,
+    originalImage.width * scale, originalImage.height * scale);
+  ctx.restore();
+  applyFilterToCanvas(ctx, canvas.width, canvas.height);
+}
+
+// ── Filters ──
+var FILTERS = {
+  none:      null,
+  grayscale: function(d){for(var i=0;i<d.length;i+=4){var g=d[i]*.3+d[i+1]*.59+d[i+2]*.11;d[i]=d[i+1]=d[i+2]=g;}},
+  sepia:     function(d){for(var i=0;i<d.length;i+=4){var r=d[i],g=d[i+1],b=d[i+2];d[i]=Math.min(255,r*.393+g*.769+b*.189);d[i+1]=Math.min(255,r*.349+g*.686+b*.168);d[i+2]=Math.min(255,r*.272+g*.534+b*.131);}},
+  vivid:     function(d){for(var i=0;i<d.length;i+=4){d[i]=Math.min(255,d[i]*1.3);d[i+1]=Math.min(255,d[i+1]*1.2);d[i+2]=Math.min(255,d[i+2]*1.1);}},
+  cool:      function(d){for(var i=0;i<d.length;i+=4){d[i]=Math.max(0,d[i]-20);d[i+2]=Math.min(255,d[i+2]+40);}},
+  warm:      function(d){for(var i=0;i<d.length;i+=4){d[i]=Math.min(255,d[i]+40);d[i+2]=Math.max(0,d[i+2]-20);}},
+  fade:      function(d){for(var i=0;i<d.length;i+=4){d[i]=d[i]*.8+51;d[i+1]=d[i+1]*.8+51;d[i+2]=d[i+2]*.8+51;}},
+  noir:      function(d){for(var i=0;i<d.length;i+=4){var g=d[i]*.3+d[i+1]*.59+d[i+2]*.11;var c=g>128?Math.min(255,g*1.4):Math.max(0,g*.6);d[i]=d[i+1]=d[i+2]=c;}}
+};
+
+function applyFilterToCanvas(ctx, w, h) {
+  if (!FILTERS[currentFilter]) return;
+  var id = ctx.getImageData(0, 0, w, h);
+  FILTERS[currentFilter](id.data);
+  ctx.putImageData(id, 0, 0);
+}
+
+function applyFilter(name, btn) {
+  currentFilter = name;
+  document.querySelectorAll('.filter-btn').forEach(function(b){b.classList.remove('active')});
+  btn.classList.add('active');
+  renderCanvas();
+}
+
+// ── Rotation ──
+function rotatePhoto() {
+  rotation = (rotation + 90) % 360;
+  renderCanvas();
+}
+
+// ── Emoji placement ──
+function addEmoji(emoji) {
+  var layer = document.getElementById('emojiLayer');
+  var canvas = document.getElementById('canvas');
+  var rect = canvas.getBoundingClientRect();
+
+  var el = document.createElement('div');
+  el.className = 'emoji-overlay';
+  el.textContent = emoji;
+  el.style.pointerEvents = 'auto';
+
+  // Place at center of canvas
+  var x = rect.left + rect.width/2 - 20;
+  var y = rect.top  + rect.height/2 - 20;
+  // Position relative to layer
+  var layerRect = layer.parentElement.getBoundingClientRect();
+  el.style.left = (x - layerRect.left) + 'px';
+  el.style.top  = (y - layerRect.top)  + 'px';
+  el.style.fontSize = '2.5rem';
+
+  layer.style.pointerEvents = 'auto';
+  layer.appendChild(el);
+  emojis.push({el: el, emoji: emoji});
+
+  makeDraggable(el);
+  makePinchResizable(el);
+}
+
+function makeDraggable(el) {
+  var ox, oy, sx, sy;
+  el.addEventListener('touchstart', function(e) {
+    if (e.touches.length === 1) {
+      e.preventDefault();
+      var t = e.touches[0];
+      ox = parseInt(el.style.left)||0;
+      oy = parseInt(el.style.top)||0;
+      sx = t.clientX; sy = t.clientY;
+      el.style.zIndex = 10;
+    }
+  }, {passive:false});
+  el.addEventListener('touchmove', function(e) {
+    if (e.touches.length === 1) {
+      e.preventDefault();
+      var t = e.touches[0];
+      el.style.left = (ox + t.clientX - sx) + 'px';
+      el.style.top  = (oy + t.clientY - sy) + 'px';
+    }
+  }, {passive:false});
+}
+
+function makePinchResizable(el) {
+  var initDist, initSize;
+  el.addEventListener('touchstart', function(e) {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      initDist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY);
+      initSize = parseFloat(el.style.fontSize) || 40;
+    }
+  }, {passive:false});
+  el.addEventListener('touchmove', function(e) {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      var d = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY);
+      var size = Math.max(20, Math.min(120, initSize * d / initDist));
+      el.style.fontSize = size + 'px';
+    }
+  }, {passive:false});
+}
+
+function clearEmojis() {
+  var layer = document.getElementById('emojiLayer');
+  layer.innerHTML = '';
+  emojis = [];
+}
+
+// ── Trays ──
+function toggleTray(which) {
+  var ft = document.getElementById('filterTray');
+  var et = document.getElementById('emojiTray');
+  var fb = document.getElementById('filterToolBtn');
+  var eb = document.getElementById('emojiToolBtn');
+  if (which === 'filter') {
+    var open = ft.classList.toggle('open');
+    et.classList.remove('open');
+    fb.classList.toggle('active', open);
+    eb.classList.remove('active');
+  } else {
+    var open = et.classList.toggle('open');
+    ft.classList.remove('open');
+    eb.classList.toggle('active', open);
+    fb.classList.remove('active');
+  }
+}
+
+// ── Share — flatten emojis onto canvas, then share as blob ──
+function sharePhoto() {
+  if (!hasPhoto) return;
+
+  var srcCanvas = document.getElementById('canvas');
+  var out = document.createElement('canvas');
+  out.width  = srcCanvas.width;
+  out.height = srcCanvas.height;
+  var ctx = out.getContext('2d');
+
+  // Draw filtered photo
+  ctx.drawImage(srcCanvas, 0, 0);
+
+  // Composite emoji overlays onto the output canvas
+  // Emoji elements are positioned in screen px relative to canvasWrap
+  // We need to map their screen position to canvas pixel coordinates
+  var canvasRect = srcCanvas.getBoundingClientRect();
+  var scaleX = out.width  / canvasRect.width;
+  var scaleY = out.height / canvasRect.height;
+
+  var emojiEls = document.getElementById('emojiLayer').children;
+  for (var i = 0; i < emojiEls.length; i++) {
+    var el = emojiEls[i];
+    var r = el.getBoundingClientRect();
+    var cx = (r.left - canvasRect.left) * scaleX;
+    var cy = (r.top  - canvasRect.top)  * scaleY;
+    // getComputedStyle gives the actual rendered font size in screen px
+    var screenFontSize = parseFloat(window.getComputedStyle(el).fontSize);
+    var canvasFontSize = screenFontSize * scaleX;
+    ctx.font = canvasFontSize + 'px serif';
+    ctx.textBaseline = 'top';
+    ctx.fillText(el.textContent.trim(), cx, cy);
+  }
+
+  // Share via native bridge
+  var dataUrl = out.toDataURL('image/jpeg', 0.92);
+  var base64 = dataUrl.split(',')[1];
+  iappyx.camera.sharePhoto(base64);
+}
+</script></body></html>

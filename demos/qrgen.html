@@ -1,0 +1,168 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Qrgen</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;padding:16px}
+h1{font-size:20px;text-align:center;margin-bottom:4px}
+.sub{text-align:center;font-size:11px;color:rgba(255,255,255,0.4);margin-bottom:16px}
+.card{background:#1a1a2e;border-radius:12px;padding:16px;margin-bottom:12px}
+.card-title{font-size:13px;color:#4fc3f7;font-weight:600;margin-bottom:10px}
+textarea,input{background:#0f3460;border:1px solid #1a4a8a;color:#fff;border-radius:8px;padding:10px 12px;font-size:14px;width:100%;outline:none;margin-bottom:8px}
+.btn{background:#4fc3f7;color:#0d0d1a;border:none;border-radius:50px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;width:100%;margin-bottom:10px}
+.btn:active{opacity:0.8}
+.btn-outline{background:transparent;border:1.5px solid #4fc3f7;color:#4fc3f7}
+.btn-sm{padding:10px 16px;font-size:13px;width:auto;border-radius:8px}
+.qr-box{background:#fff;border-radius:12px;padding:20px;display:flex;justify-content:center;margin:12px 0}
+.presets{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.preset{padding:6px 12px;border-radius:50px;border:1px solid #333;color:#888;font-size:12px;cursor:pointer;background:transparent}
+.preset.active{border-color:#4fc3f7;color:#4fc3f7;background:#0f3460}
+.row{display:flex;gap:8px}
+.loading{text-align:center;padding:20px;color:#4fc3f7;font-size:13px}
+.history-item{background:#0f3460;border-radius:8px;padding:10px;margin-bottom:6px;font-size:13px;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+</style></head><body>
+<h1>Qrgen</h1>
+<p class="sub">Generate QR codes from text, URLs, contacts, WiFi</p>
+
+<div class="card">
+  <div class="card-title">Type</div>
+  <div class="presets">
+    <div class="preset active" onclick="setType('text')" id="t-text">Text</div>
+    <div class="preset" onclick="setType('url')" id="t-url">URL</div>
+    <div class="preset" onclick="setType('wifi')" id="t-wifi">WiFi</div>
+    <div class="preset" onclick="setType('contact')" id="t-contact">Contact</div>
+  </div>
+  <div id="inputArea">
+    <textarea id="qrInput" rows="3" placeholder="Enter text..."></textarea>
+  </div>
+  <button class="btn" onclick="generate()">Generate QR Code</button>
+</div>
+
+<div id="qrResult" style="display:none">
+  <div class="qr-box"><div id="qrTarget"></div></div>
+  <div class="row">
+    <button class="btn btn-sm btn-outline" onclick="shareQr()" style="flex:1">Share</button>
+    <button class="btn btn-sm btn-outline" onclick="copyContent()" style="flex:1">Copy Content</button>
+  </div>
+</div>
+
+<div class="card" style="margin-top:12px">
+  <div class="card-title">History</div>
+  <div id="historyList"><div style="text-align:center;color:rgba(255,255,255,0.2);padding:10px;font-size:12px">No QR codes yet</div></div>
+</div>
+
+<div id="libStatus" class="loading">Loading QR library...</div>
+
+<script>
+function runScript(code){var s=document.createElement('script');s.textContent=code;document.head.appendChild(s);}
+var qrReady=false;
+var appType='text';
+var qrHistory=[];
+var lastContent='';
+
+function init(){
+  if(typeof iappyx==='undefined'){setTimeout(init,50);return;}
+  qrHistory=JSON.parse(iappyx.load('qr_history')||'[]');
+  renderHistory();
+  loadQrLib();
+}
+window.addEventListener('load',function(){setTimeout(init,200)});
+
+function loadQrLib(){
+  var el=document.getElementById('libStatus');
+  var cached=iappyx.storage.loadFile('qrcode.min.js');
+  if(cached&&cached.length>100){try{runScript(cached);qrReady=true;el.style.display='none';return;}catch(e){iappyx.storage.deleteFile('qrcode.min.js');}}
+  el.textContent='Downloading QR library...';
+  fetch('https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js')
+    .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.text()}).then(function(code){
+      if(code.length<100)throw new Error('incomplete');
+      iappyx.storage.saveFile('qrcode.min.js',code);runScript(code);qrReady=true;el.style.display='none';
+    }).catch(function(){el.textContent='Need internet on first launch';el.style.color='#ff6b6b';});
+}
+
+function setType(t){
+  appType=t;
+  document.querySelectorAll('.preset').forEach(function(b){b.classList.remove('active')});
+  document.getElementById('t-'+t).classList.add('active');
+  var area=document.getElementById('inputArea');
+  if(t==='text') area.innerHTML='<textarea id="qrInput" rows="3" placeholder="Enter text..."></textarea>';
+  else if(t==='url') area.innerHTML='<input id="qrInput" placeholder="https://example.com" type="url">';
+  else if(t==='wifi') area.innerHTML='<input id="wifiSsid" placeholder="Network name (SSID)"><input id="wifiPass" placeholder="Password" type="password"><div class="presets" style="margin-top:4px"><div class="preset active" id="wpa" onclick="this.classList.add(\'active\');document.getElementById(\'wep\').classList.remove(\'active\')">WPA</div><div class="preset" id="wep" onclick="this.classList.add(\'active\');document.getElementById(\'wpa\').classList.remove(\'active\')">WEP</div></div>';
+  else if(t==='contact') area.innerHTML='<input id="cName" placeholder="Name"><input id="cPhone" placeholder="Phone"><input id="cEmail" placeholder="Email">';
+}
+
+function getContent(){
+  if(appType==='text'||appType==='url') return document.getElementById('qrInput').value.trim();
+  if(appType==='wifi'){
+    var ssid=document.getElementById('wifiSsid').value.trim();
+    var pass=document.getElementById('wifiPass').value;
+    var enc=document.getElementById('wpa').classList.contains('active')?'WPA':'WEP';
+    return 'WIFI:T:'+enc+';S:'+ssid+';P:'+pass+';;';
+  }
+  if(appType==='contact'){
+    var n=document.getElementById('cName').value.trim();
+    var p=document.getElementById('cPhone').value.trim();
+    var e=document.getElementById('cEmail').value.trim();
+    return 'BEGIN:VCARD\nVERSION:3.0\nFN:'+n+'\nTEL:'+p+'\nEMAIL:'+e+'\nEND:VCARD';
+  }
+  return '';
+}
+
+function generate(){
+  if(!qrReady){alert('QR library loading...');return;}
+  var content=getContent();
+  if(!content)return;
+  lastContent=content;
+  document.getElementById('qrResult').style.display='block';
+  var target=document.getElementById('qrTarget');
+  target.innerHTML='';
+  new QRCode(target,{text:content,width:256,height:256,correctLevel:QRCode.CorrectLevel.M});
+  iappyx.vibration.click();
+  qrHistory.unshift({content:content,type:appType,time:new Date().toLocaleString()});
+  if(qrHistory.length>20)qrHistory.pop();
+  iappyx.save('qr_history',JSON.stringify(qrHistory));
+  renderHistory();
+}
+
+function shareQr(){
+  var target=document.getElementById('qrTarget');
+  var el=target.querySelector('canvas')||target.querySelector('img');
+  if(!el)return;
+  var c=document.createElement('canvas');c.width=256;c.height=256;
+  c.getContext('2d').drawImage(el,0,0,256,256);
+  var b64=c.toDataURL('image/png').split(',')[1];
+  iappyx.sharePhoto(b64);
+}
+
+function copyContent(){
+  if(lastContent){iappyx.clipboard.write(lastContent);iappyx.vibration.tick();}
+}
+
+function renderHistory(){
+  var el=document.getElementById('historyList');
+  if(qrHistory.length===0){el.innerHTML='<div style="text-align:center;color:rgba(255,255,255,0.2);padding:10px;font-size:12px">No QR codes yet</div>';return;}
+  el.innerHTML=qrHistory.map(function(h,i){
+    var label=h.content.length>40?h.content.substring(0,40)+'...':h.content;
+    if(h.type==='wifi')label='WiFi: '+h.content.match(/S:([^;]*)/)[1];
+    if(h.type==='contact')label='Contact: '+(h.content.match(/FN:([^\n]*)/)||['','?'])[1];
+    return '<div class="history-item" onclick="reuse('+i+')"><div><div>'+esc(label)+'</div><div style="font-size:10px;color:rgba(255,255,255,0.3)">'+h.time+'</div></div><span style="color:#4fc3f7;font-size:18px">&#8635;</span></div>';
+  }).join('');
+}
+
+function reuse(i){
+  var h=qrHistory[i];
+  if(!h)return;
+  lastContent=h.content;
+  setType(h.type);
+  if(h.type==='text'||h.type==='url'){setTimeout(function(){document.getElementById('qrInput').value=h.content},50);}
+  generate();
+}
+
+function esc(s){return s?s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):''}
+</script></body></html>

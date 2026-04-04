@@ -1,0 +1,94 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Speech</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;padding:16px}
+h1{font-size:20px;text-align:center;margin-bottom:16px}
+.btn{background:#4fc3f7;color:#0d0d1a;border:none;border-radius:50px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;width:100%;margin-bottom:12px}
+.btn:active{opacity:0.8}
+.btn-outline{background:transparent;border:1.5px solid #4fc3f7;color:#4fc3f7}
+.result{background:#1a1a2e;border-radius:12px;padding:16px;margin-top:12px;font-size:16px;line-height:1.6;min-height:80px}
+.alts{font-size:12px;color:rgba(255,255,255,0.4);margin-top:12px}
+.history{margin-top:16px}
+.history-item{background:#0f3460;border-radius:8px;padding:10px;margin-bottom:6px;font-size:14px}
+.empty{text-align:center;color:rgba(255,255,255,0.3);padding:40px}
+.lang-row{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;justify-content:center}
+.lang-btn{padding:8px 14px;border-radius:50px;border:1px solid #333;color:#888;font-size:12px;cursor:pointer;background:transparent}
+.lang-btn.active{border-color:#4fc3f7;color:#4fc3f7;background:#0f3460}
+</style></head><body>
+<h1>Speech</h1>
+<div class="lang-row">
+  <div class="lang-btn active" onclick="setLang('')" id="lang-">Auto</div>
+  <div class="lang-btn" onclick="setLang('en')" id="lang-en">English</div>
+  <div class="lang-btn" onclick="setLang('nl')" id="lang-nl">Dutch</div>
+  <div class="lang-btn" onclick="setLang('de')" id="lang-de">German</div>
+  <div class="lang-btn" onclick="setLang('fr')" id="lang-fr">French</div>
+  <div class="lang-btn" onclick="setLang('es')" id="lang-es">Spanish</div>
+</div>
+<button class="btn" onclick="listen()">Start Listening</button>
+<div id="output"><div class="empty">Tap to start speech recognition</div></div>
+<div class="history" id="historySection" style="display:none">
+  <div style="font-size:13px;color:rgba(255,255,255,0.5);margin-bottom:8px">History</div>
+  <div id="historyList"></div>
+</div>
+<button class="btn btn-outline" onclick="copyAll()" style="margin-top:12px" id="copyBtn" style="display:none">Copy All to Clipboard</button>
+<script>
+var appLang='';
+var appHistory=[];
+function init(){
+  if(typeof iappyx==='undefined'){setTimeout(init,50);return;}
+  appHistory=JSON.parse(iappyx.load('speech_history')||'[]');
+  renderHistory();
+}
+window.addEventListener('load',function(){setTimeout(init,200)});
+function setLang(l){
+  appLang=l;
+  document.querySelectorAll('.lang-btn').forEach(function(b){b.classList.remove('active')});
+  document.getElementById('lang-'+l).classList.add('active');
+}
+function listen(){
+  var cbId='stt_'+Date.now();
+  window._iappyxCb=window._iappyxCb||{};
+  window._iappyxCb[cbId]=function(r){
+    var el=document.getElementById('output');
+    if(r.ok){
+      var html='<div class="result">'+esc(r.text)+'</div>';
+      if(r.alternatives&&r.alternatives.length>1){
+        html+='<div class="alts">Alternatives: '+r.alternatives.slice(1).map(esc).join(' | ')+'</div>';
+      }
+      el.innerHTML=html;
+      appHistory.unshift({text:r.text,time:new Date().toLocaleTimeString()});
+      if(appHistory.length>50)appHistory.pop();
+      iappyx.save('speech_history',JSON.stringify(appHistory));
+      renderHistory();
+      iappyx.vibration.click();
+    } else {
+      el.innerHTML='<div class="result" style="color:#ff6b6b">'+esc(r.error||'Recognition failed')+'</div>';
+    }
+  };
+  iappyx.audio.speechToText(cbId,appLang);
+}
+function renderHistory(){
+  var el=document.getElementById('historyList');
+  var sec=document.getElementById('historySection');
+  if(appHistory.length===0){sec.style.display='none';return;}
+  sec.style.display='block';
+  el.innerHTML=appHistory.map(function(h){
+    return '<div class="history-item"><span style="color:#4fc3f7;font-size:11px">'+h.time+'</span><br>'+esc(h.text)+'</div>';
+  }).join('');
+}
+function copyAll(){
+  if(appHistory.length>0){
+    iappyx.clipboard.write(appHistory.map(function(h){return h.text}).join('\n'));
+    iappyx.vibration.tick();
+  }
+}
+function esc(s){return s?s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):''}
+</script></body></html>

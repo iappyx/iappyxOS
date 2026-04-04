@@ -1,0 +1,173 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>WiFi Direct</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;padding:20px;display:flex;flex-direction:column;gap:12px}
+h1{font-size:1.3rem;text-align:center}
+.card{background:#1a1a2e;border-radius:12px;padding:14px}
+.card h3{font-size:.9rem;margin-bottom:8px;color:rgba(255,255,255,.6)}
+.label{color:rgba(255,255,255,.4);font-size:.75rem}
+.val{font-weight:600;word-break:break-all}
+.peer{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.peer:last-child{border:none}
+.dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.dot.available{background:#69f0ae}.dot.connected{background:#4fc3f7}.dot.invited{background:#ffb74d}.dot.unavailable{background:#555}
+.peer-name{flex:1;font-size:.9rem}
+.peer-status{font-size:.7rem;color:rgba(255,255,255,.35)}
+.btn{background:#0f3460;border:none;border-radius:10px;padding:10px 14px;color:#fff;font-size:.85rem;cursor:pointer}
+.btn:active{opacity:.7}
+.btn.danger{background:#c62828}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+textarea{width:100%;background:#0d0d1a;border:none;border-radius:8px;padding:10px;color:#fff;font-size:.9rem;resize:none;height:50px;outline:none;font-family:inherit;margin-bottom:8px}
+.msgs{max-height:150px;overflow-y:auto}
+.msg{padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:.85rem}
+.msg:last-child{border:none}
+.msg .from{color:#4fc3f7;font-size:.75rem}
+.status{text-align:center;font-size:.75rem;color:rgba(255,255,255,.3);min-height:1.2em}
+</style></head><body>
+<h1>📶 WiFi Direct</h1>
+
+<div class="card">
+  <div class="label">Status</div>
+  <div class="val" id="connStatus">Disconnected</div>
+  <div class="label" style="margin-top:6px">Group Owner IP</div>
+  <div class="val" id="goIp">—</div>
+</div>
+
+<div class="btns">
+  <button class="btn" onclick="discover()" id="btnDiscover">🔍 Discover</button>
+  <button class="btn danger" onclick="doDisconnect()">✕ Disconnect</button>
+</div>
+
+<div class="card">
+  <h3>Peers</h3>
+  <div id="peerlist"><div class="status">Tap Discover to scan</div></div>
+</div>
+
+<div class="card" id="msgArea" style="display:none">
+  <h3>Messages</h3>
+  <textarea id="msgtxt" placeholder="Type a message..."></textarea>
+  <button class="btn" onclick="sendMsg()" style="width:100%">Send</button>
+  <div class="msgs" id="msglist"></div>
+</div>
+
+<div class="status" id="log"></div>
+
+<script>
+var SERVER_PORT = 9090;
+var connected = false, isGroupOwner = false, goAddress = '';
+var serverRunning = false;
+
+function init() {
+  if (typeof iappyx === 'undefined') { setTimeout(init, 50); return; }
+  iappyx.wifiDirect.onConnectionChanged('onConnChange');
+  iappyx.httpServer.onRequest('onHttpReq');
+  log('Ready — tap Discover to find peers');
+}
+
+function discover() {
+  iappyx.wifiDirect.discoverPeers('onPeerEvent');
+  log('Discovering...');
+}
+
+function onPeerEvent(evt) {
+  if (evt.event === 'error') { log('Discovery error: ' + evt.error); return; }
+  if (evt.event !== 'peers') return;
+  var el = document.getElementById('peerlist');
+  if (!evt.peers || evt.peers.length === 0) { el.innerHTML = '<div class="status">No peers found</div>'; return; }
+  el.innerHTML = evt.peers.map(function(p) {
+    return '<div class="peer" onclick="connectTo(\'' + p.address + '\')">' +
+      '<div class="dot ' + p.status + '"></div>' +
+      '<div class="peer-name">' + esc(p.name) +
+      '<div class="peer-status">' + p.status + ' — ' + p.address + '</div></div></div>';
+  }).join('');
+}
+
+function connectTo(addr) {
+  log('Connecting to ' + addr + '...');
+  iappyx.wifiDirect.connect(addr, 'onConnect');
+}
+window._iappyxCb = window._iappyxCb || {};
+window._iappyxCb.onConnect = function(r) {
+  if (!r.ok) log('Connect failed: ' + r.error);
+  else log('Connect initiated — waiting for group...');
+};
+
+var peerAddress = '';
+
+function onConnChange(evt) {
+  connected = evt.connected;
+  if (connected) {
+    isGroupOwner = evt.isGroupOwner;
+    goAddress = evt.groupOwnerAddress;
+    document.getElementById('connStatus').textContent = 'Connected (' + (isGroupOwner ? 'Group Owner' : 'Client') + ')';
+    document.getElementById('goIp').textContent = goAddress;
+    document.getElementById('msgArea').style.display = '';
+    log('Connected! ' + (isGroupOwner ? 'You are the group owner.' : 'Group owner: ' + goAddress));
+    if (!serverRunning) {
+      iappyx.httpServer.start('' + SERVER_PORT, 'false', 'onSrvStart');
+    }
+  } else {
+    document.getElementById('connStatus').textContent = 'Disconnected';
+    document.getElementById('goIp').textContent = '—';
+    document.getElementById('msgArea').style.display = 'none';
+    if (serverRunning) { iappyx.httpServer.stop(); serverRunning = false; }
+    peerAddress = '';
+    log('Disconnected');
+  }
+}
+
+window._iappyxCb.onSrvStart = function(r) {
+  if (r.ok) { serverRunning = true; log('Server running on port ' + r.port); }
+  else log('Server failed: ' + r.error);
+};
+
+function onHttpReq(req) {
+  if (req.method === 'POST' && req.path === '/msg') {
+    try {
+      var data = JSON.parse(req.body);
+      addMsg(data.from || 'Peer', data.text || '');
+      if (data.replyTo) peerAddress = data.replyTo;
+    } catch(e) {}
+    iappyx.httpServer.respond(req.requestId, '200', '{"Content-Type":"application/json"}', '{"ok":true}');
+  } else {
+    iappyx.httpServer.respond(req.requestId, '200', '{"Content-Type":"text/plain"}', 'WiFi Direct P2P');
+  }
+}
+
+function sendMsg() {
+  var txt = document.getElementById('msgtxt').value.trim();
+  if (!txt || !connected) return;
+  var myIp = iappyx.httpServer.getLocalIpAddress() || '';
+  var target = isGroupOwner ? peerAddress : goAddress;
+  if (!target) { log('Waiting for peer to send first message...'); addMsg('You', txt); return; }
+  fetch('http://' + target + ':' + SERVER_PORT + '/msg', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({from: isGroupOwner ? 'Owner' : 'Client', text: txt, replyTo: myIp})
+  }).then(function() { addMsg('You', txt); })
+  .catch(function(e) { log('Send failed: ' + e.message); });
+  document.getElementById('msgtxt').value = '';
+}
+
+function doDisconnect() {
+  if (serverRunning) { iappyx.httpServer.stop(); serverRunning = false; }
+  iappyx.wifiDirect.disconnect();
+}
+
+function addMsg(from, text) {
+  var el = document.getElementById('msglist');
+  el.innerHTML = '<div class="msg"><div class="from">' + esc(from) + '</div>' + esc(text) + '</div>' + el.innerHTML;
+}
+function log(msg) { document.getElementById('log').textContent = msg; }
+function esc(s) { return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
+
+window.addEventListener('load', function() { setTimeout(init, 200); });
+</script></body></html>

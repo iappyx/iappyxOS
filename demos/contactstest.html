@@ -1,0 +1,50 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Contacts</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;display:flex;flex-direction:column}
+header{padding:16px 20px;border-bottom:1px solid #1a1a2e;flex-shrink:0}
+h1{font-size:1.3rem;margin-bottom:8px}
+.btn{background:#0f3460;border:none;border-radius:8px;padding:9px 14px;color:#fff;font-size:.85rem;cursor:pointer}
+input{width:100%;background:#1a1a2e;border:none;border-radius:8px;padding:9px 12px;color:#fff;font-size:.9rem;outline:none;margin-top:8px;display:none}
+.list{padding:8px 20px}
+.contact{padding:12px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.name{font-weight:600;font-size:.9rem}
+.phones{font-size:.78rem;color:rgba(255,255,255,.45);margin-top:2px}
+.empty{text-align:center;color:rgba(255,255,255,.3);padding:40px;font-size:.9rem}
+</style></head><body>
+<header>
+  <h1>👥 Contacts</h1>
+  <button class="btn" onclick="load()">Load Contacts</button>
+  <input id="search" type="text" placeholder="Search..." oninput="filter(this.value)">
+</header>
+<div class="list" id="list"><div class="empty">Tap Load Contacts</div></div>
+<script>
+var all=[];
+function init(){if(typeof iappyx==='undefined'){setTimeout(init,50);return;}}
+function load(){
+  document.getElementById('list').innerHTML='<div class="empty">Loading...</div>';
+  var cbId='c'+Date.now();
+  window._iappyxCb=window._iappyxCb||{};
+  window._iappyxCb[cbId]=function(r){
+    if(!r.ok){document.getElementById('list').innerHTML='<div class="empty">'+r.error+'</div>';return;}
+    all=r.contacts; document.getElementById('search').style.display='block'; render(all);
+  };
+  iappyx.contacts.getContacts(cbId);
+}
+function render(contacts){
+  if(!contacts.length){document.getElementById('list').innerHTML='<div class="empty">No contacts</div>';return;}
+  document.getElementById('list').innerHTML=contacts.map(function(c){
+    return '<div class="contact"><div class="name">'+c.name+'</div><div class="phones">'+(c.phones.join(', ')||'—')+'</div></div>';
+  }).join('');
+}
+function filter(q){render(!q?all:all.filter(function(c){return c.name.toLowerCase().includes(q.toLowerCase());}));}
+window.addEventListener('load',function(){setTimeout(init,100)});
+</script></body></html>

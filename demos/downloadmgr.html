@@ -1,0 +1,142 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Downloader</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;padding:16px}
+h1{font-size:20px;text-align:center;margin-bottom:4px}
+.sub{text-align:center;font-size:11px;color:rgba(255,255,255,0.4);margin-bottom:16px}
+.card{background:#1a1a2e;border-radius:12px;padding:16px;margin-bottom:12px}
+.card-title{font-size:13px;color:#4fc3f7;font-weight:600;margin-bottom:10px}
+input{background:#0f3460;border:1px solid #1a4a8a;color:#fff;border-radius:8px;padding:10px 12px;font-size:14px;width:100%;outline:none;margin-bottom:8px}
+.btn{background:#4fc3f7;color:#0d0d1a;border:none;border-radius:50px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;width:100%;margin-bottom:10px}
+.btn:active{opacity:0.8}
+.btn-outline{background:transparent;border:1.5px solid #4fc3f7;color:#4fc3f7}
+.btn-sm{padding:8px 14px;font-size:12px;width:auto;border-radius:8px}
+.sample-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.sample{background:#0f3460;border-radius:8px;padding:12px;cursor:pointer;text-align:center}
+.sample:active{opacity:0.8}
+.sample-icon{font-size:24px;margin-bottom:4px}
+.sample-name{font-size:12px;color:rgba(255,255,255,0.7)}
+.sample-size{font-size:10px;color:rgba(255,255,255,0.3)}
+.dl-item{background:#0f3460;border-radius:10px;padding:12px;margin-bottom:8px}
+.dl-name{font-size:13px;font-weight:600;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dl-bar{height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden;margin-bottom:4px}
+.dl-fill{height:100%;background:#4fc3f7;border-radius:3px;transition:width 0.3s}
+.dl-meta{display:flex;justify-content:space-between;font-size:11px;color:rgba(255,255,255,0.4)}
+.dl-done{color:#69f0ae}
+.dl-fail{color:#ff6b6b}
+.empty{text-align:center;color:rgba(255,255,255,0.3);padding:20px 0;font-size:13px}
+</style></head><body>
+<h1>Downloader</h1>
+<p class="sub">Download files with progress tracking</p>
+
+<div class="card">
+  <div class="card-title">Custom URL</div>
+  <input id="url" placeholder="https://example.com/file.pdf" value="">
+  <input id="fname" placeholder="Filename (optional)">
+  <button class="btn" onclick="startDownload()">Download</button>
+</div>
+
+<div class="card">
+  <div class="card-title">Sample Files</div>
+  <div class="sample-grid">
+    <div class="sample" onclick="dlSample('https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf','test.pdf')">
+      <div class="sample-icon">📄</div>
+      <div class="sample-name">PDF Document</div>
+      <div class="sample-size">~13 KB</div>
+    </div>
+    <div class="sample" onclick="dlSample('https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png','test.png')">
+      <div class="sample-icon">🖼️</div>
+      <div class="sample-name">PNG Image</div>
+      <div class="sample-size">~60 KB</div>
+    </div>
+    <div class="sample" onclick="dlSample('https://filesamples.com/samples/audio/mp3/sample3.mp3','sample.mp3')">
+      <div class="sample-icon">🎵</div>
+      <div class="sample-name">MP3 Audio</div>
+      <div class="sample-size">~320 KB</div>
+    </div>
+    <div class="sample" onclick="dlSample('https://www.learningcontainer.com/wp-content/uploads/2020/05/sample-zip-file.zip','sample.zip')">
+      <div class="sample-icon">📦</div>
+      <div class="sample-name">ZIP Archive</div>
+      <div class="sample-size">~1 KB</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Downloads</div>
+  <div id="downloads"><div class="empty">No downloads yet</div></div>
+</div>
+
+<script>
+var downloads={};
+function init(){if(typeof iappyx==='undefined'){setTimeout(init,50);return;}}
+window.addEventListener('load',function(){setTimeout(init,200)});
+
+function startDownload(){
+  var url=document.getElementById('url').value.trim();
+  if(!url){return;}
+  var fname=document.getElementById('fname').value.trim();
+  doDownload(url,fname);
+}
+
+function dlSample(url,fname){doDownload(url,fname);}
+
+function doDownload(url,fname){
+  var key='dl_'+Date.now();
+  downloads[key]={url:url,name:fname||url.split('/').pop().split('?')[0]||'download',progress:0,status:'starting'};
+  renderDownloads();
+  iappyx.vibration.tick();
+
+  window[key]=function(r){
+    if(r.status==='downloading'){
+      downloads[key].progress=r.progress;
+      downloads[key].status='downloading';
+      downloads[key].downloaded=r.downloaded;
+      downloads[key].total=r.total;
+    }else if(r.status==='complete'){
+      downloads[key].progress=100;
+      downloads[key].status='complete';
+      if(r.filename) downloads[key].name=r.filename;
+    }else if(r.status==='failed'){
+      downloads[key].status='failed';
+      downloads[key].error=r.error;
+    }
+    renderDownloads();
+  };
+  iappyx.download.enqueue(url,fname||'','window.'+key);
+}
+
+function renderDownloads(){
+  var el=document.getElementById('downloads');
+  var keys=Object.keys(downloads);
+  if(!keys.length){el.innerHTML='<div class="empty">No downloads yet</div>';return;}
+  var html='';
+  keys.reverse().forEach(function(k){
+    var d=downloads[k];
+    var statusClass=d.status==='complete'?' dl-done':d.status==='failed'?' dl-fail':'';
+    var statusText=d.status==='downloading'?d.progress+'%':d.status==='complete'?'Complete':d.status==='failed'?'Failed: '+(d.error||'unknown'):'Starting...';
+    var sizeText='';
+    if(d.total) sizeText=formatSize(d.downloaded||0)+' / '+formatSize(d.total);
+    html+='<div class="dl-item"><div class="dl-name">'+esc(d.name)+'</div>';
+    html+='<div class="dl-bar"><div class="dl-fill" style="width:'+d.progress+'%"></div></div>';
+    html+='<div class="dl-meta"><span class="'+statusClass+'">'+statusText+'</span><span>'+sizeText+'</span></div></div>';
+  });
+  el.innerHTML=html;
+}
+
+function formatSize(b){
+  if(b<1024) return b+' B';
+  if(b<1048576) return (b/1024).toFixed(1)+' KB';
+  return (b/1048576).toFixed(1)+' MB';
+}
+
+function esc(s){return s?s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):''}
+</script></body></html>

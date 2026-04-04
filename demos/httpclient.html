@@ -1,0 +1,142 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>HTTP Client</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;padding:20px;display:flex;flex-direction:column;gap:12px}
+h1{font-size:1.3rem;text-align:center}
+.card{background:#1a1a2e;border-radius:12px;padding:14px}
+.card h3{font-size:.9rem;margin-bottom:8px;color:rgba(255,255,255,.6)}
+input,textarea{width:100%;background:#0d0d1a;border:none;border-radius:8px;padding:10px;color:#fff;font-size:.9rem;outline:none;font-family:inherit}
+textarea{height:60px;resize:none}
+.btn{background:#0f3460;border:none;border-radius:10px;padding:10px 14px;color:#fff;font-size:.85rem;cursor:pointer;width:100%}
+.btn:active{opacity:.7}
+.row{display:flex;gap:8px;margin-top:8px}
+.row .btn{flex:1}
+label{font-size:.75rem;color:rgba(255,255,255,.4);margin-bottom:4px;display:block}
+.toggle{display:flex;align-items:center;gap:8px;font-size:.85rem;padding:8px 0}
+.toggle input{width:auto}
+.result{background:#0d0d1a;border-radius:8px;padding:10px;font-size:.8rem;font-family:monospace;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;color:#69f0ae}
+.result.error{color:#ff6b6b}
+.status{text-align:center;font-size:.75rem;color:rgba(255,255,255,.3)}
+</style></head><body>
+<h1>🌐 HTTP Client</h1>
+
+<div class="card">
+  <h3>Request</h3>
+  <label>URL</label>
+  <input id="url" value="https://httpbin.org/get" placeholder="https://...">
+  <div style="margin-top:8px">
+    <label>Method</label>
+    <div class="row" style="margin-top:0">
+      <button class="btn" onclick="setMethod('GET')" id="mGET" style="background:#0f3460">GET</button>
+      <button class="btn" onclick="setMethod('POST')" id="mPOST" style="background:#1a1a2e">POST</button>
+      <button class="btn" onclick="setMethod('PUT')" id="mPUT" style="background:#1a1a2e">PUT</button>
+      <button class="btn" onclick="setMethod('DELETE')" id="mDELETE" style="background:#1a1a2e">DELETE</button>
+    </div>
+  </div>
+  <div style="margin-top:8px">
+    <label>Body (for POST/PUT)</label>
+    <textarea id="body" placeholder='{"key":"value"}'></textarea>
+  </div>
+  <div class="toggle">
+    <input type="checkbox" id="trustAll"> <span>Trust all certificates (self-signed)</span>
+  </div>
+  <button class="btn" onclick="doRequest()" style="margin-top:8px">🚀 Send Request</button>
+</div>
+
+<div class="card">
+  <h3>TLS Test — Self-Signed Server</h3>
+  <p style="font-size:.8rem;color:rgba(255,255,255,.4);margin-bottom:8px">Start HTTPS server on this device, then request it from another device with "Trust all certs" enabled.</p>
+  <div class="row">
+    <button class="btn" onclick="startTlsServer()">Start HTTPS Server</button>
+    <button class="btn" onclick="stopTlsServer()" style="background:#1a1a2e">Stop</button>
+  </div>
+  <div class="status" id="srvStatus"></div>
+</div>
+
+<div class="card">
+  <h3>Response</h3>
+  <div class="status" id="respStatus"></div>
+  <div class="result" id="result">No request sent yet</div>
+</div>
+
+<script>
+var method = 'GET';
+
+function init() {
+  if (typeof iappyx === 'undefined') { setTimeout(init, 50); return; }
+}
+
+function setMethod(m) {
+  method = m;
+  ['GET','POST','PUT','DELETE'].forEach(function(x) {
+    document.getElementById('m'+x).style.background = x === m ? '#0f3460' : '#1a1a2e';
+  });
+}
+
+function doRequest() {
+  var url = document.getElementById('url').value.trim();
+  if (!url) return;
+  var opts = {url: url, method: method, headers: {'Content-Type': 'application/json'}};
+  var body = document.getElementById('body').value.trim();
+  if (body && (method === 'POST' || method === 'PUT')) opts.body = body;
+  if (document.getElementById('trustAll').checked) opts.trustAllCerts = true;
+  opts.timeout = 10000;
+  document.getElementById('respStatus').textContent = 'Sending...';
+  document.getElementById('result').textContent = '';
+  document.getElementById('result').className = 'result';
+  var cbId = 'req_' + Date.now();
+  window._iappyxCb = window._iappyxCb || {};
+  window._iappyxCb[cbId] = function(r) {
+    if (r.ok) {
+      document.getElementById('respStatus').textContent = 'Status: ' + r.status;
+      var bodyText = r.body;
+      try { bodyText = JSON.stringify(JSON.parse(r.body), null, 2); } catch(e) {}
+      document.getElementById('result').textContent = bodyText;
+      document.getElementById('result').className = 'result';
+    } else {
+      document.getElementById('respStatus').textContent = 'Error';
+      document.getElementById('result').textContent = r.error;
+      document.getElementById('result').className = 'result error';
+    }
+  };
+  iappyx.httpClient.request(JSON.stringify(opts), cbId);
+}
+
+var srvRunning = false;
+function startTlsServer() {
+  iappyx.httpServer.onRequest('onTlsReq');
+  var cbId = 'srv_' + Date.now();
+  window._iappyxCb = window._iappyxCb || {};
+  window._iappyxCb[cbId] = function(r) {
+    if (r.ok) {
+      srvRunning = true;
+      var ip = iappyx.httpServer.getLocalIpAddress() || '?';
+      document.getElementById('srvStatus').textContent = 'HTTPS server running at https://' + ip + ':' + r.port + '  Fingerprint: ' + (r.fingerprint || 'N/A');
+    } else {
+      document.getElementById('srvStatus').textContent = 'Failed: ' + r.error;
+    }
+  };
+  iappyx.httpServer.start('8443', 'true', cbId);
+}
+
+function onTlsReq(req) {
+  iappyx.httpServer.respond(req.requestId, '200', '{"Content-Type":"application/json"}',
+    JSON.stringify({message: 'Hello from self-signed HTTPS server!', method: req.method, path: req.path}));
+}
+
+function stopTlsServer() {
+  iappyx.httpServer.stop();
+  srvRunning = false;
+  document.getElementById('srvStatus').textContent = 'Stopped';
+}
+
+window.addEventListener('load', function() { setTimeout(init, 200); });
+</script></body></html>

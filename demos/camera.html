@@ -1,0 +1,34 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Camera</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px}
+h1{font-size:1.4rem}
+.btn{background:#0f3460;border:none;border-radius:12px;padding:16px 32px;color:#fff;font-size:1rem;cursor:pointer;width:100%;max-width:280px}
+.btn:active{opacity:.7}
+#photo{width:100%;max-width:280px;border-radius:12px;display:none}
+.status{font-size:.85rem;color:rgba(255,255,255,.4)}
+</style></head><body>
+<h1>📸 Camera</h1>
+<img id="photo">
+<button class="btn" onclick="snap()">Take Photo</button>
+<div class="status" id="status">Tap to take a photo</div>
+<script>
+function snap(){
+  document.getElementById('status').textContent='Opening camera...';
+  var cbId='photo_'+Date.now();
+  window._iappyxCb=window._iappyxCb||{};
+  window._iappyxCb[cbId]=function(r){
+    if(r.ok){var img=document.getElementById('photo');img.src=r.dataUrl;img.style.display='block';document.getElementById('status').textContent='Photo taken!';}
+    else{document.getElementById('status').textContent='Error: '+r.error;}
+  };
+  iappyx.camera.takePhoto(cbId);
+}
+</script></body></html>

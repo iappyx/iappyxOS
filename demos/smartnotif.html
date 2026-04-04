@@ -1,0 +1,103 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Smartnotif</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;padding:16px}
+h1{font-size:20px;text-align:center;margin-bottom:4px}
+.sub{text-align:center;font-size:11px;color:rgba(255,255,255,0.4);margin-bottom:16px}
+.card{background:#1a1a2e;border-radius:12px;padding:16px;margin-bottom:12px}
+.card-title{font-size:13px;color:#4fc3f7;font-weight:600;margin-bottom:10px}
+.btn{background:#4fc3f7;color:#0d0d1a;border:none;border-radius:50px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;width:100%;margin-bottom:10px}
+.btn:active{opacity:0.8}
+.btn-outline{background:transparent;border:1.5px solid #4fc3f7;color:#4fc3f7}
+input{background:#0f3460;border:1px solid #1a4a8a;color:#fff;border-radius:8px;padding:10px 12px;font-size:14px;width:100%;outline:none;margin-bottom:8px}
+.log{font-size:12px;color:rgba(255,255,255,0.5);max-height:200px;overflow-y:auto;margin-top:8px}
+.log-item{padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)}
+</style></head><body>
+<h1>Smartnotif</h1>
+<p class="sub">Notification actions, alarms &amp; app shortcuts</p>
+
+<div class="card">
+  <div class="card-title">Notification with Actions</div>
+  <input id="notifTitle" placeholder="Title" value="Task Reminder">
+  <input id="notifBody" placeholder="Body" value="Don't forget to check your tasks">
+  <button class="btn" onclick="sendNotif()">Send Notification with Actions</button>
+</div>
+
+<div class="card">
+  <div class="card-title">Alarm (fires when app is closed)</div>
+  <button class="btn btn-outline" onclick="setAlarm()">Set Alarm in 10 seconds</button>
+</div>
+
+<div class="card">
+  <div class="card-title">App Shortcuts (long-press app icon)</div>
+  <button class="btn btn-outline" onclick="setupShortcuts()">Register Shortcuts</button>
+  <div style="font-size:11px;color:rgba(255,255,255,0.3);margin-top:4px">After registering, go to home screen and long-press this app's icon</div>
+</div>
+
+<div class="card">
+  <div class="card-title">Event Log</div>
+  <div id="log"><div style="color:rgba(255,255,255,0.2);text-align:center;padding:10px">Waiting for events...</div></div>
+</div>
+
+<script>
+function init(){if(typeof iappyx==='undefined'){setTimeout(init,50);return;}}
+window.addEventListener('load',function(){setTimeout(init,200)});
+
+function addLog(msg){
+  var el=document.getElementById('log');
+  var time=new Date().toLocaleTimeString();
+  el.innerHTML='<div class="log-item"><span style="color:#4fc3f7">'+time+'</span> '+msg+'</div>'+el.innerHTML;
+}
+
+window.onNotifAction=function(e){
+  addLog('Notification action: <b>'+e.actionId+'</b> (notification #'+e.notificationId+')');
+  iappyx.vibration.click();
+};
+
+function sendNotif(){
+  var title=document.getElementById('notifTitle').value||'Reminder';
+  var body=document.getElementById('notifBody').value||'Check your tasks';
+  var actions=JSON.stringify([
+    {id:'done',label:'Done'},
+    {id:'snooze',label:'Snooze 5min'},
+    {id:'dismiss',label:'Dismiss'}
+  ]);
+  iappyx.notification.sendWithActions('42',title,body,actions,'window.onNotifAction');
+  addLog('Sent notification with 3 action buttons');
+  iappyx.vibration.tick();
+}
+
+window.onAlarmFired=function(){
+  addLog('Alarm fired!');
+  iappyx.notification.send('Alarm','Your alarm just fired!');
+  iappyx.vibration.heavyClick();
+};
+
+function setAlarm(){
+  iappyx.alarm.set(Date.now()+10000,'window.onAlarmFired');
+  addLog('Alarm set for 10 seconds from now');
+  iappyx.vibration.tick();
+}
+
+window.onShortcut=function(e){
+  addLog('Shortcut tapped: <b>'+e.shortcutId+'</b>');
+  iappyx.vibration.click();
+};
+
+function setupShortcuts(){
+  iappyx.device.setShortcuts(JSON.stringify([
+    {id:'notify',label:'Quick Notification',callback:'window.onShortcut'},
+    {id:'alarm',label:'Set Quick Alarm',callback:'window.onShortcut'}
+  ]));
+  addLog('Registered 2 app shortcuts');
+  iappyx.vibration.tick();
+}
+</script></body></html>

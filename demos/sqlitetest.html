@@ -1,0 +1,68 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Sqlite</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;display:flex;flex-direction:column}
+.top{padding:14px 16px;border-bottom:1px solid #1a1a2e;flex-shrink:0}
+h1{font-size:1.2rem;margin-bottom:10px}
+.row{display:flex;gap:8px}
+input{flex:1;background:#1a1a2e;border:none;border-radius:8px;padding:10px;color:#fff;font-size:.9rem;outline:none}
+.btn{background:#0f3460;border:none;border-radius:8px;padding:10px 14px;color:#fff;font-size:.82rem;cursor:pointer;white-space:nowrap}
+.btn:active{opacity:.7}.btn.del{background:#3d1a1a}
+textarea{width:100%;background:#0a0a14;border:none;border-radius:8px;padding:10px;color:#4FC3F7;font-size:.78rem;font-family:monospace;resize:none;outline:none;margin-top:8px;height:52px}
+.list{padding:8px 16px}
+.item{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.item-text{font-size:.9rem}.item-id{font-size:.68rem;color:rgba(255,255,255,.3)}
+.empty{text-align:center;color:rgba(255,255,255,.3);padding:40px;font-size:.9rem}
+</style></head><body>
+<div class="top">
+  <h1>🗄️ Sqlite</h1>
+  <div class="row">
+    <input id="inp" placeholder="Add item..." autocomplete="off">
+    <button class="btn" onclick="addItem()">Add</button>
+  </div>
+  <textarea id="sql">SELECT * FROM items ORDER BY id DESC</textarea>
+  <div class="row" style="margin-top:8px">
+    <button class="btn" onclick="runSql()">Run SQL</button>
+    <button class="btn del" onclick="clearAll()">Clear All</button>
+  </div>
+</div>
+<div class="list" id="list"></div>
+<script>
+function init(){
+  if(typeof iappyx==='undefined'){setTimeout(init,50);return;}
+  iappyx.sqlite.exec('CREATE TABLE IF NOT EXISTS items(id INTEGER PRIMARY KEY AUTOINCREMENT,text TEXT,created INTEGER)',null);
+  load();
+}
+function addItem(){
+  var t=document.getElementById('inp').value.trim(); if(!t)return;
+  iappyx.sqlite.exec('INSERT INTO items(text,created) VALUES(?,?)',JSON.stringify([t,Date.now()]));
+  document.getElementById('inp').value=''; load();
+}
+function load(){
+  var r=JSON.parse(iappyx.sqlite.query('SELECT * FROM items ORDER BY id DESC',null));
+  if(!r.ok){document.getElementById('list').innerHTML='<div class="empty">'+r.error+'</div>';return;}
+  if(!r.rows.length){document.getElementById('list').innerHTML='<div class="empty">No items yet</div>';return;}
+  document.getElementById('list').innerHTML=r.rows.map(function(row){
+    return '<div class="item"><div><div class="item-text">'+row.text+'</div><div class="item-id">#'+row.id+'</div></div>'+
+      '<button class="btn del" onclick="del('+row.id+')">✕</button></div>';
+  }).join('');
+}
+function del(id){iappyx.sqlite.exec('DELETE FROM items WHERE id=?',JSON.stringify([String(id)]));load();}
+function clearAll(){iappyx.sqlite.exec('DELETE FROM items',null);load();}
+function runSql(){
+  var sql=document.getElementById('sql').value.trim();
+  var r=JSON.parse(sql.trim().toUpperCase().startsWith('SELECT')?
+    iappyx.sqlite.query(sql,null):iappyx.sqlite.exec(sql,null));
+  alert(r.ok?(r.rows?JSON.stringify(r.rows,null,2):'Done'):r.error);
+  load();
+}
+window.addEventListener('load',function(){setTimeout(init,100)});
+</script></body></html>

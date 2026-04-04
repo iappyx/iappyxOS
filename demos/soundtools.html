@@ -1,0 +1,97 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Soundtools</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;padding:16px}
+h1{font-size:20px;text-align:center;margin-bottom:16px}
+.card{background:#1a1a2e;border-radius:12px;padding:16px;margin-bottom:12px}
+.card-title{font-size:13px;color:#4fc3f7;font-weight:600;margin-bottom:10px}
+.btn{background:#4fc3f7;color:#0d0d1a;border:none;border-radius:50px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;width:100%;margin-bottom:10px}
+.btn:active{opacity:0.8}
+.btn-outline{background:transparent;border:1.5px solid #4fc3f7;color:#4fc3f7}
+canvas{width:100%;height:80px;background:#0f3460;border-radius:8px}
+.db-display{font-size:48px;font-weight:700;text-align:center;color:#4fc3f7;margin:12px 0}
+.db-label{text-align:center;font-size:12px;color:rgba(255,255,255,0.4)}
+.slider-row{display:flex;align-items:center;gap:10px;margin:8px 0}
+.slider-row label{font-size:12px;min-width:70px;color:rgba(255,255,255,0.5)}
+input[type=range]{flex:1;accent-color:#4fc3f7}
+.val{font-size:12px;min-width:30px;text-align:right;color:rgba(255,255,255,0.4)}
+.sfx-grid{display:flex;gap:8px;flex-wrap:wrap}
+.sfx-btn{padding:10px 16px;border-radius:8px;border:1px solid #333;background:#0f3460;color:#eaeaea;font-size:13px;cursor:pointer}
+.sfx-btn:active{background:#4fc3f7;color:#0d0d1a}
+</style></head><body>
+<h1>Soundtools</h1>
+<div class="card">
+  <div class="card-title">Sound Level Meter</div>
+  <button class="btn" id="micBtn" onclick="toggleMic()">Start Microphone</button>
+  <div class="db-display" id="dbVal">--</div>
+  <div class="db-label">dB (approximate)</div>
+  <canvas id="spectrum"></canvas>
+</div>
+<div class="card">
+  <div class="card-title">Sound Effects (overlay test)</div>
+  <div class="sfx-grid">
+    <div class="sfx-btn" onclick="playSfx('click')">Click</div>
+    <div class="sfx-btn" onclick="playSfx('beep')">Beep</div>
+    <div class="sfx-btn" onclick="playSfx('ding')">Ding</div>
+    <div class="sfx-btn" onclick="iappyx.vibration.click()">Haptic</div>
+    <div class="sfx-btn" onclick="iappyx.vibration.tick()">Tick</div>
+    <div class="sfx-btn" onclick="iappyx.vibration.heavyClick()">Heavy</div>
+  </div>
+</div>
+<div class="card">
+  <div class="card-title">Volume Streams</div>
+  <div class="slider-row"><label>Music</label><input type="range" min="0" max="100" value="50" oninput="setVol('music',this.value,this)"><span class="val">50%</span></div>
+  <div class="slider-row"><label>Alarm</label><input type="range" min="0" max="100" value="50" oninput="setVol('alarm',this.value,this)"><span class="val">50%</span></div>
+  <div class="slider-row"><label>Ring</label><input type="range" min="0" max="100" value="50" oninput="setVol('ring',this.value,this)"><span class="val">50%</span></div>
+  <div class="slider-row"><label>Notification</label><input type="range" min="0" max="100" value="50" oninput="setVol('notification',this.value,this)"><span class="val">50%</span></div>
+</div>
+<script>
+var micActive=false,audioCtx,analyser,dataArr,animId;
+function init(){if(typeof iappyx==='undefined'){setTimeout(init,50);return;}}
+window.addEventListener('load',function(){setTimeout(init,200)});
+function toggleMic(){
+  if(micActive){micActive=false;document.getElementById('micBtn').textContent='Start Microphone';if(animId)cancelAnimationFrame(animId);return;}
+  navigator.mediaDevices.getUserMedia({audio:true}).then(function(stream){
+    micActive=true;document.getElementById('micBtn').textContent='Stop Microphone';
+    var AC=window.AudioContext||window.webkitAudioContext;
+    audioCtx=new AC();var src=audioCtx.createMediaStreamSource(stream);
+    analyser=audioCtx.createAnalyser();analyser.fftSize=256;
+    src.connect(analyser);
+    dataArr=new Uint8Array(analyser.frequencyBinCount);
+    var canvas=document.getElementById('spectrum');
+    canvas.width=canvas.offsetWidth;canvas.height=80;
+    drawSpectrum(canvas);
+  }).catch(function(e){document.getElementById('dbVal').textContent='ERR';});
+}
+function drawSpectrum(canvas){
+  if(!micActive)return;
+  animId=requestAnimationFrame(function(){drawSpectrum(canvas)});
+  analyser.getByteFrequencyData(dataArr);
+  var ctx=canvas.getContext('2d');ctx.fillStyle='#0f3460';ctx.fillRect(0,0,canvas.width,canvas.height);
+  var barW=canvas.width/dataArr.length;var sum=0;
+  for(var i=0;i<dataArr.length;i++){var h=dataArr[i]/255*canvas.height;
+    ctx.fillStyle='hsl('+(i/dataArr.length*240)+',80%,60%)';ctx.fillRect(i*barW,canvas.height-h,barW-1,h);sum+=dataArr[i];}
+  var avg=sum/dataArr.length;var db=Math.round(20*Math.log10(avg/255+0.001)+90);
+  document.getElementById('dbVal').textContent=Math.max(0,db);
+}
+function playSfx(type){
+  var AC=window.AudioContext||window.webkitAudioContext;var ctx=new AC();
+  var osc=ctx.createOscillator();var gain=ctx.createGain();osc.connect(gain);gain.connect(ctx.destination);
+  gain.gain.value=0.3;
+  if(type==='click'){osc.frequency.value=800;gain.gain.setValueAtTime(0.3,ctx.currentTime);gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.1);osc.start();osc.stop(ctx.currentTime+0.1);}
+  else if(type==='beep'){osc.frequency.value=1000;osc.start();osc.stop(ctx.currentTime+0.2);}
+  else if(type==='ding'){osc.frequency.value=1200;gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.5);osc.start();osc.stop(ctx.currentTime+0.5);}
+}
+function setVol(stream,val,el){
+  iappyx.audio.setStreamVolume(stream,val/100);
+  el.parentElement.querySelector('.val').textContent=val+'%';
+}
+</script></body></html>

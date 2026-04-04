@@ -1,0 +1,68 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Flashlight</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;min-height:100vh;padding:16px;transition:background 0.3s,color 0.3s}
+body.dark{background:#0d0d1a;color:#eaeaea}
+body.light{background:#f5f5f5;color:#1a1a1a}
+h1{font-size:20px;text-align:center;margin-bottom:16px}
+.card{border-radius:12px;padding:20px;margin-bottom:12px;transition:background 0.3s}
+.dark .card{background:#1a1a2e} .light .card{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.1)}
+.card-title{font-size:13px;font-weight:600;margin-bottom:12px;transition:color 0.3s}
+.dark .card-title{color:#4fc3f7} .light .card-title{color:#1565c0}
+.torch-btn{width:120px;height:120px;border-radius:50%;border:none;font-size:40px;cursor:pointer;margin:20px auto;display:block;transition:all 0.2s}
+.torch-btn.off{background:#1a1a2e;box-shadow:0 0 0 rgba(255,235,59,0)} .torch-btn.on{background:#ffeb3b;box-shadow:0 0 40px rgba(255,235,59,0.5)}
+.slider-row{display:flex;align-items:center;gap:12px;margin:8px 0}
+.slider-row label{font-size:13px;min-width:80px;opacity:0.6}
+input[type=range]{flex:1;accent-color:#4fc3f7}
+.val{font-size:13px;min-width:35px;text-align:right;opacity:0.5}
+.theme-badge{text-align:center;padding:8px;border-radius:8px;font-size:12px;margin-top:8px}
+.dark .theme-badge{background:#0f3460;color:#4fc3f7} .light .theme-badge{background:#e3f2fd;color:#1565c0}
+</style></head><body class="dark">
+<h1>Flashlight</h1>
+<div class="card" style="text-align:center">
+  <div class="card-title">Flashlight</div>
+  <button class="torch-btn off" id="torchBtn" onclick="toggleTorch()">🔦</button>
+  <div id="torchStatus" style="font-size:12px;opacity:0.5">Tap to toggle</div>
+</div>
+<div class="card">
+  <div class="card-title">Screen Brightness</div>
+  <div class="slider-row">
+    <label>Brightness</label>
+    <input type="range" min="0" max="100" value="50" id="brightness" oninput="setBrightness(this.value)">
+    <span class="val" id="brightVal">50%</span>
+  </div>
+</div>
+<div class="card">
+  <div class="card-title">System Theme</div>
+  <div class="theme-badge" id="themeBadge">Detecting...</div>
+</div>
+<script>
+var torchOn=false;
+function init(){if(typeof iappyx==='undefined'){setTimeout(init,50);return;}detectTheme();}
+window.addEventListener('load',function(){setTimeout(init,200)});
+function toggleTorch(){
+  torchOn=!torchOn;
+  iappyx.device.setTorch(torchOn);
+  var btn=document.getElementById('torchBtn');
+  btn.className='torch-btn '+(torchOn?'on':'off');
+  document.getElementById('torchStatus').textContent=torchOn?'ON':'OFF';
+  iappyx.vibration.click();
+}
+function setBrightness(v){
+  iappyx.screen.setBrightness(v/100);
+  document.getElementById('brightVal').textContent=v+'%';
+}
+function detectTheme(){
+  var dark=iappyx.device.isDarkMode();
+  document.body.className=dark?'dark':'light';
+  document.getElementById('themeBadge').textContent='System theme: '+(dark?'Dark':'Light');
+}
+</script></body></html>

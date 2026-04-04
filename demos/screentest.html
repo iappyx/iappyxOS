@@ -1,0 +1,36 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Screen</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px}
+h1{font-size:1.4rem}
+.btn{background:#0f3460;border:none;border-radius:12px;padding:14px;color:#fff;font-size:.95rem;cursor:pointer;width:100%;max-width:280px}
+.btn:active{opacity:.7}.btn+.btn{margin-top:8px;background:#1a1a2e}
+input[type=range]{width:100%;max-width:280px;accent-color:#4FC3F7}
+.label{font-size:.8rem;color:rgba(255,255,255,.4)}
+.status{font-size:.85rem;color:rgba(255,255,255,.5);text-align:center}
+</style></head><body>
+<h1>💡 Screen</h1>
+<div class="label">Brightness</div>
+<input type="range" id="bright" min="0" max="1" step="0.05" value="0.5"
+  oninput="iappyx.screen.setBrightness(parseFloat(this.value))">
+<button class="btn" onclick="iappyx.screen.keepOn(true);st('Screen kept ON')">🔆 Keep Screen On</button>
+<button class="btn" onclick="iappyx.screen.keepOn(false);st('Auto-off restored')">🔅 Allow Screen Off</button>
+<button class="btn" onclick="iappyx.screen.wakeLock(true);st('Wake lock acquired')">🔒 Wake Lock On</button>
+<button class="btn" onclick="iappyx.screen.wakeLock(false);st('Wake lock released')">🔓 Wake Lock Off</button>
+<button class="btn" onclick="iappyx.vibration.click();st('Click')">📳 Haptic Click</button>
+<button class="btn" onclick="iappyx.vibration.tick();st('Tick')">📳 Haptic Tick</button>
+<button class="btn" onclick="iappyx.vibration.heavyClick();st('Heavy click')">📳 Heavy Click</button>
+<div class="status" id="status">Test controls</div>
+<script>
+function st(msg){document.getElementById('status').textContent=msg;}
+function init(){if(typeof iappyx==='undefined'){setTimeout(init,50);return;}}
+window.addEventListener('load',function(){setTimeout(init,100)});
+</script></body></html>

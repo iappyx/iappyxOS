@@ -1,0 +1,44 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Filepicker</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px}
+h1{font-size:1.4rem}
+.drop{width:100%;max-width:320px;height:160px;background:#1a1a2e;border-radius:16px;border:2px dashed rgba(255,255,255,.15);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer}
+.drop:active{opacity:.7}
+.drop-icon{font-size:2.5rem}
+.drop-text{font-size:.85rem;color:rgba(255,255,255,.4)}
+img{max-width:320px;max-height:280px;border-radius:12px;display:none}
+.info{font-size:.8rem;color:rgba(255,255,255,.4);text-align:center;min-height:1.2em}
+input[type=file]{display:none}
+</style></head><body>
+<h1>📁 Filepicker</h1>
+<div class="drop" onclick="document.getElementById('fp').click()">
+  <div class="drop-icon">📂</div>
+  <div class="drop-text">Tap to pick a file</div>
+</div>
+<input type="file" id="fp" accept="image/*,text/*,.pdf" onchange="picked(this)">
+<img id="preview">
+<div class="info" id="info">Supports images, text files, PDFs</div>
+<script>
+function picked(input){
+  var f=input.files[0];
+  if(!f){return;}
+  document.getElementById('info').textContent=f.name+' ('+Math.round(f.size/1024)+'KB, '+f.type+')';
+  if(f.type.startsWith('image/')){
+    var r=new FileReader();
+    r.onload=function(e){
+      var img=document.getElementById('preview');
+      img.src=e.target.result; img.style.display='block';
+    };
+    r.readAsDataURL(f);
+  }
+}
+</script></body></html>

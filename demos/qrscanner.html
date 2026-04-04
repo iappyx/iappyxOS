@@ -1,0 +1,147 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>QR Scanner</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:20px;gap:12px}
+h1{font-size:1.3rem}
+.mode-btns{display:flex;gap:8px}
+.mode-btn{background:#1a1a2e;border:none;border-radius:10px;padding:10px 20px;color:rgba(255,255,255,.4);font-size:.85rem;cursor:pointer}
+.mode-btn.active{background:#0f3460;color:#fff}
+.btn{background:#0f3460;border:none;border-radius:50px;padding:14px 36px;color:#fff;font-size:1rem;cursor:pointer;min-height:44px}
+.btn.stop{background:#c62828}
+.video-wrap{position:relative;width:100%;max-width:320px;aspect-ratio:4/3;border-radius:12px;overflow:hidden;background:#000;display:none}
+.video-wrap video{width:100%;height:100%;object-fit:cover;display:block}
+.video-wrap canvas{display:none}
+.scan-line{position:absolute;left:10%;right:10%;height:2px;background:#4fc3f7;top:50%;box-shadow:0 0 8px #4fc3f7;animation:scanMove 2s ease-in-out infinite}
+@keyframes scanMove{0%,100%{top:20%}50%{top:80%}}
+.result{background:#1a1a2e;border-radius:12px;padding:14px;width:100%;max-width:320px;word-break:break-all;font-family:monospace;font-size:13px;display:none}
+.label{font-size:11px;color:rgba(255,255,255,0.4);margin-bottom:4px}
+.history{width:100%;max-width:320px}
+.hist-item{background:#1a1a2e;border-radius:8px;padding:10px 12px;margin-bottom:6px;font-size:12px;font-family:monospace;word-break:break-all;cursor:pointer}
+.hist-item:active{opacity:.7}
+.status{font-size:13px;color:rgba(255,255,255,0.4)}
+</style></head><body>
+<h1>QR Scanner</h1>
+<div class="mode-btns">
+  <button class="mode-btn active" id="mPhoto" onclick="setMode('photo')">📸 Photo</button>
+  <button class="mode-btn" id="mLive" onclick="setMode('live')">🔴 Live</button>
+</div>
+<div id="photoMode">
+  <button class="btn" onclick="doScan()">Scan QR / Barcode</button>
+</div>
+<div id="liveMode" style="display:none">
+  <div class="video-wrap" id="videoWrap">
+    <video id="cam" autoplay playsinline muted></video>
+    <canvas id="cvs"></canvas>
+    <div class="scan-line"></div>
+  </div>
+  <div style="margin-top:8px;display:flex;gap:8px">
+    <button class="btn" onclick="startLive()">Start</button>
+    <button class="btn stop" onclick="stopLive()">Stop</button>
+  </div>
+</div>
+<div class="status" id="status">Tap scan or start live mode</div>
+<div class="result" id="result">
+  <div class="label">Last scan</div>
+  <div id="scanText"></div>
+</div>
+<div class="history" id="history"></div>
+<script>
+var scanHistory=[], liveStream=null, liveTimer=null, scanning=false;
+function init(){
+  if(typeof iappyx==='undefined'){setTimeout(init,50);return;}
+  var s=iappyx.load('qr_history');
+  if(s){try{scanHistory=JSON.parse(s);renderHistory();}catch(e){}}
+}
+function setMode(m){
+  document.getElementById('mPhoto').className='mode-btn'+(m==='photo'?' active':'');
+  document.getElementById('mLive').className='mode-btn'+(m==='live'?' active':'');
+  document.getElementById('photoMode').style.display=m==='photo'?'':'none';
+  document.getElementById('liveMode').style.display=m==='live'?'':'none';
+  if(m==='photo') stopLive();
+}
+function doScan(){
+  document.getElementById('status').textContent='Opening camera...';
+  var cbId='qr_'+Date.now();
+  window._iappyxCb=window._iappyxCb||{};
+  window._iappyxCb[cbId]=function(r){
+    if(r.ok){ addResult(r.text); }
+    else{ document.getElementById('status').textContent=r.error||'Scan failed'; }
+  };
+  iappyx.camera.scanQR(cbId);
+}
+function startLive(){
+  if(liveStream) return;
+  document.getElementById('videoWrap').style.display='block';
+  navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:640},height:{ideal:480}}})
+  .then(function(stream){
+    liveStream=stream;
+    var vid=document.getElementById('cam');
+    vid.srcObject=stream;
+    vid.play().then(function(){
+      document.getElementById('status').textContent='Scanning... ('+vid.videoWidth+'x'+vid.videoHeight+')';
+      liveTimer=setInterval(captureFrame,300);
+    }).catch(function(e){
+      document.getElementById('status').textContent='Play failed: '+e.message+'. Retrying...';
+      setTimeout(function(){
+        vid.play();
+        liveTimer=setInterval(captureFrame,300);
+      },500);
+    });
+  }).catch(function(e){
+    document.getElementById('status').textContent='Camera error: '+e.message;
+  });
+}
+function captureFrame(){
+  if(scanning||!liveStream) return;
+  var vid=document.getElementById('cam');
+  if(vid.videoWidth===0) return;
+  var cvs=document.getElementById('cvs');
+  cvs.width=vid.videoWidth; cvs.height=vid.videoHeight;
+  cvs.getContext('2d').drawImage(vid,0,0);
+  var dataUrl=cvs.toDataURL('image/jpeg',0.85);
+  var b64=dataUrl.substring(dataUrl.indexOf(',')+1);
+  scanning=true;
+  try {
+    var r=JSON.parse(iappyxCamera.scanFrameQRSync(b64));
+    scanning=false;
+    if(r.ok&&r.results&&r.results.length>0){ addResult(r.results[0].text); }
+  } catch(e) { scanning=false; }
+}
+function stopLive(){
+  if(liveTimer){clearInterval(liveTimer);liveTimer=null;}
+  scanning=false;
+  if(liveStream){liveStream.getTracks().forEach(function(t){t.stop()});liveStream=null;}
+  document.getElementById('videoWrap').style.display='none';
+  try{document.getElementById('cam').srcObject=null;}catch(e){}
+  document.getElementById('status').textContent='Stopped';
+}
+function addResult(text){
+  document.getElementById('scanText').textContent=text;
+  document.getElementById('result').style.display='block';
+  document.getElementById('status').textContent='Found!';
+  if(scanHistory.length===0||scanHistory[0].text!==text){
+    scanHistory.unshift({text:text,time:Date.now()});
+    if(scanHistory.length>20)scanHistory=scanHistory.slice(0,20);
+    iappyx.save('qr_history',JSON.stringify(scanHistory));
+    renderHistory();
+    iappyx.vibration.click();
+  }
+}
+function renderHistory(){
+  var el=document.getElementById('history');
+  el.innerHTML=scanHistory.map(function(s){
+    return '<div class="hist-item" onclick="copyText(\''+esc(s.text).replace(/'/g,"\\'")+'\')">'+esc(s.text)+'</div>';
+  }).join('');
+}
+function copyText(t){iappyx.clipboard.write(t);document.getElementById('status').textContent='Copied!';}
+function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+window.addEventListener('load',function(){setTimeout(init,100)});
+</script></body></html>

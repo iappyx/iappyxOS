@@ -1,0 +1,245 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>SSH Client</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;padding:16px;display:flex;flex-direction:column;gap:10px}
+h1{font-size:1.2rem;text-align:center}
+.card{background:#1a1a2e;border-radius:12px;padding:12px}
+.card h3{font-size:.85rem;margin-bottom:6px;color:rgba(255,255,255,.6)}
+input{width:100%;background:#0d0d1a;border:none;border-radius:8px;padding:8px 10px;color:#fff;font-size:.85rem;outline:none;font-family:inherit}
+.btn{background:#0f3460;border:none;border-radius:10px;padding:8px 12px;color:#fff;font-size:.8rem;cursor:pointer}
+.btn:active{opacity:.7}
+.btn.danger{background:#c62828}
+.btn.sm{padding:6px 10px;font-size:.75rem}
+.row{display:flex;gap:6px;align-items:center}
+label{font-size:.7rem;color:rgba(255,255,255,.4);margin-bottom:2px;display:block}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.dot.on{background:#69f0ae}.dot.off{background:#555}
+.term{background:#000;border-radius:8px;padding:8px;font-family:'Courier New',monospace;font-size:.75rem;color:#69f0ae;white-space:pre-wrap;word-break:break-all;overflow-y:auto;flex:1;min-height:120px;max-height:300px;line-height:1.3}
+.input-row{display:flex;gap:6px}
+.input-row input{flex:1;background:#000;color:#69f0ae;font-family:'Courier New',monospace;font-size:.8rem;border-radius:6px}
+.tabs{display:flex;gap:4px;margin-bottom:6px}
+.tab{padding:6px 12px;border-radius:8px 8px 0 0;background:#0d0d1a;color:rgba(255,255,255,.4);font-size:.8rem;cursor:pointer;border:none}
+.tab.active{background:#1a1a2e;color:#4fc3f7}
+.panel{display:none}.panel.active{display:flex;flex-direction:column;gap:8px;flex:1}
+.files{max-height:200px;overflow-y:auto}
+.file{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:.8rem}
+.file:last-child{border:none}
+.file .icon{font-size:1rem}
+.file .name{flex:1;word-break:break-all}
+.file .size{color:rgba(255,255,255,.3);font-size:.7rem}
+</style></head><body>
+<h1>🖥️ SSH Client</h1>
+
+<div class="card">
+  <h3>Connect</h3>
+  <div class="row">
+    <div style="flex:2"><label>Host</label><input id="host" placeholder="192.168.1.x"></div>
+    <div style="flex:1"><label>Port</label><input id="port" value="22"></div>
+  </div>
+  <div class="row" style="margin-top:4px">
+    <div style="flex:1"><label>User</label><input id="user" placeholder="root"></div>
+    <div style="flex:1"><label>Password</label><input id="pass" type="password" placeholder="••••"></div>
+  </div>
+  <div class="row" style="margin-top:6px">
+    <button class="btn" onclick="doConnect()" style="flex:1">Connect</button>
+    <button class="btn danger" onclick="doDisconnect()" style="flex:1">Disconnect</button>
+  </div>
+  <div style="margin-top:4px;font-size:.8rem"><span class="dot off" id="dot"></span><span id="connLabel">Disconnected</span></div>
+</div>
+
+<div class="tabs">
+  <button class="tab active" onclick="showTab('terminal')">Terminal</button>
+  <button class="tab" onclick="showTab('exec')">Execute</button>
+  <button class="tab" onclick="showTab('sftp')">SFTP</button>
+</div>
+
+<div class="panel active" id="p_terminal" style="flex:1">
+  <div class="term" id="term"></div>
+  <div class="input-row">
+    <input id="cmd" placeholder="Type command..." onkeydown="if(event.key==='Enter')sendCmd()">
+    <button class="btn sm" onclick="sendCmd()">↵</button>
+  </div>
+</div>
+
+<div class="panel" id="p_exec">
+  <div class="row">
+    <input id="execCmd" placeholder="ls -la /tmp" style="flex:1">
+    <button class="btn sm" onclick="doExec()">Run</button>
+  </div>
+  <div class="term" id="execOut" style="min-height:80px;max-height:250px">Output will appear here</div>
+</div>
+
+<div class="panel" id="p_sftp">
+  <div class="row">
+    <input id="sftpPath" value="/" style="flex:1">
+    <button class="btn sm" onclick="listDir()">List</button>
+  </div>
+  <div class="files" id="fileList"><div style="color:rgba(255,255,255,.3);font-size:.8rem;text-align:center;padding:16px">Connect and tap List</div></div>
+  <div class="row">
+    <button class="btn sm" onclick="uploadFile()" style="flex:1">⬆ Upload File</button>
+    <button class="btn sm" onclick="downloadFile()" style="flex:1">⬇ Download</button>
+  </div>
+  <input id="remoteDl" placeholder="Remote path to download" style="margin-top:4px;font-size:.75rem">
+</div>
+
+<script>
+var connected = false;
+
+function init() {
+  if (typeof iappyx === 'undefined') { setTimeout(init, 50); return; }
+  iappyx.ssh.onData('onSshData');
+  iappyx.ssh.onClose('onSshClose');
+}
+
+function doConnect() {
+  var opts = {
+    host: document.getElementById('host').value.trim(),
+    port: parseInt(document.getElementById('port').value) || 22,
+    user: document.getElementById('user').value.trim(),
+    password: document.getElementById('pass').value
+  };
+  if (!opts.host || !opts.user) return;
+  document.getElementById('term').textContent = 'Connecting...\n';
+  var cbId = 'ssh_' + Date.now();
+  window._iappyxCb = window._iappyxCb || {};
+  window._iappyxCb[cbId] = function(r) {
+    if (r.ok) {
+      connected = true;
+      setStatus(true);
+      document.getElementById('term').textContent += 'Connected! Fingerprint: ' + r.fingerprint + '\n';
+      var shellCb = 'shell_' + Date.now();
+      window._iappyxCb[shellCb] = function(r2) {
+        if (!r2.ok) document.getElementById('term').textContent += 'Shell error: ' + r2.error + '\n';
+      };
+      iappyx.ssh.shell(shellCb);
+    } else {
+      document.getElementById('term').textContent += 'Failed: ' + r.error + '\n';
+      setStatus(false);
+    }
+  };
+  iappyx.ssh.connect(JSON.stringify(opts), cbId);
+}
+
+function onSshData(evt) {
+  var el = document.getElementById('term');
+  el.textContent += evt.data;
+  el.scrollTop = el.scrollHeight;
+}
+
+function onSshClose() {
+  document.getElementById('term').textContent += '\n[Connection closed]\n';
+  connected = false;
+  setStatus(false);
+}
+
+function sendCmd() {
+  var cmd = document.getElementById('cmd').value;
+  iappyx.ssh.send(cmd + '\n');
+  document.getElementById('cmd').value = '';
+}
+
+function doExec() {
+  var cmd = document.getElementById('execCmd').value.trim();
+  if (!cmd) return;
+  document.getElementById('execOut').textContent = 'Running...\n';
+  var cbId = 'exec_' + Date.now();
+  window._iappyxCb[cbId] = function(r) {
+    var el = document.getElementById('execOut');
+    if (r.ok) {
+      el.textContent = r.stdout || '';
+      if (r.stderr) el.textContent += '\n--- STDERR ---\n' + r.stderr;
+      el.textContent += '\n[exit ' + r.exitCode + ']';
+    } else {
+      el.textContent = 'Error: ' + r.error;
+    }
+  };
+  iappyx.ssh.exec(cmd, cbId);
+}
+
+function listDir() {
+  var path = document.getElementById('sftpPath').value.trim() || '/';
+  var cbId = 'ls_' + Date.now();
+  window._iappyxCb[cbId] = function(r) {
+    var el = document.getElementById('fileList');
+    if (!r.ok) { el.innerHTML = '<div style="color:#ff6b6b;padding:8px">' + esc(r.error) + '</div>'; return; }
+    if (!r.files || r.files.length === 0) { el.innerHTML = '<div style="color:rgba(255,255,255,.3);padding:8px">Empty</div>'; return; }
+    el.innerHTML = r.files.filter(function(f) { return f.name !== '.' && f.name !== '..'; }).map(function(f) {
+      var icon = f.isDir ? '📁' : '📄';
+      var sz = f.isDir ? '' : formatSize(f.size);
+      var click = f.isDir ? ' onclick="navDir(\'' + esc(path + (path.endsWith('/') ? '' : '/') + f.name) + '\')"' : '';
+      return '<div class="file"' + click + '><span class="icon">' + icon + '</span><span class="name">' + esc(f.name) + '</span><span class="size">' + sz + '</span></div>';
+    }).join('');
+  };
+  iappyx.ssh.listDir(path, cbId);
+}
+
+function navDir(path) {
+  document.getElementById('sftpPath').value = path;
+  listDir();
+}
+
+function uploadFile() {
+  var cbId = 'pick_' + Date.now();
+  window._iappyxCb[cbId] = function(r) {
+    if (!r.ok) return;
+    var remote = document.getElementById('sftpPath').value.trim() || '/';
+    if (!remote.endsWith('/')) remote += '/';
+    remote += r.name;
+    var ulCb = 'ul_' + Date.now();
+    window._iappyxCb[ulCb] = function(r2) {
+      if (r2.ok) { listDir(); } else { alert('Upload failed: ' + r2.error); }
+    };
+    iappyx.ssh.upload(r.filePath, remote, ulCb);
+  };
+  iappyx.storage.pickFile(cbId);
+}
+
+function downloadFile() {
+  var remote = document.getElementById('remoteDl').value.trim();
+  if (!remote) return;
+  var name = remote.split('/').pop();
+  var cbId = 'dl_' + Date.now();
+  window._iappyxCb[cbId] = function(r) {
+    if (r.ok) {
+      iappyx.storage.copyFileToDownloads(r.filePath, name, 'application/octet-stream');
+      alert('Downloaded to Downloads: ' + name);
+    } else { alert('Download failed: ' + r.error); }
+  };
+  iappyx.ssh.download(remote, 'ssh_dl_' + Date.now(), cbId);
+}
+
+function doDisconnect() {
+  iappyx.ssh.disconnect();
+  connected = false;
+  setStatus(false);
+}
+
+function setStatus(on) {
+  document.getElementById('dot').className = 'dot ' + (on ? 'on' : 'off');
+  document.getElementById('connLabel').textContent = on ? 'Connected' : 'Disconnected';
+}
+
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach(function(t) { t.className = 'tab'; });
+  document.querySelectorAll('.panel').forEach(function(p) { p.className = 'panel'; });
+  event.target.className = 'tab active';
+  document.getElementById('p_' + name).className = 'panel active';
+}
+
+function formatSize(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(1) + ' MB';
+}
+function esc(s) { return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;') : ''; }
+
+window.addEventListener('load', function() { setTimeout(init, 200); });
+</script></body></html>

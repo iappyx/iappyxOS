@@ -1,0 +1,59 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Ocr</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;padding:16px}
+h1{font-size:20px;text-align:center;margin-bottom:16px}
+.btn{background:#4fc3f7;color:#0d0d1a;border:none;border-radius:50px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;width:100%;margin-bottom:12px}
+.btn:active{opacity:0.8}
+.result{background:#1a1a2e;border-radius:12px;padding:16px;margin-top:12px;white-space:pre-wrap;font-size:14px;line-height:1.6;max-height:60vh;overflow-y:auto}
+.block{background:#0f3460;border-radius:8px;padding:10px;margin-bottom:8px}
+.block-title{font-size:11px;color:#4fc3f7;margin-bottom:4px}
+.empty{text-align:center;color:rgba(255,255,255,0.3);padding:40px}
+.copy-btn{background:transparent;border:1px solid #4fc3f7;color:#4fc3f7;border-radius:8px;padding:8px 16px;font-size:13px;cursor:pointer;margin-top:8px}
+</style></head><body>
+<h1>Ocr</h1>
+<button class="btn" onclick="scan()">Scan Text from Camera</button>
+<div id="output"><div class="empty">Take a photo of text to scan it</div></div>
+<script>
+function init(){if(typeof iappyx==='undefined'){setTimeout(init,50);return;}}
+window.addEventListener('load',function(){setTimeout(init,200)});
+function scan(){
+  var cbId='ocr_'+Date.now();
+  window._iappyxCb=window._iappyxCb||{};
+  window._iappyxCb[cbId]=function(r){
+    var el=document.getElementById('output');
+    if(r.ok){
+      var html='<div style="margin-bottom:12px"><strong>Full text:</strong></div>';
+      html+='<div class="block">'+esc(r.text)+'</div>';
+      html+='<button class="copy-btn" onclick="copyText()">Copy to clipboard</button>';
+      if(r.blocks&&r.blocks.length>0){
+        html+='<div style="margin-top:16px;margin-bottom:8px"><strong>Blocks ('+r.blocks.length+'):</strong></div>';
+        for(var i=0;i<r.blocks.length;i++){
+          html+='<div class="block"><div class="block-title">Block '+(i+1)+'</div>'+esc(r.blocks[i].text)+'</div>';
+        }
+      }
+      el.innerHTML=html;
+      window._lastOcrText=r.text;
+      iappyx.vibration.click();
+    } else {
+      el.innerHTML='<div class="empty">'+esc(r.error||'Scan failed')+'</div>';
+    }
+  };
+  iappyx.camera.scanText(cbId);
+}
+function copyText(){
+  if(window._lastOcrText){
+    iappyx.clipboard.write(window._lastOcrText);
+    iappyx.vibration.tick();
+  }
+}
+function esc(s){return s?s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>'):''}
+</script></body></html>

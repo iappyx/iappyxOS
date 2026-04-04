@@ -1,0 +1,98 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Notes</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;margin:0}
+.screen{display:flex;flex-direction:column;min-height:100vh;transition:.15s}
+.screen.hidden{display:none}
+header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #1a1a2e;flex-shrink:0}
+h1{font-size:1.3rem;font-weight:700}
+.btn{background:#0f3460;border:none;border-radius:8px;padding:8px 14px;color:#fff;font-size:.85rem;cursor:pointer}
+.btn.ghost{background:transparent;color:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.15)}
+.list{padding:12px}
+.note-card{background:#1a1a2e;border-radius:12px;padding:14px;margin-bottom:10px;cursor:pointer}
+.note-card:active{opacity:.7}
+.note-title{font-weight:600;font-size:.95rem;margin-bottom:4px}
+.note-preview{font-size:.8rem;color:rgba(255,255,255,.4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.note-date{font-size:.7rem;color:rgba(255,255,255,.25);margin-top:6px}
+.editor-body{flex:1;display:flex;flex-direction:column;padding:12px 16px;gap:10px}
+#note-title-inp{background:#1a1a2e;border:none;border-radius:8px;padding:12px;color:#fff;font-size:1.1rem;font-weight:600;outline:none;flex-shrink:0}
+#note-body-inp{flex:1;background:transparent;border:none;color:#eaeaea;font-size:.95rem;resize:none;outline:none;font-family:inherit;line-height:1.7;min-height:200px}
+.empty{text-align:center;color:rgba(255,255,255,.3);padding:60px 20px;font-size:.9rem}
+.footer{padding:10px;text-align:center;font-size:.7rem;color:rgba(255,255,255,.2);flex-shrink:0}
+</style></head><body>
+<div class="screen" id="list-screen">
+  <header><h1>Notes</h1><button class="btn" onclick="newNote()">+ New</button></header>
+  <div class="list" id="note-list"></div>
+  <div class="footer">⚡ iappyxOS</div>
+</div>
+<div class="screen hidden" id="edit-screen">
+  <header>
+    <button class="btn ghost" onclick="closeNote()">← Back</button>
+    <button class="btn ghost" onclick="deleteNote()">Delete</button>
+  </header>
+  <div class="editor-body">
+    <input type="text" id="note-title-inp" placeholder="Title">
+    <textarea id="note-body-inp" placeholder="Start writing..."></textarea>
+  </div>
+</div>
+<script>
+var notes=[], current=-1;
+function save(){iappyx.save('notes',JSON.stringify(notes))}
+function renderList(){
+  var el=document.getElementById('note-list');
+  if(!notes.length){el.innerHTML='<div class="empty">No notes yet.<br>Tap + New to start.</div>';return}
+  el.innerHTML=notes.slice().reverse().map(function(n,ri){
+    var i=notes.length-1-ri;
+    return '<div class="note-card" onclick="openNote('+i+')">'+
+      '<div class="note-title">'+(n.title||'Untitled')+'</div>'+
+      '<div class="note-preview">'+(n.body||'No content')+'</div>'+
+      '<div class="note-date">'+new Date(n.updated).toLocaleDateString()+'</div>'+
+    '</div>';
+  }).join('');
+}
+function newNote(){
+  notes.push({title:'',body:'',updated:Date.now()});
+  save(); openNote(notes.length-1);
+}
+function openNote(i){
+  current=i;
+  document.getElementById('note-title-inp').value=notes[i].title;
+  document.getElementById('note-body-inp').value=notes[i].body;
+  document.getElementById('list-screen').classList.add('hidden');
+  document.getElementById('edit-screen').classList.remove('hidden');
+  // Delay focus so screen transition completes first
+  setTimeout(function(){
+    var t=document.getElementById('note-title-inp');
+    t.focus(); t.setSelectionRange(t.value.length,t.value.length);
+  },200);
+}
+function closeNote(){
+  notes[current].title=document.getElementById('note-title-inp').value.trim()||'Untitled';
+  notes[current].body=document.getElementById('note-body-inp').value;
+  notes[current].updated=Date.now();
+  save(); renderList();
+  document.getElementById('edit-screen').classList.add('hidden');
+  document.getElementById('list-screen').classList.remove('hidden');
+}
+function deleteNote(){
+  notes.splice(current,1); save();
+  document.getElementById('edit-screen').classList.add('hidden');
+  document.getElementById('list-screen').classList.remove('hidden');
+  renderList();
+}
+function init(){
+  if(typeof iappyx==='undefined'){setTimeout(init,50);return;}
+  notes=JSON.parse(iappyx.load('notes')||'[]');
+  renderList();
+}
+window.addEventListener('load',function(){setTimeout(init,100)});
+</script></body></html>

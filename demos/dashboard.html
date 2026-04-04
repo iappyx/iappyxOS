@@ -1,0 +1,190 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Dashboard</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;padding:16px}
+h1{font-size:20px;text-align:center;margin-bottom:4px}
+.sub{text-align:center;font-size:11px;color:rgba(255,255,255,0.4);margin-bottom:16px}
+.card{background:#1a1a2e;border-radius:12px;padding:16px;margin-bottom:12px}
+.card-title{font-size:13px;color:#4fc3f7;font-weight:600;margin-bottom:10px}
+.stat-row{display:flex;gap:10px;margin-bottom:10px}
+.stat{flex:1;background:#0f3460;border-radius:10px;padding:12px;text-align:center}
+.stat-value{font-size:24px;font-weight:700;color:#4fc3f7}
+.stat-label{font-size:10px;color:rgba(255,255,255,0.4);margin-top:2px}
+.chart-container{position:relative;height:250px;margin:8px 0}
+.btn{background:#4fc3f7;color:#0d0d1a;border:none;border-radius:50px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;width:100%;margin-bottom:10px}
+.btn:active{opacity:0.8}
+.btn-sm{padding:8px 14px;font-size:12px;width:auto;border-radius:8px}
+.btn-outline{background:transparent;border:1.5px solid #4fc3f7;color:#4fc3f7}
+.row{display:flex;gap:8px;margin-bottom:8px}
+input{background:#0f3460;border:1px solid #1a4a8a;color:#fff;border-radius:8px;padding:10px 12px;font-size:14px;width:100%;outline:none}
+.loading{text-align:center;padding:30px;color:#4fc3f7;font-size:13px}
+.tab-bar{display:flex;gap:6px;margin-bottom:14px}
+.tab{flex:1;text-align:center;padding:8px;border-radius:8px;font-size:12px;cursor:pointer;color:#888;border:1px solid transparent}
+.tab.active{color:#4fc3f7;border-color:#4fc3f7;background:#0f3460}
+</style></head><body>
+<h1>Dashboard</h1>
+<p class="sub">Track data &amp; visualize with charts (Chart.js)</p>
+
+<div class="tab-bar">
+  <div class="tab active" onclick="showTab('dash')" id="tab-dash">Dashboard</div>
+  <div class="tab" onclick="showTab('add')" id="tab-add">Add Data</div>
+</div>
+
+<div id="page-dash">
+  <div class="stat-row">
+    <div class="stat"><div class="stat-value" id="totalEntries">0</div><div class="stat-label">Entries</div></div>
+    <div class="stat"><div class="stat-value" id="avgValue">0</div><div class="stat-label">Average</div></div>
+    <div class="stat"><div class="stat-value" id="maxValue">0</div><div class="stat-label">Max</div></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Trend</div>
+    <div class="chart-container"><canvas id="lineChart"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Distribution</div>
+    <div class="chart-container" style="height:200px"><canvas id="barChart"></canvas></div>
+  </div>
+  <button class="btn btn-outline" onclick="exportCsv()">Export as CSV</button>
+</div>
+
+<div id="page-add" style="display:none">
+  <div class="card">
+    <div class="card-title">Add Entry</div>
+    <input id="entryLabel" placeholder="Label (e.g. Monday, Jan 5)">
+    <div style="height:6px"></div>
+    <input id="entryValue" placeholder="Value" type="number" step="any">
+    <div style="height:10px"></div>
+    <button class="btn" onclick="addEntry()">Add</button>
+  </div>
+  <div class="card">
+    <div class="card-title">Recent Entries</div>
+    <div id="entryList"><div style="text-align:center;color:rgba(255,255,255,0.2);padding:10px;font-size:12px">No entries yet</div></div>
+  </div>
+  <button class="btn" style="background:#ff6b6b" onclick="clearAll()">Clear All Data</button>
+</div>
+
+<div id="libStatus" class="loading">Loading Chart.js...</div>
+
+<script>
+function runScript(code){var s=document.createElement('script');s.textContent=code;document.head.appendChild(s);}
+var chartReady=false;
+var entries=[];
+var lineChartObj=null;
+var barChartObj=null;
+
+function init(){
+  if(typeof iappyx==='undefined'){setTimeout(init,50);return;}
+  entries=JSON.parse(iappyx.load('dashboard_entries')||'[]');
+  loadChartLib();
+}
+window.addEventListener('load',function(){setTimeout(init,200)});
+
+function loadChartLib(){
+  var el=document.getElementById('libStatus');
+  var cached=iappyx.storage.loadFile('chart.umd.min.js');
+  if(cached&&cached.length>100){try{runScript(cached);chartReady=true;el.style.display='none';renderAll();return;}catch(e){iappyx.storage.deleteFile('chart.umd.min.js');}}
+  el.textContent='Downloading Chart.js...';
+  fetch('https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js')
+    .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.text()}).then(function(code){
+      if(code.length<100)throw new Error('incomplete');
+      iappyx.storage.saveFile('chart.umd.min.js',code);runScript(code);chartReady=true;el.style.display='none';renderAll();
+    }).catch(function(){el.textContent='Need internet on first launch';el.style.color='#ff6b6b';});
+}
+
+function addEntry(){
+  var label=document.getElementById('entryLabel').value.trim()||('Entry '+(entries.length+1));
+  var val=parseFloat(document.getElementById('entryValue').value);
+  if(isNaN(val))return;
+  entries.push({label:label,value:val,time:Date.now()});
+  iappyx.save('dashboard_entries',JSON.stringify(entries));
+  document.getElementById('entryLabel').value='';
+  document.getElementById('entryValue').value='';
+  iappyx.vibration.click();
+  renderAll();
+}
+
+function renderAll(){
+  updateStats();
+  renderCharts();
+  renderEntryList();
+}
+
+function updateStats(){
+  document.getElementById('totalEntries').textContent=entries.length;
+  if(entries.length===0){
+    document.getElementById('avgValue').textContent='0';
+    document.getElementById('maxValue').textContent='0';
+    return;
+  }
+  var sum=0,max=-Infinity;
+  for(var i=0;i<entries.length;i++){sum+=entries[i].value;if(entries[i].value>max)max=entries[i].value;}
+  document.getElementById('avgValue').textContent=(sum/entries.length).toFixed(1);
+  document.getElementById('maxValue').textContent=max.toFixed(1);
+}
+
+function renderCharts(){
+  if(!chartReady||entries.length===0)return;
+  var labels=entries.map(function(e){return e.label});
+  var values=entries.map(function(e){return e.value});
+  var colors=values.map(function(v,i){return 'rgba(79,195,247,'+(0.4+0.6*i/values.length)+')'});
+
+  if(lineChartObj)lineChartObj.destroy();
+  lineChartObj=new Chart(document.getElementById('lineChart'),{
+    type:'line',
+    data:{labels:labels,datasets:[{label:'Value',data:values,borderColor:'#4fc3f7',backgroundColor:'rgba(79,195,247,0.1)',tension:0.3,fill:true,pointRadius:4,pointBackgroundColor:'#4fc3f7'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#666',maxRotation:45},grid:{color:'rgba(255,255,255,0.05)'}},y:{ticks:{color:'#666'},grid:{color:'rgba(255,255,255,0.05)'}}}}
+  });
+
+  if(barChartObj)barChartObj.destroy();
+  barChartObj=new Chart(document.getElementById('barChart'),{
+    type:'bar',
+    data:{labels:labels,datasets:[{data:values,backgroundColor:colors,borderRadius:6}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#666'},grid:{display:false}},y:{ticks:{color:'#666'},grid:{color:'rgba(255,255,255,0.05)'}}}}
+  });
+}
+
+function renderEntryList(){
+  var el=document.getElementById('entryList');
+  if(entries.length===0){el.innerHTML='<div style="text-align:center;color:rgba(255,255,255,0.2);padding:10px;font-size:12px">No entries yet</div>';return;}
+  el.innerHTML=entries.slice().reverse().slice(0,20).map(function(e,i){
+    var idx=entries.length-1-i;
+    return '<div style="display:flex;justify-content:space-between;padding:8px 10px;background:#0f3460;border-radius:8px;margin-bottom:4px;font-size:13px"><span>'+esc(e.label)+'</span><span style="color:#4fc3f7;font-weight:600">'+e.value+'</span></div>';
+  }).join('');
+}
+
+function clearAll(){
+  if(!confirm('Delete all entries?'))return;
+  entries=[];
+  iappyx.save('dashboard_entries','[]');
+  if(lineChartObj){lineChartObj.destroy();lineChartObj=null;}
+  if(barChartObj){barChartObj.destroy();barChartObj=null;}
+  renderAll();
+}
+
+function exportCsv(){
+  if(entries.length===0)return;
+  var csv='Label,Value,Timestamp\n';
+  for(var i=0;i<entries.length;i++){
+    csv+='"'+entries[i].label.replace(/"/g,'""')+'",'+entries[i].value+','+new Date(entries[i].time).toISOString()+'\n';
+  }
+  iappyx.storage.shareFile('dashboard_export.csv',btoa(unescape(encodeURIComponent(csv))),'text/csv');
+}
+
+function showTab(t){
+  document.getElementById('page-dash').style.display=t==='dash'?'block':'none';
+  document.getElementById('page-add').style.display=t==='add'?'block':'none';
+  document.getElementById('tab-dash').classList.toggle('active',t==='dash');
+  document.getElementById('tab-add').classList.toggle('active',t==='add');
+  if(t==='dash')renderCharts();
+}
+
+function esc(s){return s?s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):''}
+</script></body></html>

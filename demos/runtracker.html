@@ -1,0 +1,104 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Runtracker</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;padding:16px}
+h1{font-size:20px;text-align:center;margin-bottom:16px}
+.stat-row{display:flex;gap:10px;margin-bottom:10px}
+.stat{flex:1;background:#1a1a2e;border-radius:12px;padding:14px;text-align:center}
+.stat-value{font-size:22px;font-weight:700;color:#4fc3f7}
+.stat-label{font-size:10px;color:rgba(255,255,255,0.4);margin-top:2px}
+.btn{border:none;border-radius:50px;padding:16px;font-size:16px;font-weight:600;cursor:pointer;width:100%;margin-bottom:10px}
+.btn:active{opacity:0.8}
+.btn-start{background:#69f0ae;color:#0d0d1a}
+.btn-stop{background:#ff6b6b;color:#fff}
+.btn-outline{background:transparent;border:1.5px solid #4fc3f7;color:#4fc3f7;padding:12px;font-size:14px}
+.card{background:#1a1a2e;border-radius:12px;padding:16px;margin-bottom:12px}
+.card-title{font-size:13px;color:#4fc3f7;font-weight:600;margin-bottom:10px}
+.coord{font-size:11px;font-family:monospace;color:rgba(255,255,255,0.4);margin-top:8px}
+.history-item{background:#0f3460;border-radius:8px;padding:10px;margin-bottom:6px;font-size:13px}
+</style></head><body>
+<h1>Runtracker</h1>
+<div class="stat-row">
+  <div class="stat"><div class="stat-value" id="distance">0.00</div><div class="stat-label">km</div></div>
+  <div class="stat"><div class="stat-value" id="duration">00:00</div><div class="stat-label">time</div></div>
+  <div class="stat"><div class="stat-value" id="speed">0.0</div><div class="stat-label">km/h</div></div>
+</div>
+<div class="stat-row">
+  <div class="stat"><div class="stat-value" id="steps">0</div><div class="stat-label">steps</div></div>
+  <div class="stat"><div class="stat-value" id="pace">--:--</div><div class="stat-label">min/km</div></div>
+</div>
+<button class="btn btn-start" id="mainBtn" onclick="toggleRun()">Start Run</button>
+<div class="card">
+  <div class="card-title">GPS</div>
+  <div class="coord" id="gpsInfo">Waiting for GPS...</div>
+</div>
+<div class="card">
+  <div class="card-title">Run History</div>
+  <div id="historyList"><div style="text-align:center;color:rgba(255,255,255,0.2);padding:10px;font-size:12px">No runs yet</div></div>
+</div>
+<button class="btn btn-outline" onclick="exportRuns()">Export History</button>
+<script>
+var running=false,startTime=0,totalDist=0,lastLat=0,lastLon=0,timerInterval=null,startSteps=0,currentSteps=0;
+var runHistory=[];
+function init(){if(typeof iappyx==='undefined'){setTimeout(init,50);return;}
+  runHistory=JSON.parse(iappyx.load('run_history')||'[]');renderHistory();
+  iappyx.screen.keepOn(false);}
+window.addEventListener('load',function(){setTimeout(init,200)});
+function toggleRun(){
+  if(!running){
+    running=true;startTime=Date.now();totalDist=0;lastLat=0;lastLon=0;startSteps=currentSteps;
+    document.getElementById('mainBtn').textContent='Stop Run';
+    document.getElementById('mainBtn').className='btn btn-stop';
+    iappyx.screen.keepOn(true);
+    iappyx.location.startTracking('window.onTrackUpdate');
+    iappyx.sensor.startStepCounter('window.onStepUpdate');
+    timerInterval=setInterval(updateTimer,1000);
+    iappyx.vibration.heavyClick();
+  } else {
+    running=false;
+    document.getElementById('mainBtn').textContent='Start Run';
+    document.getElementById('mainBtn').className='btn btn-start';
+    iappyx.screen.keepOn(false);
+    iappyx.location.stopTracking();
+    iappyx.sensor.stop();
+    clearInterval(timerInterval);
+    var elapsed=Math.floor((Date.now()-startTime)/1000);
+    if(totalDist>0.01){
+      runHistory.unshift({dist:totalDist.toFixed(2),time:formatTime(elapsed),steps:currentSteps-startSteps,date:new Date().toLocaleDateString()});
+      if(runHistory.length>50)runHistory.pop();
+      iappyx.save('run_history',JSON.stringify(runHistory));
+      renderHistory();
+    }
+    iappyx.vibration.heavyClick();
+  }
+}
+window.onTrackUpdate=function(pos){
+  if(!running)return;
+  document.getElementById('gpsInfo').textContent=pos.lat.toFixed(6)+', '+pos.lon.toFixed(6)+' (±'+Math.round(pos.accuracy)+'m)';
+  if(lastLat!==0){
+    var d=haversine(lastLat,lastLon,pos.lat,pos.lon);
+    if(d>0.003&&pos.accuracy<50) totalDist+=d;
+  }
+  lastLat=pos.lat;lastLon=pos.lon;
+  document.getElementById('distance').textContent=totalDist.toFixed(2);
+  document.getElementById('speed').textContent=((pos.speed||0)*3.6).toFixed(1);
+  var elapsed=(Date.now()-startTime)/1000;
+  if(totalDist>0.01){var paceS=elapsed/totalDist;document.getElementById('pace').textContent=formatTime(Math.round(paceS));}
+};
+window.onStepUpdate=function(d){currentSteps=d.steps;if(running)document.getElementById('steps').textContent=currentSteps-startSteps;};
+function updateTimer(){if(!running)return;var s=Math.floor((Date.now()-startTime)/1000);document.getElementById('duration').textContent=formatTime(s);}
+function formatTime(s){var m=Math.floor(s/60);var sec=s%60;return(m<10?'0':'')+m+':'+(sec<10?'0':'')+sec;}
+function haversine(a,b,c,d){var R=6371;var dLat=(c-a)*Math.PI/180;var dLon=(d-b)*Math.PI/180;var x=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
+function renderHistory(){var el=document.getElementById('historyList');if(runHistory.length===0){el.innerHTML='<div style="text-align:center;color:rgba(255,255,255,0.2);padding:10px;font-size:12px">No runs yet</div>';return;}
+  el.innerHTML=runHistory.map(function(r){return '<div class="history-item"><div style="display:flex;justify-content:space-between"><span>'+r.dist+' km</span><span>'+r.time+'</span></div><div style="font-size:10px;color:rgba(255,255,255,0.3)">'+r.steps+' steps · '+r.date+'</div></div>';}).join('');}
+function exportRuns(){if(runHistory.length===0)return;var csv='Date,Distance(km),Time,Steps\n';for(var i=0;i<runHistory.length;i++){var r=runHistory[i];csv+=r.date+','+r.dist+','+r.time+','+r.steps+'\n';}
+  var b64=btoa(unescape(encodeURIComponent(csv)));iappyx.storage.shareFile('runs.csv',b64,'text/csv');}
+</script></body></html>

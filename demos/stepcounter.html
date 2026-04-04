@@ -1,0 +1,54 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Stepcounter</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.count{font-size:72px;font-weight:bold;color:#4FC3F7}
+.label{font-size:14px;color:rgba(255,255,255,0.5);margin-top:8px}
+.status{font-size:13px;color:rgba(255,255,255,0.3);margin-top:24px;text-align:center;padding:0 40px}
+button{background:#0f3460;color:#eaeaea;border:none;padding:14px 32px;border-radius:50px;font-size:16px;margin-top:32px;cursor:pointer;min-height:44px}
+button.stop{background:#1a1a2e}
+.info{font-size:11px;color:rgba(255,255,255,0.2);position:fixed;bottom:20px;text-align:center;padding:0 20px}
+</style>
+</head><body>
+<div class="count" id="steps">--</div>
+<div class="label">steps (since boot)</div>
+<div class="status" id="statusMsg">Tap Start to begin counting</div>
+<button id="btn" onclick="toggle()">Start</button>
+<div class="info">Uses TYPE_STEP_COUNTER — shows total steps since device boot. Walk around to see it update.</div>
+<script>
+var running=false,baseSteps=null;
+function init(){
+  if(typeof iappyx==='undefined'){setTimeout(init,50);return;}
+}
+window.onStepData=function(data){
+  if(baseSteps===null)baseSteps=data.steps;
+  document.getElementById('steps').textContent=data.steps;
+  document.getElementById('statusMsg').textContent='Counting... (session: +'+(data.steps-baseSteps)+')';
+};
+function toggle(){
+  if(!running){
+    if(typeof iappyx==='undefined'){document.getElementById('statusMsg').textContent='Bridge not ready';return;}
+    iappyx.sensor.startStepCounter('window.onStepData');
+    running=true;baseSteps=null;
+    document.getElementById('btn').textContent='Stop';
+    document.getElementById('btn').className='stop';
+    document.getElementById('statusMsg').textContent='Waiting for first step event...';
+  }else{
+    iappyx.sensor.stop();
+    running=false;
+    document.getElementById('btn').textContent='Start';
+    document.getElementById('btn').className='';
+    document.getElementById('statusMsg').textContent='Stopped';
+  }
+}
+window.addEventListener('load',function(){setTimeout(init,100)});
+</script></body></html>

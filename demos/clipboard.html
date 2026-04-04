@@ -1,0 +1,37 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Clipboard</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px}
+h1{font-size:1.4rem}
+textarea{width:100%;max-width:320px;height:100px;background:#1a1a2e;border:none;border-radius:12px;padding:14px;color:#fff;font-size:.95rem;resize:none;outline:none;font-family:inherit}
+.btn{background:#0f3460;border:none;border-radius:12px;padding:14px;color:#fff;font-size:1rem;cursor:pointer;width:100%;max-width:320px}
+.btn:active{opacity:.7}.btn+.btn{margin-top:8px;background:#1a1a2e}
+.status{font-size:.8rem;color:rgba(255,255,255,.4);min-height:1.2em;text-align:center}
+</style></head><body>
+<h1>📋 Clipboard</h1>
+<textarea id="txt" placeholder="Type something to copy...">Hello from iappyxOS!</textarea>
+<button class="btn" onclick="copy()">📋 Copy to Clipboard</button>
+<button class="btn" onclick="paste()">📄 Read from Clipboard</button>
+<div class="status" id="status"></div>
+<script>
+function init(){if(typeof iappyx==='undefined'){setTimeout(init,50);return;}}
+function copy(){
+  var text=document.getElementById('txt').value;
+  iappyx.clipboard.write(text);
+  document.getElementById('status').textContent='Copied: "'+text.slice(0,40)+'"';
+}
+function paste(){
+  var text=iappyx.clipboard.read();
+  if(text){document.getElementById('txt').value=text;document.getElementById('status').textContent='Read: "'+text.slice(0,40)+'"';}
+  else{document.getElementById('status').textContent='Clipboard is empty';}
+}
+window.addEventListener('load',function(){setTimeout(init,100)});
+</script></body></html>

@@ -1,0 +1,111 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Bgremover</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;padding:16px}
+h1{font-size:20px;text-align:center;margin-bottom:16px}
+.btn{background:#4fc3f7;color:#0d0d1a;border:none;border-radius:50px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;width:100%;margin-bottom:10px}
+.btn:active{opacity:0.8}
+.btn-outline{background:transparent;border:1.5px solid #4fc3f7;color:#4fc3f7}
+.card{background:#1a1a2e;border-radius:12px;padding:16px;margin-bottom:12px}
+.card-title{font-size:13px;color:#4fc3f7;font-weight:600;margin-bottom:10px}
+.preview{border-radius:8px;overflow:hidden;margin:10px 0;text-align:center}
+.preview img{max-width:100%;border-radius:8px}
+.checkerboard{background-image:linear-gradient(45deg,#333 25%,transparent 25%),linear-gradient(-45deg,#333 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#333 75%),linear-gradient(-45deg,transparent 75%,#333 75%);background-size:20px 20px;background-position:0 0,0 10px,10px -10px,-10px 0;border-radius:8px;padding:10px;display:inline-block}
+.bg-options{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.bg-opt{width:36px;height:36px;border-radius:8px;cursor:pointer;border:2px solid transparent}
+.bg-opt.active{border-color:#4fc3f7}
+.empty{text-align:center;color:rgba(255,255,255,0.3);padding:30px;font-size:13px}
+.row{display:flex;gap:8px}
+</style></head><body>
+<h1>Bgremover</h1>
+<button class="btn" onclick="capture()">Take Photo</button>
+<div id="result"><div class="empty">Take a photo of a person to remove the background</div></div>
+<div id="actions" style="display:none">
+  <div class="card">
+    <div class="card-title">Background</div>
+    <div class="bg-options">
+      <div class="bg-opt active" style="background-image:linear-gradient(45deg,#666 25%,#999 25%,#999 50%,#666 50%,#666 75%,#999 75%);background-size:10px 10px" onclick="setBg('transparent')"></div>
+      <div class="bg-opt" style="background:#fff" onclick="setBg('#ffffff')"></div>
+      <div class="bg-opt" style="background:#000" onclick="setBg('#000000')"></div>
+      <div class="bg-opt" style="background:#4fc3f7" onclick="setBg('#4fc3f7')"></div>
+      <div class="bg-opt" style="background:#69f0ae" onclick="setBg('#69f0ae')"></div>
+      <div class="bg-opt" style="background:#ff6b6b" onclick="setBg('#ff6b6b')"></div>
+      <div class="bg-opt" style="background:linear-gradient(135deg,#667eea,#764ba2)" onclick="setBg('gradient1')"></div>
+      <div class="bg-opt" style="background:linear-gradient(135deg,#f093fb,#f5576c)" onclick="setBg('gradient2')"></div>
+    </div>
+  </div>
+  <div class="row">
+    <button class="btn btn-outline" onclick="sharePng()" style="flex:1">Share</button>
+    <button class="btn btn-outline" onclick="savePng()" style="flex:1">Save</button>
+  </div>
+</div>
+<canvas id="canvas" style="display:none"></canvas>
+<script>
+var currentDataUrl=null;
+var currentBg='transparent';
+function init(){if(typeof iappyx==='undefined'){setTimeout(init,50);return;}}
+window.addEventListener('load',function(){setTimeout(init,200)});
+function capture(){
+  var cbId='seg_'+Date.now();
+  window._iappyxCb=window._iappyxCb||{};
+  window._iappyxCb[cbId]=function(r){
+    if(r.ok&&r.dataUrl){
+      currentDataUrl=r.dataUrl;
+      showResult();
+      document.getElementById('actions').style.display='block';
+      iappyx.vibration.click();
+    } else {
+      document.getElementById('result').innerHTML='<div class="empty">'+(r.error||'Failed')+'</div>';
+    }
+  };
+  iappyx.camera.removeBackground(cbId);
+}
+function showResult(){
+  var el=document.getElementById('result');
+  var bgStyle='';
+  if(currentBg==='transparent') bgStyle='class="checkerboard"';
+  else if(currentBg==='gradient1') bgStyle='style="background:linear-gradient(135deg,#667eea,#764ba2);border-radius:8px;padding:10px;display:inline-block"';
+  else if(currentBg==='gradient2') bgStyle='style="background:linear-gradient(135deg,#f093fb,#f5576c);border-radius:8px;padding:10px;display:inline-block"';
+  else bgStyle='style="background:'+currentBg+';border-radius:8px;padding:10px;display:inline-block"';
+  el.innerHTML='<div class="preview"><div '+bgStyle+'><img id="resultImg" src="'+currentDataUrl+'"></div></div>';
+}
+function setBg(bg){
+  currentBg=bg;
+  document.querySelectorAll('.bg-opt').forEach(function(e){e.classList.remove('active')});
+  event.target.classList.add('active');
+  if(currentDataUrl) showResult();
+}
+function getComposited(callback){
+  var img=document.getElementById('resultImg');
+  var c=document.getElementById('canvas');
+  c.width=img.naturalWidth;c.height=img.naturalHeight;
+  var ctx=c.getContext('2d');
+  if(currentBg==='transparent'){ctx.clearRect(0,0,c.width,c.height);}
+  else if(currentBg==='gradient1'){var g=ctx.createLinearGradient(0,0,c.width,c.height);g.addColorStop(0,'#667eea');g.addColorStop(1,'#764ba2');ctx.fillStyle=g;ctx.fillRect(0,0,c.width,c.height);}
+  else if(currentBg==='gradient2'){var g=ctx.createLinearGradient(0,0,c.width,c.height);g.addColorStop(0,'#f093fb');g.addColorStop(1,'#f5576c');ctx.fillStyle=g;ctx.fillRect(0,0,c.width,c.height);}
+  else{ctx.fillStyle=currentBg;ctx.fillRect(0,0,c.width,c.height);}
+  ctx.drawImage(img,0,0);
+  callback(c.toDataURL('image/png'));
+}
+function sharePng(){
+  getComposited(function(dataUrl){
+    var b64=dataUrl.split(',')[1];
+    iappyx.sharePhoto(b64);
+  });
+}
+function savePng(){
+  getComposited(function(dataUrl){
+    var b64=dataUrl.split(',')[1];
+    var ok=iappyx.storage.saveToDownloads('photo_no_bg_'+Date.now()+'.png',b64,'image/png');
+    if(ok) iappyx.vibration.click();
+  });
+}
+</script></body></html>

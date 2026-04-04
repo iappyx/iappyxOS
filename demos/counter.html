@@ -1,0 +1,38 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Counter</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:32px;user-select:none}
+h1{font-size:1.2rem;font-weight:600;color:rgba(255,255,255,.6)}
+.count{font-size:6rem;font-weight:700;letter-spacing:-2px;line-height:1}
+.buttons{display:flex;gap:20px}
+.btn{width:72px;height:72px;border-radius:50%;border:none;font-size:2rem;cursor:pointer;transition:.1s;display:flex;align-items:center;justify-content:center}
+.btn:active{transform:scale(.92)}
+.btn-minus{background:#1a1a2e;color:#fff}
+.btn-plus{background:#0f3460;color:#fff}
+.reset{background:none;border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:8px 20px;color:rgba(255,255,255,.4);font-size:.8rem;cursor:pointer;margin-top:8px}
+.footer{position:fixed;bottom:16px;font-size:.7rem;color:rgba(255,255,255,.2)}
+</style></head><body>
+<h1>Counter</h1>
+<div class="count" id="count">0</div>
+<div class="buttons">
+  <button class="btn btn-minus" onclick="change(-1)">−</button>
+  <button class="btn btn-plus" onclick="change(1)">+</button>
+</div>
+<button class="reset" onclick="reset()">Reset</button>
+<div class="footer">⚡ iappyxOS</div>
+<script>
+var n=parseInt(iappyx.load('count')||'0');
+function render(){document.getElementById('count').textContent=n}
+function change(d){n+=d;iappyx.save('count',n.toString());render()}
+function reset(){n=0;iappyx.save('count','0');render()}
+render();
+</script></body></html>

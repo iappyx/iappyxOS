@@ -1,0 +1,44 @@
+plugins {
+    id 'com.android.application'
+}
+android {
+    namespace 'com.iappyx.generated.placeholder'
+    compileSdk 34
+    defaultConfig {
+        applicationId "com.iappyx.generated.placeholder"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+        // Only include 64-bit ARM — x86 is emulator-only, 32-bit ARM is obsolete (no phones sold since ~2018)
+        ndk { abiFilters 'arm64-v8a' }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            shrinkResources false
+            signingConfig signingConfigs.debug
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+configurations.all {
+    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+}
+dependencies {
+    implementation 'androidx.core:core:1.12.0'
+    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
+    implementation 'com.google.mlkit:barcode-scanning:17.2.0'
+    implementation 'com.google.mlkit:text-recognition:16.0.0'
+    implementation 'com.google.mlkit:image-labeling:17.0.8'
+    implementation 'com.google.mlkit:segmentation-selfie:16.0.0-beta6'
+    implementation 'androidx.media:media:1.7.0'
+    implementation 'androidx.exifinterface:exifinterface:1.3.7'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'com.github.mwiede:jsch:0.2.21'
+    implementation 'eu.agno3.jcifs:jcifs-ng:2.1.10'
+}

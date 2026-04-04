@@ -1,0 +1,127 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Media</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;padding:16px}
+h1{font-size:20px;text-align:center;margin-bottom:4px}
+.sub{text-align:center;font-size:11px;color:rgba(255,255,255,0.4);margin-bottom:16px}
+.btn{background:#4fc3f7;color:#0d0d1a;border:none;border-radius:50px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;width:100%;margin-bottom:10px}
+.btn:active{opacity:0.8}
+.btn-outline{background:transparent;border:1.5px solid #4fc3f7;color:#4fc3f7}
+.card{background:#1a1a2e;border-radius:12px;padding:16px;margin-bottom:12px}
+.card-title{font-size:13px;color:#4fc3f7;font-weight:600;margin-bottom:10px}
+video{width:100%;border-radius:8px;background:#000}
+canvas{width:100%;height:100px;background:#0f3460;border-radius:8px;margin-top:8px}
+.log{font-size:11px;font-family:monospace;color:rgba(255,255,255,0.5);margin-top:8px;max-height:150px;overflow-y:auto}
+.ok{color:#69f0ae}.err{color:#ff6b6b}
+</style></head><body>
+<h1>Media</h1>
+<p class="sub">Test getUserMedia — camera viewfinder &amp; mic stream</p>
+
+<div class="card">
+  <div class="card-title">Camera (getUserMedia video)</div>
+  <button class="btn" onclick="startCamera()">Start Camera</button>
+  <video id="vid" autoplay playsinline muted style="display:none"></video>
+  <div id="camLog" class="log"></div>
+</div>
+
+<div class="card">
+  <div class="card-title">Microphone (getUserMedia audio + Web Audio API)</div>
+  <button class="btn btn-outline" onclick="startMic()">Start Microphone</button>
+  <canvas id="spectrum"></canvas>
+  <div id="micLog" class="log"></div>
+</div>
+
+<div class="card">
+  <div class="card-title">Capabilities Check</div>
+  <div id="capLog" class="log"></div>
+</div>
+
+<script>
+function log(id,msg,ok){
+  var el=document.getElementById(id);
+  el.innerHTML+='<div class="'+(ok?'ok':'err')+'">'+msg+'</div>';
+  el.scrollTop=el.scrollHeight;
+}
+
+// Check capabilities
+(function(){
+  var el=document.getElementById('capLog');
+  el.innerHTML='<div>navigator.mediaDevices: '+(navigator.mediaDevices?'<span class="ok">YES</span>':'<span class="err">NO</span>')+'</div>';
+  el.innerHTML+='<div>getUserMedia: '+((navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)?'<span class="ok">YES</span>':'<span class="err">NO</span>')+'</div>';
+  el.innerHTML+='<div>AudioContext: '+(window.AudioContext||window.webkitAudioContext?'<span class="ok">YES</span>':'<span class="err">NO</span>')+'</div>';
+  el.innerHTML+='<div>Secure origin: '+(location.protocol==='https:'||location.protocol==='file:'?'<span class="ok">YES ('+location.protocol+')</span>':'<span class="err">NO ('+location.protocol+')</span>')+'</div>';
+})();
+
+function startCamera(){
+  log('camLog','Requesting camera...',true);
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+    log('camLog','getUserMedia not supported',false);return;
+  }
+  navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false})
+    .then(function(stream){
+      log('camLog','Camera stream obtained!',true);
+      var vid=document.getElementById('vid');
+      vid.srcObject=stream;
+      vid.style.display='block';
+      var track=stream.getVideoTracks()[0];
+      var settings=track.getSettings();
+      log('camLog','Resolution: '+settings.width+'x'+settings.height,true);
+      log('camLog','FPS: '+(settings.frameRate||'?'),true);
+      log('camLog','Facing: '+(settings.facingMode||'?'),true);
+    })
+    .catch(function(e){
+      log('camLog','Camera error: '+e.message,false);
+      log('camLog','Error name: '+e.name,false);
+    });
+}
+
+function startMic(){
+  log('micLog','Requesting microphone...',true);
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+    log('micLog','getUserMedia not supported',false);return;
+  }
+  navigator.mediaDevices.getUserMedia({audio:true,video:false})
+    .then(function(stream){
+      log('micLog','Mic stream obtained!',true);
+      var AudioCtx=window.AudioContext||window.webkitAudioContext;
+      var ctx=new AudioCtx();
+      var src=ctx.createMediaStreamSource(stream);
+      var analyser=ctx.createAnalyser();
+      analyser.fftSize=256;
+      src.connect(analyser);
+      var data=new Uint8Array(analyser.frequencyBinCount);
+      var canvas=document.getElementById('spectrum');
+      var cCtx=canvas.getContext('2d');
+      canvas.width=canvas.offsetWidth;
+      canvas.height=100;
+      log('micLog','Audio context: '+ctx.sampleRate+'Hz',true);
+      log('micLog','FFT bins: '+analyser.frequencyBinCount,true);
+
+      function draw(){
+        requestAnimationFrame(draw);
+        analyser.getByteFrequencyData(data);
+        cCtx.fillStyle='#0f3460';
+        cCtx.fillRect(0,0,canvas.width,canvas.height);
+        var barW=canvas.width/data.length;
+        for(var i=0;i<data.length;i++){
+          var h=data[i]/255*canvas.height;
+          cCtx.fillStyle='hsl('+(i/data.length*240)+',80%,60%)';
+          cCtx.fillRect(i*barW,canvas.height-h,barW-1,h);
+        }
+      }
+      draw();
+    })
+    .catch(function(e){
+      log('micLog','Mic error: '+e.message,false);
+      log('micLog','Error name: '+e.name,false);
+    });
+}
+</script></body></html>

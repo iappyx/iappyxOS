@@ -1,0 +1,83 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Nfc</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;display:flex;flex-direction:column;padding:20px;gap:12px}
+h1{font-size:1.3rem;text-align:center}
+.ring{width:120px;height:120px;border-radius:50%;border:3px solid #0f3460;display:flex;align-items:center;justify-content:center;font-size:2.5rem;transition:.3s;margin:0 auto}
+.ring.active{border-color:#4FC3F7;animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(79,195,247,.4)}50%{box-shadow:0 0 0 16px rgba(79,195,247,0)}}
+.btns{display:flex;gap:10px;justify-content:center}
+.btn{background:#0f3460;border:none;border-radius:12px;padding:12px 24px;color:#fff;font-size:.85rem;cursor:pointer}
+.btn.sec{background:#1a1a2e}
+.card{background:#1a1a2e;border-radius:12px;padding:14px;text-align:left}
+.row{display:flex;justify-content:space-between;padding:5px 0;font-size:.8rem;border-bottom:1px solid rgba(255,255,255,.06)}
+.row:last-child{border:none}.k{color:rgba(255,255,255,.4);flex-shrink:0;margin-right:8px}.v{word-break:break-all;text-align:right}
+.status{font-size:.8rem;color:rgba(255,255,255,.5);text-align:center}
+.records{display:flex;flex-direction:column;gap:8px}
+.rec{background:#0d0d1a;border-radius:8px;padding:10px}
+.rec-type{font-size:.7rem;color:#4FC3F7;margin-bottom:4px}
+.rec-val{font-size:.85rem;word-break:break-all}
+.rec-hex{font-size:.65rem;color:rgba(255,255,255,.25);margin-top:4px;font-family:monospace;word-break:break-all}
+.uri{color:#4FC3F7;text-decoration:underline}
+</style></head><body>
+<h1>📡 Nfc</h1>
+<div class="ring" id="ring">📶</div>
+<div class="btns">
+  <button class="btn" onclick="start()">Start</button>
+  <button class="btn sec" onclick="stop()">Stop</button>
+</div>
+<div class="status" id="status">Hold NFC tag near device</div>
+<div class="card" id="card" style="display:none">
+  <div class="row"><span class="k">Tag ID</span><span class="v" id="tagId">-</span></div>
+  <div class="row"><span class="k">Tech</span><span class="v" id="tagTech">-</span></div>
+</div>
+<div id="recordsSection" style="display:none">
+  <div style="font-size:.75rem;color:rgba(255,255,255,.4);margin-top:4px">NDEF Records</div>
+  <div class="records" id="records"></div>
+</div>
+<script>
+function init(){
+  if(typeof iappyx==='undefined'){setTimeout(init,50);return;}
+  document.getElementById('status').textContent=iappyx.nfc.isAvailable()?'NFC ready — tap Start':'NFC not available';
+}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+window.onTag=function(t){
+  document.getElementById('tagId').textContent=t.id||'(empty)';
+  var techs=Array.isArray(t.tech)?t.tech.join(', '):t.tech;
+  document.getElementById('tagTech').textContent=techs;
+  document.getElementById('card').style.display='block';
+  document.getElementById('ring').textContent='✅';
+  document.getElementById('status').textContent='Tag detected!';
+  iappyx.vibration.click();
+  var recs=t.records||[];
+  var el=document.getElementById('records');
+  if(recs.length>0){
+    document.getElementById('recordsSection').style.display='block';
+    var html='';
+    for(var i=0;i<recs.length;i++){
+      var r=recs[i];
+      html+='<div class="rec">';
+      html+='<div class="rec-type">TNF='+r.tnf+' Type: '+esc(r.type||'')+'</div>';
+      if(r.uri)html+='<div class="rec-val"><a class="uri" href="'+esc(r.uri)+'">'+esc(r.uri)+'</a></div>';
+      if(r.text)html+='<div class="rec-val">'+esc(r.text)+'</div>';
+      if(!r.uri&&!r.text)html+='<div class="rec-val" style="color:rgba(255,255,255,.4)">(no text/uri)</div>';
+      if(r.payloadHex)html+='<div class="rec-hex">'+r.payloadHex+'</div>';
+      html+='</div>';
+    }
+    el.innerHTML=html;
+  }else{
+    document.getElementById('recordsSection').style.display='none';
+  }
+};
+function start(){iappyx.nfc.startReading('window.onTag');document.getElementById('ring').className='ring active';document.getElementById('status').textContent='Scanning...';}
+function stop(){iappyx.nfc.stopReading();document.getElementById('ring').className='ring';document.getElementById('status').textContent='Stopped';}
+window.addEventListener('load',function(){setTimeout(init,100)});
+</script></body></html>

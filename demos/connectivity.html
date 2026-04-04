@@ -1,0 +1,45 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Connectivity</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;padding:24px}
+h1{font-size:1.3rem;margin-bottom:16px}
+.card{background:#1a1a2e;border-radius:12px;padding:16px;margin-bottom:12px}
+.row{display:flex;justify-content:space-between;padding:6px 0;font-size:.85rem}
+.k{color:rgba(255,255,255,0.4)}.v{font-weight:600}
+.online{color:#69F0AE}.offline{color:#FF6B6B}
+.btn{background:#0f3460;border:none;border-radius:12px;padding:12px;color:#fff;font-size:.9rem;width:100%;cursor:pointer;margin-top:12px;min-height:44px}
+.status{text-align:center;font-size:2rem;margin:16px 0}
+</style></head><body>
+<h1>Connectivity</h1>
+<div class="status" id="icon">📶</div>
+<div class="card" id="info"></div>
+<button class="btn" onclick="refresh()">Refresh</button>
+<script>
+function init(){
+  if(typeof iappyx==='undefined'){setTimeout(init,50);return;}
+  refresh();
+}
+function refresh(){
+  var net=JSON.parse(iappyx.device.getConnectivity());
+  var dev=JSON.parse(iappyx.device.getDeviceInfo());
+  document.getElementById('icon').textContent=net.connected?'📶':'📵';
+  var html='';
+  html+='<div class="row"><span class="k">Connected</span><span class="v '+(net.connected?'online':'offline')+'">'+(net.connected?'Yes':'No')+'</span></div>';
+  html+='<div class="row"><span class="k">Type</span><span class="v">'+net.type+'</span></div>';
+  html+='<div class="row"><span class="k">Metered</span><span class="v">'+(net.metered?'Yes':'No')+'</span></div>';
+  html+='<div class="row"><span class="k">Device</span><span class="v">'+dev.brand+' '+dev.model+'</span></div>';
+  html+='<div class="row"><span class="k">Battery</span><span class="v">'+dev.battery+'%'+(dev.charging?' ⚡':'')+'</span></div>';
+  html+='<div class="row"><span class="k">Screen</span><span class="v">'+dev.screenWidth+'×'+dev.screenHeight+'</span></div>';
+  html+='<div class="row"><span class="k">Language</span><span class="v">'+dev.language+'</span></div>';
+  document.getElementById('info').innerHTML=html;
+}
+window.addEventListener('load',function(){setTimeout(init,100)});
+</script></body></html>

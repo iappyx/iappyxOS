@@ -1,0 +1,38 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Bio</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px;text-align:center}
+h1{font-size:1.4rem}
+.icon{font-size:5rem}
+.btn{background:#0f3460;border:none;border-radius:12px;padding:16px 32px;color:#fff;font-size:1rem;cursor:pointer}
+.btn:active{opacity:.7}
+.status{font-size:1rem;min-height:1.4em;font-weight:500}
+.ok{color:#69F0AE}.err{color:#FF6B6B}
+</style></head><body>
+<h1>🔐 Bio</h1>
+<div class="icon">👆</div>
+<button class="btn" onclick="auth()">Authenticate</button>
+<div class="status" id="status">Tap to use biometrics</div>
+<script>
+function init(){if(typeof iappyx==='undefined'){setTimeout(init,50);return;}}
+function auth(){
+  var el=document.getElementById('status');
+  el.className='status'; el.textContent='Waiting...';
+  var cbId='bio'+Date.now();
+  window._iappyxCb=window._iappyxCb||{};
+  window._iappyxCb[cbId]=function(r){
+    if(r.ok){el.textContent='✅ Authenticated!';el.className='status ok';iappyx.vibration.click();}
+    else{el.textContent='❌ '+r.error;el.className='status err';}
+  };
+  iappyx.biometric.authenticate('Verify Identity','Confirm it is you',cbId);
+}
+window.addEventListener('load',function(){setTimeout(init,100)});
+</script></body></html>

@@ -1,0 +1,189 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Pdf</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;padding:16px}
+h1{font-size:20px;text-align:center;margin-bottom:4px}
+.sub{text-align:center;font-size:11px;color:rgba(255,255,255,0.4);margin-bottom:16px}
+.btn{background:#4fc3f7;color:#0d0d1a;border:none;border-radius:50px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;width:100%;margin-bottom:10px}
+.btn:active{opacity:0.8}
+.btn-outline{background:transparent;border:1.5px solid #4fc3f7;color:#4fc3f7}
+.btn-sm{padding:10px 16px;font-size:13px;width:auto;border-radius:8px}
+.card{background:#1a1a2e;border-radius:12px;padding:16px;margin-bottom:12px}
+.card-title{font-size:13px;color:#4fc3f7;font-weight:600;margin-bottom:10px}
+.row{display:flex;gap:8px;margin-bottom:8px}
+input,textarea{background:#0f3460;border:1px solid #1a4a8a;color:#fff;border-radius:8px;padding:10px 12px;font-size:14px;width:100%;outline:none}
+.status{text-align:center;padding:20px;color:rgba(255,255,255,0.3);font-size:13px}
+.loading{text-align:center;padding:30px;color:#4fc3f7;font-size:13px}
+.preview{background:#fff;border-radius:8px;margin-top:12px;min-height:200px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.preview canvas{max-width:100%;height:auto}
+.page-nav{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:10px}
+.page-btn{width:40px;height:40px;border-radius:50%;border:1.5px solid #4fc3f7;background:transparent;color:#4fc3f7;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.page-btn:disabled{border-color:#333;color:#333}
+.tab-bar{display:flex;gap:6px;margin-bottom:14px}
+.tab{flex:1;text-align:center;padding:8px;border-radius:8px;font-size:13px;cursor:pointer;color:#888;border:1px solid transparent}
+.tab.active{color:#4fc3f7;border-color:#4fc3f7;background:#0f3460}
+.hidden{display:none}
+</style></head><body>
+<h1>Pdf</h1>
+<p class="sub">Create &amp; view PDFs (uses pdf-lib from CDN on first launch)</p>
+
+<div class="tab-bar">
+  <div class="tab active" onclick="showTab('create')" id="tab-create">Create PDF</div>
+  <div class="tab" onclick="showTab('view')" id="tab-view">View PDF</div>
+</div>
+
+<div id="page-create">
+  <div class="card">
+    <div class="card-title">Document Details</div>
+    <input id="pdfTitle" placeholder="Title" value="My Document">
+    <div style="height:8px"></div>
+    <textarea id="pdfContent" rows="6" placeholder="Type your content here...">Hello from iappyxOS!
+
+This PDF was generated entirely on your phone — no server, no cloud.
+
+The pdf-lib library was downloaded once and cached offline.</textarea>
+  </div>
+  <button class="btn" onclick="createPdf()" id="createBtn">Create PDF</button>
+  <div id="createStatus"></div>
+</div>
+
+<div id="page-view" class="hidden">
+  <button class="btn btn-outline" onclick="pickPdf()">Open PDF from device</button>
+  <div id="viewArea"><div class="status">Open a PDF or create one above</div></div>
+</div>
+
+<div id="libStatus" class="loading">Loading pdf-lib...</div>
+
+<input type="file" id="filePicker" accept=".pdf,application/pdf" style="display:none">
+
+<script>
+function runScript(code){var s=document.createElement('script');s.textContent=code;document.head.appendChild(s);}
+var pdfLibReady=false;
+var pdfDoc=null;
+var currentPage=1;
+var totalPages=0;
+
+function init(){
+  if(typeof iappyx==='undefined'){setTimeout(init,50);return;}
+  loadLibrary();
+}
+window.addEventListener('load',function(){setTimeout(init,200)});
+
+function loadLibrary(){
+  var el=document.getElementById('libStatus');
+  var cached=iappyx.storage.loadFile('pdf-lib.min.js');
+  if(cached&&cached.length>100){
+    try{runScript(cached);pdfLibReady=true;el.style.display='none';return;}
+    catch(e){iappyx.storage.deleteFile('pdf-lib.min.js');}
+  }
+  el.textContent='Downloading pdf-lib (first time only)...';
+  fetch('https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js')
+    .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.text()})
+    .then(function(code){
+      if(code.length<100)throw new Error('incomplete');
+      iappyx.storage.saveFile('pdf-lib.min.js',code);
+      runScript(code);
+      pdfLibReady=true;
+      el.style.display='none';
+    })
+    .catch(function(e){
+      el.textContent='Could not load pdf-lib. Connect to internet and restart.';
+      el.style.color='#ff6b6b';
+    });
+}
+
+function createPdf(){
+  if(!pdfLibReady){alert('pdf-lib not loaded yet');return;}
+  var title=document.getElementById('pdfTitle').value||'Untitled';
+  var content=document.getElementById('pdfContent').value||'';
+  var statusEl=document.getElementById('createStatus');
+  statusEl.innerHTML='<div class="loading">Creating PDF...</div>';
+
+  setTimeout(function(){
+    try{
+      PDFLib.PDFDocument.create().then(function(doc){
+        var page=doc.addPage([595,842]);
+        return doc.embedFont(PDFLib.StandardFonts.Helvetica).then(function(f){
+          page.drawText(title,{x:50,y:780,size:24,font:f,color:PDFLib.rgb(0.1,0.1,0.1)});
+          var lines=content.split('\n');
+          var y=740;
+          for(var i=0;i<lines.length&&y>50;i++){
+            page.drawText(lines[i],{x:50,y:y,size:12,font:f,color:PDFLib.rgb(0.2,0.2,0.2)});
+            y-=18;
+          }
+          page.drawText('Generated by iappyxOS',{x:50,y:30,size:8,font:f,color:PDFLib.rgb(0.6,0.6,0.6)});
+          return doc.save();
+        });
+      }).then(function(bytes){
+        window._lastPdfBytes=bytes;
+        window._lastPdfTitle=title;
+        statusEl.innerHTML='<div class="card"><div class="card-title">PDF Created!</div>'+
+          '<div class="row"><button class="btn btn-sm" onclick="sharePdf()" style="flex:1">Share PDF</button></div></div>';
+        iappyx.vibration.click();
+      }).catch(function(e){
+        statusEl.innerHTML='<div class="status" style="color:#ff6b6b">Error: '+e.message+'</div>';
+      });
+    }catch(e){
+      statusEl.innerHTML='<div class="status" style="color:#ff6b6b">Error: '+e.message+'</div>';
+    }
+  },100);
+}
+
+function sharePdf(){
+  if(!window._lastPdfBytes)return;
+  var bytes=window._lastPdfBytes;
+  var bin='';
+  for(var i=0;i<bytes.length;i++) bin+=String.fromCharCode(bytes[i]);
+  var b64=btoa(bin);
+  var safeName=(window._lastPdfTitle||'document').replace(/[^a-zA-Z0-9 ]/g,'')+'.pdf';
+  iappyx.storage.shareFile(safeName,b64,'application/pdf');
+}
+
+function pickPdf(){
+  document.getElementById('filePicker').click();
+}
+
+document.getElementById('filePicker').addEventListener('change',function(e){
+  var file=e.target.files[0];
+  if(!file)return;
+  var reader=new FileReader();
+  reader.onload=function(ev){
+    var data=new Uint8Array(ev.target.result);
+    loadPdfData(data);
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+function loadPdfData(data){
+  if(!pdfLibReady){alert('pdf-lib not loaded');return;}
+  var area=document.getElementById('viewArea');
+  area.innerHTML='<div class="loading">Loading PDF...</div>';
+  PDFLib.PDFDocument.load(data).then(function(doc){
+    pdfDoc=doc;
+    totalPages=doc.getPageCount();
+    currentPage=1;
+    area.innerHTML='<div class="card"><div class="card-title">PDF loaded — '+totalPages+' page'+(totalPages>1?'s':'')+'</div>'+
+      '<div style="font-size:12px;color:rgba(255,255,255,0.5)">Title: '+(doc.getTitle()||'(none)')+'<br>'+
+      'Author: '+(doc.getAuthor()||'(none)')+'<br>'+
+      'Pages: '+totalPages+'</div></div>';
+    iappyx.vibration.click();
+  }).catch(function(e){
+    area.innerHTML='<div class="status" style="color:#ff6b6b">Could not load PDF: '+e.message+'</div>';
+  });
+}
+
+function showTab(t){
+  document.getElementById('page-create').classList.toggle('hidden',t!=='create');
+  document.getElementById('page-view').classList.toggle('hidden',t!=='view');
+  document.getElementById('tab-create').classList.toggle('active',t==='create');
+  document.getElementById('tab-view').classList.toggle('active',t==='view');
+}
+</script></body></html>

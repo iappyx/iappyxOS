@@ -1,0 +1,62 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Calculator</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;display:flex;flex-direction:column}
+.display{flex:1;display:flex;flex-direction:column;justify-content:flex-end;padding:24px 20px 16px;text-align:right}
+.expr{font-size:.9rem;color:rgba(255,255,255,.4);min-height:20px;margin-bottom:4px;word-break:break-all}
+.result{font-size:3.2rem;font-weight:300;letter-spacing:-1px;word-break:break-all}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:#0a0a12}
+.k{padding:0;border:none;font-size:1.4rem;cursor:pointer;display:flex;align-items:center;justify-content:center;height:80px;transition:.08s;font-family:inherit}
+.k:active{opacity:.6}
+.k.op{background:#0f3460;color:#fff}
+.k.eq{background:#e94560;color:#fff}
+.k.fn{background:#1a1a2e;color:rgba(255,255,255,.7)}
+.k.num{background:#16213e;color:#fff}
+.footer{text-align:center;padding:8px;font-size:.65rem;color:rgba(255,255,255,.15)}
+</style></head><body>
+<div class="display"><div class="expr" id="expr"></div><div class="result" id="result">0</div></div>
+<div class="grid">
+  <button class="k fn" onclick="ac()">AC</button>
+  <button class="k fn" onclick="sign()">+/−</button>
+  <button class="k fn" onclick="pct()">%</button>
+  <button class="k op" onclick="op('/')">÷</button>
+  <button class="k num" onclick="num('7')">7</button>
+  <button class="k num" onclick="num('8')">8</button>
+  <button class="k num" onclick="num('9')">9</button>
+  <button class="k op" onclick="op('*')">×</button>
+  <button class="k num" onclick="num('4')">4</button>
+  <button class="k num" onclick="num('5')">5</button>
+  <button class="k num" onclick="num('6')">6</button>
+  <button class="k op" onclick="op('-')">−</button>
+  <button class="k num" onclick="num('1')">1</button>
+  <button class="k num" onclick="num('2')">2</button>
+  <button class="k num" onclick="num('3')">3</button>
+  <button class="k op" onclick="op('+')">+</button>
+  <button class="k num" style="grid-column:span 2" onclick="num('0')">0</button>
+  <button class="k num" onclick="dot()">.</button>
+  <button class="k eq" onclick="eq()">=</button>
+</div>
+<div class="footer">⚡ iappyxOS</div>
+<script>
+var cur='0',prev='',oper='',fresh=false;
+function upd(){document.getElementById('result').textContent=cur;document.getElementById('expr').textContent=prev+(oper?(' '+oper+' '):'')+(fresh?'':cur)}
+function num(d){if(fresh){cur=d;fresh=false}else{cur=cur==='0'?d:cur+d}upd()}
+function dot(){if(fresh){cur='0.';fresh=false}else if(!cur.includes('.'))cur+='.';upd()}
+function ac(){cur='0';prev='';oper='';fresh=false;upd()}
+function sign(){cur=String(-parseFloat(cur));upd()}
+function pct(){cur=String(parseFloat(cur)/100);upd()}
+function op(o){if(oper&&!fresh)eq();prev=cur;oper=o;fresh=true;upd()}
+function eq(){if(!oper)return;var a=parseFloat(prev),b=parseFloat(cur),r;
+  if(oper==='+')r=a+b;else if(oper==='-')r=a-b;else if(oper==='*')r=a*b;else if(oper==='/')r=a/b;
+  cur=String(parseFloat(r.toPrecision(12)));prev='';oper='';fresh=true;upd()}
+upd();
+</script></body></html>

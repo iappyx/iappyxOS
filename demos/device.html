@@ -1,0 +1,44 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Device</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px}
+h1{font-size:1.4rem}
+.card{background:#1a1a2e;border-radius:16px;padding:20px 24px;width:100%;max-width:320px}
+.row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:.9rem}
+.row:last-child{border:none}.label{color:rgba(255,255,255,.4)}.val{font-weight:600}
+.btn{background:#0f3460;border:none;border-radius:12px;padding:14px;color:#fff;font-size:1rem;cursor:pointer;width:100%;max-width:320px}
+.btn:active{opacity:.7}
+</style></head><body>
+<h1>📱 Device</h1>
+<div class="card">
+  <div class="row"><span class="label">App Name</span><span class="val" id="appname">-</span></div>
+  <div class="row"><span class="label">Package</span><span class="val" id="pkg" style="font-size:.75rem">-</span></div>
+  <div class="row"><span class="label">Brand</span><span class="val" id="brand">-</span></div>
+  <div class="row"><span class="label">Model</span><span class="val" id="model">-</span></div>
+  <div class="row"><span class="label">Android SDK</span><span class="val" id="sdk">-</span></div>
+  <div class="row"><span class="label">Battery</span><span class="val" id="bat">-</span></div>
+</div>
+<button class="btn" onclick="iappyx.vibration.pattern('100,50,100,50,300')">📳 Vibrate</button>
+<script>
+function init(){
+  if(typeof iappyx==='undefined'||typeof iappyx.device==='undefined'){setTimeout(init,50);return;}
+  try{
+    var info=JSON.parse(iappyx.device.getDeviceInfo());
+    document.getElementById('appname').textContent=iappyx.device.getAppName();
+    document.getElementById('pkg').textContent=iappyx.device.getPackageName();
+    document.getElementById('brand').textContent=info.brand;
+    document.getElementById('model').textContent=info.model;
+    document.getElementById('sdk').textContent='API '+info.sdk;
+    document.getElementById('bat').textContent=info.battery+'%';
+  }catch(e){document.getElementById('brand').textContent='Error: '+e.message;}
+}
+window.addEventListener('load',function(){setTimeout(init,100)});
+</script></body></html>

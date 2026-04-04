@@ -1,0 +1,110 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Sharemedia</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;padding:16px}
+h1{font-size:20px;text-align:center;margin-bottom:4px}
+.sub{text-align:center;font-size:11px;color:rgba(255,255,255,0.4);margin-bottom:16px}
+.card{background:#1a1a2e;border-radius:12px;padding:16px;margin-bottom:12px}
+.card-title{font-size:13px;color:#4fc3f7;font-weight:600;margin-bottom:10px}
+.btn{background:#4fc3f7;color:#0d0d1a;border:none;border-radius:50px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;width:100%;margin-bottom:10px}
+.btn:active{opacity:0.8}
+.btn-outline{background:transparent;border:1.5px solid #4fc3f7;color:#4fc3f7}
+input{background:#0f3460;border:1px solid #1a4a8a;color:#fff;border-radius:8px;padding:10px 12px;font-size:14px;width:100%;outline:none;margin-bottom:8px}
+.preview{background:#1a1a2e;border-radius:8px;padding:12px;margin:8px 0;font-size:13px}
+.preview img{max-width:100%;border-radius:8px;margin-top:8px}
+.empty{text-align:center;color:rgba(255,255,255,0.2);padding:20px;font-size:13px}
+.media-info{background:#0f3460;border-radius:10px;padding:14px;text-align:center;margin:10px 0}
+.media-title{font-size:16px;font-weight:600}
+.media-artist{font-size:13px;color:rgba(255,255,255,0.5);margin-top:2px}
+.controls{display:flex;justify-content:center;gap:20px;margin:12px 0}
+.ctrl-btn{width:44px;height:44px;border-radius:50%;border:1.5px solid #4fc3f7;background:transparent;color:#4fc3f7;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.ctrl-btn:active{background:#4fc3f7;color:#0d0d1a}
+.log{font-size:12px;color:rgba(255,255,255,0.5);max-height:150px;overflow-y:auto;margin-top:8px}
+.log-item{padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.05)}
+</style></head><body>
+<h1>Sharemedia</h1>
+<p class="sub">Share target &amp; media session controls</p>
+
+<div class="card">
+  <div class="card-title">Share Target</div>
+  <div style="font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:8px">Share text or images from any app — this app will receive them</div>
+  <div id="shareContent"><div class="empty">Nothing shared yet. Try sharing text or an image from another app.</div></div>
+</div>
+
+<div class="card">
+  <div class="card-title">Media Session</div>
+  <div style="font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:8px">Set up lock screen controls and headphone button handling</div>
+  <input id="songTitle" placeholder="Song title" value="My Podcast">
+  <input id="songArtist" placeholder="Artist" value="iappyxOS Radio">
+  <button class="btn" onclick="startMediaSession()">Activate Media Session</button>
+  <div id="mediaArea" style="display:none">
+    <div class="media-info">
+      <div class="media-title" id="mTitle">-</div>
+      <div class="media-artist" id="mArtist">-</div>
+    </div>
+    <div class="controls">
+      <button class="ctrl-btn" onclick="addLog('Previous')">⏮</button>
+      <button class="ctrl-btn" onclick="addLog('Play')" style="width:52px;height:52px;font-size:22px">▶</button>
+      <button class="ctrl-btn" onclick="addLog('Next')">⏭</button>
+    </div>
+    <div style="font-size:11px;color:rgba(255,255,255,0.3);text-align:center">Try: lock screen controls, headphone buttons, or car mode</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Event Log</div>
+  <div id="log"><div class="empty">Waiting for events...</div></div>
+</div>
+
+<script>
+function init(){
+  if(typeof iappyx==='undefined'){setTimeout(init,50);return;}
+  iappyx.device.setShareCallback('window.onShareReceived');
+  addLog('Share target registered');
+}
+window.addEventListener('load',function(){setTimeout(init,200)});
+
+function addLog(msg){
+  var el=document.getElementById('log');
+  var time=new Date().toLocaleTimeString();
+  el.innerHTML='<div class="log-item"><span style="color:#4fc3f7">'+time+'</span> '+esc(msg)+'</div>'+el.innerHTML;
+}
+
+window.onShareReceived=function(data){
+  var el=document.getElementById('shareContent');
+  if(data.type==='text'){
+    el.innerHTML='<div class="preview"><strong>Shared text:</strong><br>'+esc(data.text)+'</div>';
+    addLog('Received shared text ('+data.text.length+' chars)');
+  } else if(data.type==='image'){
+    el.innerHTML='<div class="preview"><strong>Shared image:</strong><img src="'+data.dataUrl+'"></div>';
+    addLog('Received shared image');
+  }
+  iappyx.vibration.click();
+};
+
+function startMediaSession(){
+  var title=document.getElementById('songTitle').value||'Unknown';
+  var artist=document.getElementById('songArtist').value||'Unknown';
+  iappyx.audio.setMediaSession(JSON.stringify({title:title,artist:artist,album:'iappyxOS'}));
+  document.getElementById('mTitle').textContent=title;
+  document.getElementById('mArtist').textContent=artist;
+  document.getElementById('mediaArea').style.display='block';
+  addLog('Media session active: '+title);
+  iappyx.vibration.click();
+}
+
+window.onMediaButton=function(e){
+  addLog('Media button: '+e.action);
+  iappyx.vibration.tick();
+};
+
+function esc(s){return s?s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):''}
+</script></body></html>

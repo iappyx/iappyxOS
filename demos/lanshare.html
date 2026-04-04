@@ -1,0 +1,200 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>LAN Share</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;padding:20px;display:flex;flex-direction:column;gap:12px}
+h1{font-size:1.3rem;text-align:center}
+.info{background:#1a1a2e;border-radius:12px;padding:14px;font-size:.85rem}
+.info .label{color:rgba(255,255,255,.4);font-size:.75rem}
+.info .val{font-weight:600;font-variant-numeric:tabular-nums;word-break:break-all}
+.peers{background:#1a1a2e;border-radius:12px;padding:14px;flex:0 0 auto}
+.peers h3{font-size:.9rem;margin-bottom:8px;color:rgba(255,255,255,.6)}
+.peer{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.peer:last-child{border:none}
+.dot{width:8px;height:8px;border-radius:50%;background:#69f0ae;flex-shrink:0}
+.peer-name{flex:1;font-size:.9rem}
+.peer-host{font-size:.75rem;color:rgba(255,255,255,.35)}
+.btn{background:#0f3460;border:none;border-radius:10px;padding:10px 14px;color:#fff;font-size:.85rem;cursor:pointer;flex-shrink:0}
+.btn:active{opacity:.7}
+.btn.sm{padding:6px 12px;font-size:.8rem}
+.send-area{background:#1a1a2e;border-radius:12px;padding:14px}
+.send-area textarea{width:100%;background:#0d0d1a;border:none;border-radius:8px;padding:10px;color:#fff;font-size:.9rem;resize:none;height:60px;outline:none;font-family:inherit}
+.send-btns{display:flex;gap:8px;margin-top:8px}
+.msgs{background:#1a1a2e;border-radius:12px;padding:14px;flex:1;overflow-y:auto;min-height:80px}
+.msgs h3{font-size:.9rem;margin-bottom:8px;color:rgba(255,255,255,.6)}
+.msg{padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:.85rem}
+.msg:last-child{border:none}
+.msg .from{color:#4fc3f7;font-size:.75rem}
+.msg img{max-width:100%;border-radius:8px;margin-top:4px}
+.status{text-align:center;font-size:.75rem;color:rgba(255,255,255,.3)}
+</style></head><body>
+<h1>📡 LAN Share</h1>
+<div class="info">
+  <div class="label">Your IP</div>
+  <div class="val" id="ip">Starting...</div>
+  <div class="label" style="margin-top:6px">Device</div>
+  <div class="val" id="devname">—</div>
+</div>
+
+<div class="peers">
+  <h3>Nearby Devices</h3>
+  <div id="peerlist"><div class="status">Searching...</div></div>
+</div>
+
+<div class="send-area">
+  <textarea id="msgtxt" placeholder="Type a message..."></textarea>
+  <div class="send-btns">
+    <button class="btn" onclick="sendTextToAll()" style="flex:1">Send Text</button>
+    <button class="btn" onclick="sendPhoto()" style="flex:1">📸 Send Photo</button>
+  </div>
+</div>
+
+<div class="msgs">
+  <h3>Messages</h3>
+  <div id="msglist"><div class="status">No messages yet</div></div>
+</div>
+
+<div class="status" id="log"></div>
+
+<script>
+var PORT = 8080;
+var SERVICE = '_lanshare._tcp';
+var peers = {};
+var deviceName = '';
+var registeredName = '';
+var myIp = '';
+var resolveCounter = 0;
+
+function init() {
+  if (typeof iappyx === 'undefined') { setTimeout(init, 50); return; }
+  try { deviceName = JSON.parse(iappyx.device.getDeviceInfo()).model || 'Device'; } catch(e) { deviceName = 'Device'; }
+  document.getElementById('devname').textContent = deviceName;
+
+  myIp = iappyx.httpServer.getLocalIpAddress() || '?';
+  document.getElementById('ip').textContent = myIp + ':' + PORT;
+
+  iappyx.httpServer.onRequest('onHttpRequest');
+  iappyx.httpServer.start('' + PORT, 'false', 'onServerStart');
+}
+
+window._iappyxCb = window._iappyxCb || {};
+window._iappyxCb.onServerStart = function(r) {
+  if (!r.ok) { log('Server failed: ' + r.error); return; }
+  PORT = r.port;
+  document.getElementById('ip').textContent = myIp + ':' + PORT;
+  log('Server running on port ' + PORT);
+  iappyx.nsd.register(SERVICE, deviceName, '' + PORT,
+    JSON.stringify({alias: deviceName, ip: myIp}), 'onNsdReg');
+  iappyx.nsd.startDiscovery(SERVICE, 'onNsdEvent');
+};
+
+window._iappyxCb.onNsdReg = function(r) {
+  if (r.ok) {
+    registeredName = r.serviceName;
+    log('Registered as: ' + r.serviceName);
+  } else {
+    log('NSD register failed: ' + r.error);
+  }
+};
+
+function onNsdEvent(evt) {
+  if (evt.event === 'found' && evt.serviceName !== registeredName) {
+    var cbId = 'resolve_' + (++resolveCounter);
+    window._iappyxCb[cbId] = function(r) {
+      if (r.ok) {
+        var name = r.txtRecords && r.txtRecords.alias ? r.txtRecords.alias : evt.serviceName;
+        peers[evt.serviceName] = {host: r.host, port: r.port, name: name};
+        renderPeers();
+      }
+    };
+    iappyx.nsd.resolve(evt.serviceType, evt.serviceName, cbId);
+  } else if (evt.event === 'lost') {
+    delete peers[evt.serviceName];
+    renderPeers();
+  }
+}
+
+function renderPeers() {
+  var el = document.getElementById('peerlist');
+  var keys = Object.keys(peers);
+  if (keys.length === 0) { el.innerHTML = '<div class="status">Searching...</div>'; return; }
+  el.innerHTML = keys.map(function(k) {
+    var p = peers[k];
+    return '<div class="peer"><div class="dot"></div><div class="peer-name">' + esc(p.name) +
+      '<div class="peer-host">' + p.host + ':' + p.port + '</div></div></div>';
+  }).join('');
+}
+
+function onHttpRequest(req) {
+  if (req.method === 'POST' && req.path === '/text') {
+    try {
+      var data = JSON.parse(req.body);
+      addMsg(data.from || 'Unknown', data.text || '');
+    } catch(e) {}
+    iappyx.httpServer.respond(req.requestId, '200', '{"Content-Type":"application/json"}', '{"ok":true}');
+  } else if (req.method === 'POST' && req.path === '/photo') {
+    try {
+      var data = JSON.parse(req.body);
+      if (data.photo) addMsgImg(data.from || 'Unknown', data.photo);
+    } catch(e) {}
+    iappyx.httpServer.respond(req.requestId, '200', '{"Content-Type":"application/json"}', '{"ok":true}');
+  } else {
+    iappyx.httpServer.respond(req.requestId, '200', '{"Content-Type":"text/plain"}', 'LAN Share running');
+  }
+}
+
+function sendTextToAll() {
+  var txt = document.getElementById('msgtxt').value.trim();
+  if (!txt) return;
+  var body = JSON.stringify({from: deviceName, text: txt});
+  Object.keys(peers).forEach(function(k) {
+    var p = peers[k];
+    fetch('http://' + p.host + ':' + p.port + '/text', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: body
+    }).catch(function(e) { log('Send failed to ' + p.name); });
+  });
+  addMsg('You', txt);
+  document.getElementById('msgtxt').value = '';
+}
+
+function sendPhoto() {
+  iappyx.camera.takePhoto('onPhotoTaken');
+}
+
+window._iappyxCb.onPhotoTaken = function(r) {
+  if (!r || !r.ok || !r.dataUrl) return;
+  var b64 = r.dataUrl.replace(/^data:image\/\w+;base64,/, '');
+  addMsgImg('You (photo)', b64);
+  var body = JSON.stringify({from: deviceName, photo: b64});
+  Object.keys(peers).forEach(function(k) {
+    var p = peers[k];
+    fetch('http://' + p.host + ':' + p.port + '/photo', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: body
+    }).catch(function(e) { log('Photo send failed to ' + p.name); });
+  });
+};
+
+function addMsg(from, text) {
+  var el = document.getElementById('msglist');
+  if (el.querySelector('.status')) el.innerHTML = '';
+  el.innerHTML = '<div class="msg"><div class="from">' + esc(from) + '</div>' + esc(text) + '</div>' + el.innerHTML;
+}
+
+function addMsgImg(from, b64) {
+  var el = document.getElementById('msglist');
+  if (el.querySelector('.status')) el.innerHTML = '';
+  el.innerHTML = '<div class="msg"><div class="from">' + esc(from) + '</div><img src="data:image/jpeg;base64,' + b64 + '"></div>' + el.innerHTML;
+}
+
+function log(msg) { document.getElementById('log').textContent = msg; }
+function esc(s) { return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
+
+window.addEventListener('load', function() { setTimeout(init, 200); });
+</script></body></html>

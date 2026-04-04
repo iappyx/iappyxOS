@@ -1,0 +1,252 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Network Files</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;padding:16px;display:flex;flex-direction:column;gap:10px}
+h1{font-size:1.2rem;text-align:center}
+.card{background:#1a1a2e;border-radius:12px;padding:12px}
+.card h3{font-size:.85rem;margin-bottom:6px;color:rgba(255,255,255,.6)}
+input{width:100%;background:#0d0d1a;border:none;border-radius:8px;padding:8px 10px;color:#fff;font-size:.85rem;outline:none;font-family:inherit}
+.btn{background:#0f3460;border:none;border-radius:10px;padding:8px 12px;color:#fff;font-size:.8rem;cursor:pointer}
+.btn:active{opacity:.7}
+.btn.danger{background:#c62828}
+.btn.sm{padding:6px 10px;font-size:.75rem}
+.row{display:flex;gap:6px;align-items:center}
+label{font-size:.7rem;color:rgba(255,255,255,.4);margin-bottom:2px;display:block}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.dot.on{background:#69f0ae}.dot.off{background:#555}
+.path-bar{background:#0d0d1a;border-radius:8px;padding:8px 10px;font-size:.8rem;color:#4fc3f7;word-break:break-all;margin-bottom:6px}
+.files{flex:1;overflow-y:auto;min-height:150px;max-height:400px}
+.file{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer}
+.file:last-child{border:none}
+.file:active{opacity:.7}
+.file .icon{font-size:1.2rem;flex-shrink:0}
+.file .info{flex:1;min-width:0}
+.file .name{font-size:.85rem;word-break:break-all}
+.file .meta{font-size:.7rem;color:rgba(255,255,255,.3)}
+.actions{display:flex;gap:6px;margin-top:8px}
+.status{text-align:center;font-size:.75rem;color:rgba(255,255,255,.3);padding:16px}
+</style></head><body>
+<h1>📂 Network Files</h1>
+
+<div class="card">
+  <h3>Server</h3>
+  <div class="row">
+    <div style="flex:2"><label>Host</label><input id="host" placeholder="192.168.1.x"></div>
+  </div>
+  <div class="row" style="margin-top:4px">
+    <div style="flex:1"><label>User</label><input id="user" placeholder="guest"></div>
+    <div style="flex:1"><label>Password</label><input id="pass" type="password" placeholder="••••"></div>
+  </div>
+  <div class="row" style="margin-top:6px">
+    <button class="btn" onclick="discoverShares()" style="flex:1">🔍 Discover Shares</button>
+    <button class="btn danger" onclick="doDisconnect()" style="flex:1">Disconnect</button>
+  </div>
+  <div id="shareList"></div>
+  <div style="margin-top:4px;font-size:.8rem"><span class="dot off" id="dot"></span><span id="connLabel">Disconnected</span></div>
+</div>
+
+<div class="card" style="flex:1;display:flex;flex-direction:column">
+  <div class="path-bar" id="pathBar">/</div>
+  <div class="files" id="fileList"><div class="status">Discover shares to browse</div></div>
+  <div class="actions">
+    <button class="btn sm" onclick="goUp()">⬆ Up</button>
+    <button class="btn sm" onclick="uploadFile()">⬆ Upload</button>
+    <button class="btn sm" onclick="createFolder()">📁 New Folder</button>
+  </div>
+</div>
+
+<div id="actionSheet" style="display:none;position:fixed;bottom:0;left:0;right:0;background:#1a1a2e;border-radius:16px 16px 0 0;padding:16px;z-index:10">
+  <div style="font-size:.9rem;font-weight:600;margin-bottom:12px" id="actionTitle">File</div>
+  <div id="actionInfo" style="font-size:.75rem;color:rgba(255,255,255,.4);margin-bottom:12px"></div>
+  <button class="btn sm" onclick="actionDownload()" style="width:100%;margin-bottom:6px">⬇ Download</button>
+  <button class="btn sm" onclick="actionRename()" style="width:100%;margin-bottom:6px">✏️ Rename</button>
+  <button class="btn sm" onclick="actionDelete()" style="width:100%;margin-bottom:6px;background:#c62828">🗑 Delete</button>
+  <button class="btn sm" onclick="closeAction()" style="width:100%;background:#0d0d1a">Cancel</button>
+</div>
+
+<script>
+var currentPath = '/';
+var connected = false;
+var selectedFile = null;
+
+function init() { if (typeof iappyx === 'undefined') { setTimeout(init, 50); return; } }
+
+function getAuth() {
+  return { user: document.getElementById('user').value.trim() || 'guest', password: document.getElementById('pass').value };
+}
+
+function discoverShares() {
+  var host = document.getElementById('host').value.trim();
+  if (!host) return;
+  var auth = getAuth();
+  var cbId = 'shares_' + Date.now();
+  window._iappyxCb = window._iappyxCb || {};
+  window._iappyxCb[cbId] = function(r) {
+    var el = document.getElementById('shareList');
+    if (!r.ok) { el.innerHTML = '<div style="color:#ff6b6b;font-size:.8rem;padding:6px">' + esc(r.error) + '</div>'; return; }
+    if (!r.shares || r.shares.length === 0) { el.innerHTML = '<div style="color:rgba(255,255,255,.3);font-size:.8rem;padding:6px">No shares found</div>'; return; }
+    el.innerHTML = r.shares.map(function(s) {
+      return '<div class="file" onclick="connectToShare(\'' + esc(s) + '\')"><div class="icon">📁</div><div class="info"><div class="name">' + esc(s) + '</div></div></div>';
+    }).join('');
+  };
+  iappyx.smb.listShares(host, JSON.stringify(auth), cbId);
+}
+
+function connectToShare(share) {
+  var host = document.getElementById('host').value.trim();
+  var auth = getAuth();
+  var opts = { host: host, share: share, user: auth.user, password: auth.password };
+  var cbId = 'smb_' + Date.now();
+  window._iappyxCb[cbId] = function(r) {
+    if (r.ok) { connected = true; setStatus(true); document.getElementById('shareList').innerHTML = ''; currentPath = '/'; listDir(); }
+    else { setStatus(false); alert('Connect failed: ' + r.error); }
+  };
+  iappyx.smb.connect(JSON.stringify(opts), cbId);
+}
+
+function listDir() {
+  document.getElementById('pathBar').textContent = currentPath;
+  document.getElementById('fileList').innerHTML = '<div class="status">Loading...</div>';
+  var cbId = 'ls_' + Date.now();
+  window._iappyxCb[cbId] = function(r) {
+    var el = document.getElementById('fileList');
+    if (!r.ok) { el.innerHTML = '<div class="status" style="color:#ff6b6b">' + esc(r.error) + '</div>'; return; }
+    if (!r.files || r.files.length === 0) { el.innerHTML = '<div class="status">Empty folder</div>'; return; }
+    var sorted = r.files.sort(function(a,b) { return (b.isDir?1:0)-(a.isDir?1:0) || a.name.localeCompare(b.name); });
+    el.innerHTML = sorted.map(function(f) {
+      var icon = f.isDir ? '📁' : fileIcon(f.name);
+      var sz = f.isDir ? '' : formatSize(f.size);
+      var date = f.modified ? new Date(f.modified).toLocaleDateString() : '';
+      var tap = f.isDir ? "navDir('" + esc(f.name) + "')" : "showActions('" + esc(f.name) + "')";
+      return '<div class="file" onclick="' + tap + '">' +
+        '<div class="icon">' + icon + '</div><div class="info"><div class="name">' + esc(f.name) + '</div>' +
+        '<div class="meta">' + sz + (sz && date ? ' · ' : '') + date + '</div></div></div>';
+    }).join('');
+  };
+  iappyx.smb.listDir(currentPath, cbId);
+}
+
+function navDir(name) { currentPath += name + '/'; listDir(); }
+function goUp() {
+  if (currentPath === '/') return;
+  var parts = currentPath.split('/').filter(function(p) { return p; });
+  parts.pop();
+  currentPath = '/' + (parts.length ? parts.join('/') + '/' : '');
+  listDir();
+}
+
+function showActions(name) {
+  selectedFile = name;
+  document.getElementById('actionTitle').textContent = name;
+  document.getElementById('actionInfo').textContent = 'Loading...';
+  document.getElementById('actionSheet').style.display = '';
+  var cbId = 'info_' + Date.now();
+  window._iappyxCb[cbId] = function(r) {
+    if (r.ok && r.exists) {
+      document.getElementById('actionInfo').textContent = formatSize(r.size) + (r.modified ? ' · ' + new Date(r.modified).toLocaleString() : '') + (r.hidden ? ' · Hidden' : '');
+    } else {
+      document.getElementById('actionInfo').textContent = '';
+    }
+  };
+  iappyx.smb.getFileInfo(currentPath + name, cbId);
+}
+
+function closeAction() { document.getElementById('actionSheet').style.display = 'none'; selectedFile = null; }
+
+function actionDownload() {
+  if (!selectedFile) return;
+  closeAction();
+  var name = selectedFile;
+  var cbId = 'dl_' + Date.now();
+  window._iappyxCb[cbId] = function(r) {
+    if (r.ok) { iappyx.storage.copyFileToDownloads(r.filePath, name, 'application/octet-stream'); alert('Saved to Downloads: ' + name); }
+    else alert('Download failed: ' + r.error);
+  };
+  iappyx.smb.download(currentPath + name, 'smb_dl_' + Date.now(), cbId);
+}
+
+function actionRename() {
+  if (!selectedFile) return;
+  var newName = prompt('New name:', selectedFile);
+  if (!newName || newName === selectedFile) { closeAction(); return; }
+  closeAction();
+  var cbId = 'ren_' + Date.now();
+  window._iappyxCb[cbId] = function(r) {
+    if (r.ok) listDir();
+    else alert('Rename failed: ' + r.error);
+  };
+  iappyx.smb.rename(currentPath + selectedFile, currentPath + newName, cbId);
+}
+
+function actionDelete() {
+  if (!selectedFile) return;
+  if (!confirm('Delete ' + selectedFile + '?')) { closeAction(); return; }
+  closeAction();
+  var name = selectedFile;
+  var cbId = 'del_' + Date.now();
+  window._iappyxCb[cbId] = function(r) {
+    if (r.ok) listDir();
+    else alert('Delete failed: ' + r.error);
+  };
+  iappyx.smb.delete(currentPath + name, cbId);
+}
+
+function uploadFile() {
+  var cbId = 'pick_' + Date.now();
+  window._iappyxCb[cbId] = function(r) {
+    if (!r.ok) return;
+    var ulCb = 'ul_' + Date.now();
+    window._iappyxCb[ulCb] = function(r2) { if (r2.ok) listDir(); else alert('Upload failed: ' + r2.error); };
+    iappyx.smb.upload(r.filePath, currentPath + r.name, ulCb);
+  };
+  iappyx.storage.pickFile(cbId);
+}
+
+function createFolder() {
+  var name = prompt('Folder name:');
+  if (!name) return;
+  var cbId = 'mkdir_' + Date.now();
+  window._iappyxCb[cbId] = function(r) { if (r.ok) listDir(); else alert('Failed: ' + r.error); };
+  iappyx.smb.mkdir(currentPath + name, cbId);
+}
+
+function doDisconnect() {
+  iappyx.smb.disconnect(); connected = false; setStatus(false);
+  document.getElementById('fileList').innerHTML = '<div class="status">Discover shares to browse</div>';
+  document.getElementById('pathBar').textContent = '/';
+  document.getElementById('shareList').innerHTML = '';
+}
+
+function setStatus(on) {
+  document.getElementById('dot').className = 'dot ' + (on ? 'on' : 'off');
+  document.getElementById('connLabel').textContent = on ? 'Connected' : 'Disconnected';
+}
+
+function fileIcon(name) {
+  var ext = name.split('.').pop().toLowerCase();
+  if (['jpg','jpeg','png','gif','webp','bmp'].includes(ext)) return '🖼️';
+  if (['mp4','avi','mkv','mov','wmv'].includes(ext)) return '🎬';
+  if (['mp3','wav','flac','aac','ogg','m4a'].includes(ext)) return '🎵';
+  if (['pdf'].includes(ext)) return '📕';
+  if (['doc','docx','txt','rtf'].includes(ext)) return '📝';
+  if (['zip','rar','7z','tar','gz'].includes(ext)) return '📦';
+  return '📄';
+}
+function formatSize(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  if (b < 1073741824) return (b/1048576).toFixed(1) + ' MB';
+  return (b/1073741824).toFixed(1) + ' GB';
+}
+function esc(s) { return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;') : ''; }
+
+window.addEventListener('load', function() { setTimeout(init, 200); });
+</script></body></html>

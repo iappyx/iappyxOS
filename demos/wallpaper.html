@@ -1,0 +1,146 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Wallpaper</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;padding:16px}
+h1{font-size:20px;text-align:center;margin-bottom:4px}
+.sub{text-align:center;font-size:11px;color:rgba(255,255,255,0.4);margin-bottom:16px}
+.card{background:#1a1a2e;border-radius:12px;padding:16px;margin-bottom:12px}
+.card-title{font-size:13px;color:#4fc3f7;font-weight:600;margin-bottom:10px}
+.btn{background:#4fc3f7;color:#0d0d1a;border:none;border-radius:50px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;width:100%;margin-bottom:10px}
+.btn:active{opacity:0.8}
+.btn-outline{background:transparent;border:1.5px solid #4fc3f7;color:#4fc3f7}
+.preview{width:100%;max-height:300px;object-fit:contain;border-radius:8px;margin-bottom:10px;display:none}
+.colors{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+.color-btn{height:60px;border-radius:8px;border:2px solid transparent;cursor:pointer}
+.color-btn.active{border-color:#4fc3f7}
+.gradient-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}
+.gradient-btn{height:80px;border-radius:8px;border:2px solid transparent;cursor:pointer}
+.gradient-btn.active{border-color:#4fc3f7}
+.target-row{display:flex;gap:6px;margin-bottom:12px}
+.target-btn{flex:1;padding:10px;border-radius:8px;border:1.5px solid rgba(255,255,255,0.15);background:transparent;color:rgba(255,255,255,0.5);font-size:12px;cursor:pointer;text-align:center}
+.target-btn.active{border-color:#4fc3f7;color:#4fc3f7;background:rgba(79,195,247,0.1)}
+.status{text-align:center;font-size:13px;color:#69f0ae;margin-top:8px;min-height:20px}
+canvas{display:none}
+</style></head><body>
+<h1>Wallpaper</h1>
+<p class="sub">Set your device wallpaper</p>
+
+<div class="card">
+  <div class="card-title">Apply To</div>
+  <div class="target-row">
+    <button class="target-btn active" onclick="setTarget('both',this)">Both</button>
+    <button class="target-btn" onclick="setTarget('home',this)">Home Screen</button>
+    <button class="target-btn" onclick="setTarget('lock',this)">Lock Screen</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">From Camera</div>
+  <img id="photoPreview" class="preview">
+  <button class="btn btn-outline" onclick="takePhoto()">Take Photo</button>
+  <button class="btn" onclick="setFromPhoto()" id="setPhotoBtn" style="display:none">Set as Wallpaper</button>
+</div>
+
+<div class="card">
+  <div class="card-title">Solid Color</div>
+  <div class="colors" id="colors"></div>
+  <button class="btn" onclick="setColorWallpaper()">Set Color Wallpaper</button>
+</div>
+
+<div class="card">
+  <div class="card-title">Gradient</div>
+  <div class="gradient-grid" id="gradients"></div>
+  <button class="btn" onclick="setGradientWallpaper()">Set Gradient Wallpaper</button>
+</div>
+
+<div class="status" id="status"></div>
+<canvas id="cv" width="1080" height="1920"></canvas>
+
+<script>
+var photoData=null, selColor='#0d0d1a', selGradient=0, wpTarget='both';
+var solidColors=['#0d0d1a','#1a1a2e','#0f3460','#16213e','#1b262c','#2d4059','#3a0ca3','#480ca8','#560bad','#7209b7','#b5179e','#f72585','#ef233c','#d90429','#e63946','#264653','#2a9d8f','#e9c46a','#f4a261','#e76f51'];
+var gradients=[
+  ['#0d0d1a','#0f3460'],['#16213e','#e94560'],['#1a1a2e','#4fc3f7'],['#0f0c29','#302b63'],
+  ['#2d4059','#ea5455'],['#1b262c','#3282b8'],['#0d0d1a','#69f0ae'],['#1a1a2e','#f72585']
+];
+
+function init(){if(typeof iappyx==='undefined'){setTimeout(init,50);return;}buildUI();}
+window.addEventListener('load',function(){setTimeout(init,200)});
+
+function setTarget(t,el){
+  wpTarget=t;
+  document.querySelectorAll('.target-btn').forEach(function(b){b.className='target-btn'});
+  el.className='target-btn active';
+}
+
+function applyWallpaper(data){
+  iappyx.device.setWallpaperTarget(data, wpTarget);
+  var label=wpTarget==='both'?'home + lock':wpTarget+' screen';
+  setStatus('Wallpaper set on '+label+'!');
+  iappyx.vibration.click();
+}
+
+function buildUI(){
+  var ch=document.getElementById('colors');
+  solidColors.forEach(function(c,i){
+    var d=document.createElement('div');
+    d.className='color-btn'+(i===0?' active':'');
+    d.style.background=c;
+    d.onclick=function(){selColor=c;document.querySelectorAll('.color-btn').forEach(function(b){b.className='color-btn'});d.className='color-btn active';};
+    ch.appendChild(d);
+  });
+  var gh=document.getElementById('gradients');
+  gradients.forEach(function(g,i){
+    var d=document.createElement('div');
+    d.className='gradient-btn'+(i===0?' active':'');
+    d.style.background='linear-gradient(135deg,'+g[0]+','+g[1]+')';
+    d.onclick=function(){selGradient=i;document.querySelectorAll('.gradient-btn').forEach(function(b){b.className='gradient-btn'});d.className='gradient-btn active';};
+    gh.appendChild(d);
+  });
+}
+
+function takePhoto(){
+  var cbId='wp_'+Date.now();
+  window._iappyxCb=window._iappyxCb||{};
+  window._iappyxCb[cbId]=function(r){
+    if(r.ok){
+      photoData=r.dataUrl;
+      var img=document.getElementById('photoPreview');
+      img.src=r.dataUrl;img.style.display='block';
+      document.getElementById('setPhotoBtn').style.display='block';
+      setStatus('Photo ready — tap to set as wallpaper');
+    }else{setStatus('Camera error: '+(r.error||'unknown'));}
+  };
+  iappyx.camera.takePhoto(cbId);
+}
+
+function setFromPhoto(){
+  if(!photoData){setStatus('Take a photo first');return;}
+  applyWallpaper(photoData);
+}
+
+function setColorWallpaper(){
+  var cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+  ctx.fillStyle=selColor;ctx.fillRect(0,0,1080,1920);
+  applyWallpaper(cv.toDataURL('image/jpeg',0.9));
+}
+
+function setGradientWallpaper(){
+  var cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+  var g=ctx.createLinearGradient(0,0,1080,1920);
+  g.addColorStop(0,gradients[selGradient][0]);
+  g.addColorStop(1,gradients[selGradient][1]);
+  ctx.fillStyle=g;ctx.fillRect(0,0,1080,1920);
+  applyWallpaper(cv.toDataURL('image/jpeg',0.9));
+}
+
+function setStatus(msg){document.getElementById('status').textContent=msg;setTimeout(function(){document.getElementById('status').textContent='';},3000);}
+</script></body></html>

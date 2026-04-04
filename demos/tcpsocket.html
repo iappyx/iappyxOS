@@ -1,0 +1,132 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>TCP Socket</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;padding:20px;display:flex;flex-direction:column;gap:12px}
+h1{font-size:1.3rem;text-align:center}
+.card{background:#1a1a2e;border-radius:12px;padding:14px}
+.card h3{font-size:.9rem;margin-bottom:8px;color:rgba(255,255,255,.6)}
+input{width:100%;background:#0d0d1a;border:none;border-radius:8px;padding:10px;color:#fff;font-size:.9rem;outline:none;font-family:inherit}
+.btn{background:#0f3460;border:none;border-radius:10px;padding:10px 14px;color:#fff;font-size:.85rem;cursor:pointer}
+.btn:active{opacity:.7}
+.btn.danger{background:#c62828}
+.row{display:flex;gap:8px;align-items:center}
+label{font-size:.75rem;color:rgba(255,255,255,.4);margin-bottom:4px;display:block}
+.toggle{display:flex;align-items:center;gap:8px;font-size:.85rem;padding:4px 0}
+.toggle input{width:auto}
+.log{background:#0d0d1a;border-radius:8px;padding:10px;font-size:.8rem;font-family:monospace;white-space:pre-wrap;word-break:break-all;max-height:250px;overflow-y:auto;color:#69f0ae;min-height:60px}
+.log .rx{color:#4fc3f7}.log .err{color:#ff6b6b}.log .sys{color:rgba(255,255,255,.3)}
+.status{text-align:center;font-size:.75rem;color:rgba(255,255,255,.3)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.dot.on{background:#69f0ae}.dot.off{background:#555}
+</style></head><body>
+<h1>🔌 TCP Socket</h1>
+
+<div class="card">
+  <h3>Connect</h3>
+  <div class="row">
+    <div style="flex:2"><label>Host</label><input id="host" placeholder="192.168.1.x"></div>
+    <div style="flex:1"><label>Port</label><input id="port" value="8080"></div>
+  </div>
+  <div class="toggle">
+    <input type="checkbox" id="tls"> <span>Use TLS</span>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <button class="btn" onclick="doConnect()" style="flex:1">Connect</button>
+    <button class="btn danger" onclick="doClose()" style="flex:1">Disconnect</button>
+  </div>
+  <div style="margin-top:8px"><span class="dot" id="dot"></span><span id="connLabel">Disconnected</span></div>
+</div>
+
+<div class="card">
+  <h3>Send</h3>
+  <div class="row">
+    <input id="msg" placeholder="Type data to send..." style="flex:1">
+    <button class="btn" onclick="doSend()">Send</button>
+  </div>
+  <div class="toggle">
+    <input type="checkbox" id="hexMode"> <span>Hex mode</span>
+  </div>
+</div>
+
+<div class="card">
+  <h3>Log</h3>
+  <div class="log" id="log"><span class="sys">Ready to connect...</span></div>
+</div>
+
+<script>
+function init() {
+  if (typeof iappyx === 'undefined') { setTimeout(init, 50); return; }
+  iappyx.tcp.onData('onTcpData');
+  iappyx.tcp.onClose('onTcpClose');
+}
+
+function doConnect() {
+  var host = document.getElementById('host').value.trim();
+  var port = document.getElementById('port').value.trim();
+  var tls = document.getElementById('tls').checked;
+  if (!host || !port) return;
+  addLog('sys', 'Connecting to ' + host + ':' + port + (tls ? ' (TLS)' : '') + '...');
+  var cbId = 'tcp_' + Date.now();
+  window._iappyxCb = window._iappyxCb || {};
+  window._iappyxCb[cbId] = function(r) {
+    if (r.ok) {
+      addLog('sys', 'Connected!');
+      setStatus(true);
+    } else {
+      addLog('err', 'Connect failed: ' + r.error);
+      setStatus(false);
+    }
+  };
+  iappyx.tcp.open(host, port, tls ? 'true' : 'false', cbId);
+}
+
+function doSend() {
+  var txt = document.getElementById('msg').value;
+  if (!txt) return;
+  if (document.getElementById('hexMode').checked) {
+    iappyx.tcp.sendHex(txt);
+    addLog('sys', 'TX (hex): ' + txt);
+  } else {
+    iappyx.tcp.send(txt);
+    addLog('sys', 'TX: ' + txt);
+  }
+  document.getElementById('msg').value = '';
+}
+
+function onTcpData(evt) {
+  addLog('rx', 'RX [' + evt.length + 'b]: ' + evt.data);
+}
+
+function onTcpClose() {
+  addLog('err', 'Connection closed');
+  setStatus(false);
+}
+
+function doClose() {
+  iappyx.tcp.close();
+  addLog('sys', 'Disconnected');
+  setStatus(false);
+}
+
+function setStatus(on) {
+  document.getElementById('dot').className = 'dot ' + (on ? 'on' : 'off');
+  document.getElementById('connLabel').textContent = on ? 'Connected' : 'Disconnected';
+}
+
+function addLog(cls, text) {
+  var el = document.getElementById('log');
+  el.innerHTML += '\n<span class="' + cls + '">' + esc(text) + '</span>';
+  el.scrollTop = el.scrollHeight;
+}
+function esc(s) { return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
+
+window.addEventListener('load', function() { setTimeout(init, 200); });
+</script></body></html>

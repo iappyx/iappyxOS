@@ -1,0 +1,52 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Audio Player</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px}
+h1{font-size:1.4rem}
+input{width:100%;max-width:320px;background:#1a1a2e;border:none;border-radius:12px;padding:12px 14px;color:#fff;font-size:.85rem;outline:none}
+.btn{background:#0f3460;border:none;border-radius:12px;padding:14px;color:#fff;font-size:1rem;cursor:pointer;width:100%;max-width:320px}
+.btn:active{opacity:.7}.btn+.btn{margin-top:8px;background:#1a1a2e}
+input[type=range]{width:100%;max-width:320px;accent-color:#4FC3F7}
+.label{font-size:.8rem;color:rgba(255,255,255,.4);align-self:flex-start;max-width:320px}
+.status{font-size:.85rem;color:rgba(255,255,255,.5)}
+</style></head><body>
+<h1>🎵 Audio Player</h1>
+<div class="label">Audio URL</div>
+<input id="url" type="url" placeholder="https://example.com/audio.mp3">
+<div class="label">Volume</div>
+<input type="range" id="vol" min="0" max="1" step="0.1" value="1" oninput="setVol(this.value)">
+<button class="btn" onclick="play()">▶ Play</button>
+<button class="btn" onclick="iappyx.audio.setLooping(true)">🔁 Enable Loop</button>
+<button class="btn" onclick="stop()">⏹ Stop</button>
+<div class="label" style="margin-top:8px">Audio Focus</div>
+<button class="btn" onclick="reqFocus()">🎧 Request Focus</button>
+<button class="btn" onclick="iappyx.audio.abandonFocus();st('Focus released')">🔇 Abandon Focus</button>
+<div class="status" id="status">Enter a URL and tap Play</div>
+<script>
+function init(){if(typeof iappyx==='undefined'){setTimeout(init,50);return;}}
+function play(){
+  var url=document.getElementById('url').value.trim();
+  if(!url){document.getElementById('status').textContent='Enter a URL';return;}
+  iappyx.audio.requestFocus('window.onFocus');
+  iappyx.audio.play(url);
+  st('Playing...');
+}
+function stop(){iappyx.audio.stop();iappyx.audio.abandonFocus();st('Stopped');}
+function setVol(v){if(typeof iappyx!=='undefined')iappyx.audio.setVolume(parseFloat(v));}
+function reqFocus(){iappyx.audio.requestFocus('window.onFocus');st('Focus requested');}
+function st(m){document.getElementById('status').textContent=m;}
+window.onFocus=function(e){
+  if(e.type==='loss'||e.type==='lossTransient'){iappyx.audio.pause();st('Paused (focus '+e.type+')');}
+  else if(e.type==='duck'){iappyx.audio.setVolume(0.2);st('Ducking...');}
+  else if(e.type==='gain'){iappyx.audio.setVolume(parseFloat(document.getElementById('vol').value));iappyx.audio.resume();st('Resumed (focus gain)');}
+};
+window.addEventListener('load',function(){setTimeout(init,100)});
+</script></body></html>

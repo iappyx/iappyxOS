@@ -1,0 +1,54 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Alarm</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;text-align:center}
+h1{font-size:1.4rem}
+input[type=time]{background:#1a1a2e;border:none;border-radius:12px;padding:16px;color:#fff;font-size:1.5rem;outline:none;text-align:center;width:100%;max-width:280px}
+.btn{background:#0f3460;border:none;border-radius:12px;padding:14px;color:#fff;font-size:1rem;cursor:pointer;width:100%;max-width:280px}
+.btn:active{opacity:.7}.btn.danger{background:#3d1a1a}
+.status{font-size:.85rem;color:rgba(255,255,255,.5);min-height:1.2em}
+.scheduled{font-size:.8rem;color:#4FC3F7}
+</style></head><body>
+<h1>⏰ Alarm</h1>
+<input type="time" id="timePicker">
+<button class="btn" onclick="setAlarm()">⏰ Set Alarm</button>
+<button class="btn danger" onclick="cancelAlarm()">✕ Cancel</button>
+<div class="status" id="status">Pick a time and tap Set Alarm</div>
+<div class="scheduled" id="scheduled"></div>
+<script>
+function init(){
+  if(typeof iappyx==='undefined'){setTimeout(init,50);return;}
+  var ts=iappyx.alarm.getScheduled();
+  if(ts) document.getElementById('scheduled').textContent='Alarm: '+new Date(parseInt(ts)).toLocaleTimeString();
+}
+window.onAlarm=function(){
+  document.getElementById('status').textContent='ALARM FIRED!';
+  document.body.style.background='#1a0000';
+  iappyx.vibration.pattern('0,500,200,500,200,500');
+  iappyx.notification.send('Alarm','Wake up!');
+};
+function setAlarm(){
+  var t=document.getElementById('timePicker').value;
+  if(!t){document.getElementById('status').textContent='Pick a time';return;}
+  var p=t.split(':'), now=new Date();
+  var alarm=new Date(now.getFullYear(),now.getMonth(),now.getDate(),parseInt(p[0]),parseInt(p[1]),0);
+  if(alarm<=now) alarm.setDate(alarm.getDate()+1);
+  iappyx.alarm.set(alarm.getTime(),'window.onAlarm');
+  document.getElementById('status').textContent='Alarm set!';
+  document.getElementById('scheduled').textContent='Fires at '+alarm.toLocaleTimeString();
+}
+function cancelAlarm(){
+  iappyx.alarm.cancel();
+  document.getElementById('status').textContent='Cancelled';
+  document.getElementById('scheduled').textContent='';
+}
+window.addEventListener('load',function(){setTimeout(init,100)});
+</script></body></html>

@@ -1,0 +1,25 @@
+name: iappyxos
+description: iappyxOS — AI-powered app generator.
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  webview_flutter: ^4.10.0
+  path_provider: ^2.1.0
+  file_picker: ^8.0.0
+  shared_preferences: ^2.5.3
+  flutter_secure_storage: ^9.2.4
+  http: ^1.6.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/shell_template.apk
+    - assets/shell_template_web.apk
+    - assets/system_prompt.md
+    - assets/ic_launcher.png

@@ -1,0 +1,66 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Sensor</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px}
+h1{font-size:1.4rem}
+.card{background:#1a1a2e;border-radius:16px;padding:20px 24px;width:100%;max-width:320px}
+.row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:.9rem}
+.row:last-child{border:none}.label{color:rgba(255,255,255,.4)}.val{font-weight:600;font-variant-numeric:tabular-nums}
+.btns{display:flex;gap:10px;width:100%;max-width:320px}
+.btn{flex:1;background:#0f3460;border:none;border-radius:12px;padding:14px;color:#fff;font-size:.9rem;cursor:pointer}
+.btn:active{opacity:.7}.btn.stop{background:#1a1a2e}
+canvas{width:100%;max-width:320px;height:100px;background:#1a1a2e;border-radius:12px}
+</style></head><body>
+<h1>📡 Sensor</h1>
+<div class="card">
+  <div class="row"><span class="label">X</span><span class="val" id="x">-</span></div>
+  <div class="row"><span class="label">Y</span><span class="val" id="y">-</span></div>
+  <div class="row"><span class="label">Z</span><span class="val" id="z">-</span></div>
+  <div class="row"><span class="label">Sensor</span><span class="val" id="type">stopped</span></div>
+</div>
+<canvas id="c"></canvas>
+<div class="btns">
+  <button class="btn" onclick="startAccel()">📱 Accel</button>
+  <button class="btn" onclick="startGyro()">🌀 Gyro</button>
+  <button class="btn stop" onclick="stop()">⏹ Stop</button>
+</div>
+<script>
+var history=[], canvas=document.getElementById('c'), ctx=canvas.getContext('2d');
+canvas.width=320; canvas.height=100;
+window.onSensor=function(d){
+  document.getElementById('x').textContent=d.x.toFixed(3);
+  document.getElementById('y').textContent=d.y.toFixed(3);
+  document.getElementById('z').textContent=d.z.toFixed(3);
+  history.push(d.x); if(history.length>64) history.shift();
+  ctx.fillStyle='#1a1a2e'; ctx.fillRect(0,0,320,100);
+  ctx.strokeStyle='#4FC3F7'; ctx.lineWidth=2; ctx.beginPath();
+  history.forEach(function(v,i){
+    var x=i*(320/64), y=50-v*4;
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }); ctx.stroke();
+};
+function startAccel(){
+  if(typeof iappyx==='undefined')return;
+  iappyx.sensor.startAccelerometer('window.onSensor');
+  document.getElementById('type').textContent='accelerometer';
+}
+function startGyro(){
+  if(typeof iappyx==='undefined')return;
+  iappyx.sensor.startGyroscope('window.onSensor');
+  document.getElementById('type').textContent='gyroscope';
+}
+function stop(){
+  if(typeof iappyx!=='undefined') iappyx.sensor.stop();
+  document.getElementById('type').textContent='stopped';
+}
+function init(){if(typeof iappyx==='undefined'){setTimeout(init,50);return;} startAccel();}
+window.addEventListener('load',function(){setTimeout(init,100)});
+</script></body></html>

@@ -1,0 +1,228 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Media Gallery</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;padding:16px}
+h1{font-size:20px;text-align:center;margin-bottom:4px}
+.sub{text-align:center;font-size:11px;color:rgba(255,255,255,0.4);margin-bottom:16px}
+.tabs{display:flex;gap:4px;margin-bottom:16px}
+.tab{flex:1;padding:10px;border-radius:8px;border:1.5px solid rgba(255,255,255,0.15);background:transparent;color:rgba(255,255,255,0.5);font-size:13px;cursor:pointer;text-align:center}
+.tab.active{border-color:#4fc3f7;color:#4fc3f7;background:rgba(79,195,247,0.1)}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px}
+.thumb{aspect-ratio:1;border-radius:8px;object-fit:cover;width:100%;cursor:pointer;background:#1a1a2e}
+.list-item{background:#1a1a2e;border-radius:10px;padding:12px;margin-bottom:8px;display:flex;align-items:center;gap:12px;cursor:pointer}
+.list-icon{width:44px;height:44px;border-radius:8px;background:#0f3460;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.list-info{flex:1;min-width:0}
+.list-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.list-meta{font-size:11px;color:rgba(255,255,255,0.4)}
+.btn{background:#4fc3f7;color:#0d0d1a;border:none;border-radius:50px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;width:100%;margin-bottom:10px}
+.btn:active{opacity:0.8}
+.btn-outline{background:transparent;border:1.5px solid #4fc3f7;color:#4fc3f7}
+.overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.9);z-index:10;display:none;align-items:center;justify-content:center;flex-direction:column;padding:16px;overflow-y:auto}
+.overlay img{max-width:100%;max-height:60vh;border-radius:8px}
+.overlay .close{position:absolute;top:16px;right:16px;font-size:28px;color:#fff;cursor:pointer;z-index:11}
+.meta{background:#1a1a2e;border-radius:8px;padding:12px;margin-top:12px;font-size:12px;color:rgba(255,255,255,0.5);width:100%;max-width:400px}
+.meta-row{display:flex;justify-content:space-between;padding:3px 0}
+.meta-label{color:rgba(255,255,255,0.3)}
+.overlay-actions{display:flex;gap:8px;margin-top:10px}
+.overlay-btn{padding:10px 20px;border-radius:50px;border:1.5px solid #4fc3f7;background:transparent;color:#4fc3f7;font-size:13px;cursor:pointer}
+.empty{text-align:center;color:rgba(255,255,255,0.3);padding:40px 0;font-size:14px}
+.status{text-align:center;font-size:13px;color:#69f0ae;min-height:20px;margin-bottom:8px}
+</style></head><body>
+<h1>Media Gallery</h1>
+<p class="sub">Browse photos, videos & music on your device</p>
+
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('photos',this)">Photos</button>
+  <button class="tab" onclick="switchTab('videos',this)">Videos</button>
+  <button class="tab" onclick="switchTab('audio',this)">Music</button>
+</div>
+
+<button class="btn btn-outline" onclick="pickImage()" id="pickBtn">Pick from Gallery</button>
+<div class="status" id="status"></div>
+<div id="content"><div class="empty">Tap a tab to load media</div></div>
+
+<div class="overlay" id="overlay">
+  <span class="close" onclick="closeOverlay()">&times;</span>
+  <img id="overlayImg">
+  <div id="metaInfo" class="meta" style="display:none"></div>
+  <div class="overlay-actions">
+    <button class="overlay-btn" id="saveBtn" style="display:none" onclick="saveCurrentImage()">Save to Gallery</button>
+    <button class="overlay-btn" onclick="closeOverlay()">Close</button>
+  </div>
+</div>
+
+<script>
+var currentTab='photos';
+function init(){if(typeof iappyx==='undefined'){setTimeout(init,50);return;}loadPhotos();}
+window.addEventListener('load',function(){setTimeout(init,200)});
+
+function switchTab(tab,el){
+  currentTab=tab;
+  document.querySelectorAll('.tab').forEach(function(t){t.className='tab'});
+  el.className='tab active';
+  document.getElementById('pickBtn').style.display=tab==='photos'?'block':'none';
+  if(tab==='photos') loadPhotos();
+  else if(tab==='videos') loadVideos();
+  else loadAudio();
+}
+
+function loadPhotos(){
+  document.getElementById('content').innerHTML='<div class="empty">Loading...</div>';
+  var cbId='gimg_'+Date.now();
+  window._iappyxCb=window._iappyxCb||{};
+  window._iappyxCb[cbId]=function(r){
+    if(!r.ok){document.getElementById('content').innerHTML='<div class="empty">'+r.error+'</div>';return;}
+    if(!r.images.length){document.getElementById('content').innerHTML='<div class="empty">No photos found</div>';return;}
+    var html='<div class="grid">';
+    r.images.forEach(function(img){
+      html+='<div class="thumb" style="background:#1a1a2e" onclick="loadThumb('+img.id+')" id="t'+img.id+'"></div>';
+    });
+    html+='</div>';
+    document.getElementById('content').innerHTML=html;
+    // Load thumbnails
+    r.images.slice(0,30).forEach(function(img){loadThumb(img.id);});
+  };
+  iappyx.media.getImages(cbId,30);
+}
+
+function loadThumb(id){
+  var cbId='th_'+id+'_'+Date.now();
+  window._iappyxCb=window._iappyxCb||{};
+  window._iappyxCb[cbId]=function(r){
+    if(r.ok){
+      var el=document.getElementById('t'+id);
+      if(el){
+        var img=document.createElement('img');
+        img.className='thumb';img.src=r.dataUrl;
+        img.onclick=function(){showFull(id);};
+        el.replaceWith(img);
+      }
+    }
+  };
+  iappyx.media.loadThumbnail(cbId,id);
+}
+
+var currentImgDataUrl=null;
+function showFull(id){
+  document.getElementById('status').textContent='Loading...';
+  var cbId='full_'+Date.now();
+  window._iappyxCb=window._iappyxCb||{};
+  window._iappyxCb[cbId]=function(r){
+    document.getElementById('status').textContent='';
+    if(r.ok){
+      currentImgDataUrl=r.dataUrl;
+      document.getElementById('overlayImg').src=r.dataUrl;
+      document.getElementById('saveBtn').style.display='inline-block';
+      document.getElementById('overlay').style.display='flex';
+      loadMeta(id,'image');
+    }
+  };
+  iappyx.media.loadImage(cbId,id);
+}
+
+function loadMeta(id,type){
+  var cbId='meta_'+Date.now();
+  window._iappyxCb=window._iappyxCb||{};
+  window._iappyxCb[cbId]=function(r){
+    var el=document.getElementById('metaInfo');
+    if(!r.ok){el.style.display='none';return;}
+    var html='';
+    if(r.title) html+='<div class="meta-row"><span class="meta-label">Title</span><span>'+esc(r.title)+'</span></div>';
+    if(r.artist) html+='<div class="meta-row"><span class="meta-label">Artist</span><span>'+esc(r.artist)+'</span></div>';
+    if(r.album) html+='<div class="meta-row"><span class="meta-label">Album</span><span>'+esc(r.album)+'</span></div>';
+    if(r.duration) html+='<div class="meta-row"><span class="meta-label">Duration</span><span>'+Math.round(r.duration/1000)+'s</span></div>';
+    if(r.width&&r.height) html+='<div class="meta-row"><span class="meta-label">Size</span><span>'+r.width+'×'+r.height+'</span></div>';
+    if(r.bitrate) html+='<div class="meta-row"><span class="meta-label">Bitrate</span><span>'+Math.round(r.bitrate/1000)+' kbps</span></div>';
+    if(r.mimeType) html+='<div class="meta-row"><span class="meta-label">Type</span><span>'+r.mimeType+'</span></div>';
+    if(r.date) html+='<div class="meta-row"><span class="meta-label">Date</span><span>'+r.date+'</span></div>';
+    el.innerHTML=html;el.style.display=html?'block':'none';
+  };
+  iappyx.media.getMetadata(cbId,id,type);
+}
+
+function saveCurrentImage(){
+  if(!currentImgDataUrl) return;
+  var cbId='save_'+Date.now();
+  window._iappyxCb=window._iappyxCb||{};
+  window._iappyxCb[cbId]=function(r){
+    document.getElementById('status').textContent=r.ok?'Saved to gallery!':'Save failed: '+(r.error||'');
+  };
+  iappyx.media.saveToGallery(cbId,currentImgDataUrl,'');
+  iappyx.vibration.tick();
+}
+
+function closeOverlay(){
+  document.getElementById('overlay').style.display='none';
+  document.getElementById('metaInfo').style.display='none';
+  document.getElementById('saveBtn').style.display='none';
+  currentImgDataUrl=null;
+}
+
+function loadVideos(){
+  document.getElementById('content').innerHTML='<div class="empty">Loading...</div>';
+  var cbId='gvid_'+Date.now();
+  window._iappyxCb=window._iappyxCb||{};
+  window._iappyxCb[cbId]=function(r){
+    if(!r.ok){document.getElementById('content').innerHTML='<div class="empty">'+r.error+'</div>';return;}
+    if(!r.videos.length){document.getElementById('content').innerHTML='<div class="empty">No videos found</div>';return;}
+    var html='';
+    r.videos.forEach(function(v){
+      var dur=v.duration?Math.round(v.duration/1000)+'s':'';
+      var size=v.size?(v.size/1048576).toFixed(1)+' MB':'';
+      html+='<div class="list-item"><div class="list-icon">🎬</div><div class="list-info"><div class="list-name">'+esc(v.name)+'</div><div class="list-meta">'+dur+' · '+size+' · '+v.width+'×'+v.height+'</div></div></div>';
+    });
+    document.getElementById('content').innerHTML=html;
+  };
+  iappyx.media.getVideos(cbId,30);
+}
+
+function loadAudio(){
+  document.getElementById('content').innerHTML='<div class="empty">Loading...</div>';
+  var cbId='gaud_'+Date.now();
+  window._iappyxCb=window._iappyxCb||{};
+  window._iappyxCb[cbId]=function(r){
+    if(!r.ok){document.getElementById('content').innerHTML='<div class="empty">'+r.error+'</div>';return;}
+    if(!r.audio.length){document.getElementById('content').innerHTML='<div class="empty">No music found</div>';return;}
+    var html='';
+    r.audio.forEach(function(a){
+      var dur=a.duration?Math.floor(a.duration/60000)+':'+('0'+Math.floor(a.duration/1000%60)).slice(-2):'';
+      html+='<div class="list-item" onclick="playTrack('+a.id+')"><div class="list-icon">🎵</div><div class="list-info"><div class="list-name">'+esc(a.title||a.name)+'</div><div class="list-meta">'+(a.artist||'Unknown')+' · '+dur+'</div></div></div>';
+    });
+    document.getElementById('content').innerHTML=html;
+  };
+  iappyx.media.getAudio(cbId,50);
+}
+
+function playTrack(id){
+  iappyx.audio.requestFocus('window.onAudioFocus');
+  iappyx.media.playAudio(id);
+  document.getElementById('status').textContent='Playing...';
+  loadMeta(id,'audio');
+}
+window.onAudioFocus=function(e){
+  if(e.type==='loss'||e.type==='lossTransient') document.getElementById('status').textContent='Paused (focus lost)';
+  else if(e.type==='gain') document.getElementById('status').textContent='Playing...';
+};
+
+function pickImage(){
+  var cbId='pick_'+Date.now();
+  window._iappyxCb=window._iappyxCb||{};
+  window._iappyxCb[cbId]=function(r){
+    if(r.ok){
+      document.getElementById('overlayImg').src=r.dataUrl;
+      document.getElementById('overlay').style.display='flex';
+    }else{document.getElementById('status').textContent=r.error||'Cancelled';}
+  };
+  iappyx.media.pickImage(cbId);
+}
+
+function esc(s){return s?s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):''}
+</script></body></html>

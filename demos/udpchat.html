@@ -1,0 +1,159 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>UDP Chat</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;padding:20px;display:flex;flex-direction:column;gap:12px}
+h1{font-size:1.3rem;text-align:center}
+.card{background:#1a1a2e;border-radius:12px;padding:14px}
+.card h3{font-size:.9rem;margin-bottom:8px;color:rgba(255,255,255,.6)}
+input{width:100%;background:#0d0d1a;border:none;border-radius:8px;padding:10px;color:#fff;font-size:.9rem;outline:none;font-family:inherit}
+.btn{background:#0f3460;border:none;border-radius:10px;padding:10px 14px;color:#fff;font-size:.85rem;cursor:pointer}
+.btn:active{opacity:.7}
+.row{display:flex;gap:8px;align-items:center}
+label{font-size:.75rem;color:rgba(255,255,255,.4);margin-bottom:4px;display:block}
+.info .val{font-weight:600;word-break:break-all;font-size:.9rem}
+.msgs{flex:1;overflow-y:auto;min-height:100px;max-height:250px}
+.msg{padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:.85rem}
+.msg:last-child{border:none}
+.msg .from{color:#4fc3f7;font-size:.75rem}
+.status{text-align:center;font-size:.75rem;color:rgba(255,255,255,.3)}
+.mode-btns{display:flex;gap:8px;margin-bottom:8px}
+.mode-btns .btn{flex:1;font-size:.8rem}
+</style></head><body>
+<h1>📨 UDP Chat</h1>
+
+<div class="card info">
+  <div class="row" style="justify-content:space-between">
+    <div><label>Your IP</label><div class="val" id="myIp">—</div></div>
+    <div><label>UDP Port</label><div class="val" id="myPort">—</div></div>
+  </div>
+</div>
+
+<div class="card">
+  <h3>Mode</h3>
+  <div class="mode-btns">
+    <button class="btn" id="mUnicast" onclick="setMode('unicast')" style="background:#0f3460">Unicast</button>
+    <button class="btn" id="mMulticast" onclick="setMode('multicast')" style="background:#1a1a2e">Multicast</button>
+  </div>
+  <div id="unicastOpts">
+    <label>Peer IP</label>
+    <input id="peerIp" placeholder="192.168.1.x">
+    <label style="margin-top:8px">Peer Port</label>
+    <input id="peerPort" value="9999" placeholder="9999">
+  </div>
+  <div id="multicastOpts" style="display:none">
+    <label>Multicast Group</label>
+    <input id="mcastGroup" value="239.1.2.3" placeholder="239.x.x.x">
+    <div class="row" style="margin-top:8px">
+      <button class="btn" onclick="joinGroup()" style="flex:1">Join Group</button>
+      <button class="btn" onclick="leaveGroup()" style="flex:1;background:#1a1a2e">Leave</button>
+    </div>
+    <div class="status" id="mcastStatus"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h3>Send</h3>
+  <div class="row">
+    <input id="msgtxt" placeholder="Type a message..." style="flex:1">
+    <button class="btn" onclick="sendMsg()">Send</button>
+  </div>
+</div>
+
+<div class="card">
+  <h3>Messages</h3>
+  <div class="msgs" id="msglist"><div class="status">No messages yet</div></div>
+</div>
+
+<script>
+var PORT = 9999;
+var mode = 'unicast';
+var mcastJoined = false;
+var deviceName = '';
+
+function init() {
+  if (typeof iappyx === 'undefined') { setTimeout(init, 50); return; }
+  try { deviceName = JSON.parse(iappyx.device.getDeviceInfo()).model || 'Device'; } catch(e) { deviceName = 'Device'; }
+
+  var ip = iappyx.httpServer.getLocalIpAddress() || '?';
+  document.getElementById('myIp').textContent = ip;
+
+  iappyx.udp.onReceive('onUdpMsg');
+  var cbId = 'udp_' + Date.now();
+  window._iappyxCb = window._iappyxCb || {};
+  window._iappyxCb[cbId] = function(r) {
+    if (r.ok) {
+      document.getElementById('myPort').textContent = r.port;
+    } else {
+      document.getElementById('myPort').textContent = 'Error: ' + r.error;
+    }
+  };
+  iappyx.udp.open('' + PORT, cbId);
+}
+
+function setMode(m) {
+  mode = m;
+  document.getElementById('mUnicast').style.background = m === 'unicast' ? '#0f3460' : '#1a1a2e';
+  document.getElementById('mMulticast').style.background = m === 'multicast' ? '#0f3460' : '#1a1a2e';
+  document.getElementById('unicastOpts').style.display = m === 'unicast' ? '' : 'none';
+  document.getElementById('multicastOpts').style.display = m === 'multicast' ? '' : 'none';
+}
+
+function joinGroup() {
+  var group = document.getElementById('mcastGroup').value.trim();
+  if (!group) return;
+  iappyx.udp.joinMulticast(group);
+  mcastJoined = true;
+  document.getElementById('mcastStatus').textContent = 'Joined ' + group;
+}
+
+function leaveGroup() {
+  var group = document.getElementById('mcastGroup').value.trim();
+  if (!group) return;
+  iappyx.udp.leaveMulticast(group);
+  mcastJoined = false;
+  document.getElementById('mcastStatus').textContent = 'Left group';
+}
+
+function onUdpMsg(evt) {
+  try {
+    var data = JSON.parse(evt.data);
+    addMsg(data.from || evt.from, data.text || evt.data);
+  } catch(e) {
+    addMsg(evt.from + ':' + evt.port, evt.data);
+  }
+}
+
+function sendMsg() {
+  var txt = document.getElementById('msgtxt').value.trim();
+  if (!txt) return;
+  var payload = JSON.stringify({from: deviceName, text: txt});
+  if (mode === 'unicast') {
+    var ip = document.getElementById('peerIp').value.trim();
+    var port = document.getElementById('peerPort').value.trim() || '9999';
+    if (!ip) return;
+    iappyx.udp.send(ip, port, payload);
+  } else {
+    var group = document.getElementById('mcastGroup').value.trim();
+    iappyx.udp.send(group, '' + PORT, payload);
+  }
+  addMsg('You', txt);
+  document.getElementById('msgtxt').value = '';
+}
+
+function addMsg(from, text) {
+  var el = document.getElementById('msglist');
+  if (el.querySelector('.status')) el.innerHTML = '';
+  el.innerHTML = '<div class="msg"><div class="from">' + esc(from) + '</div>' + esc(text) + '</div>' + el.innerHTML;
+}
+function esc(s) { return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
+
+window.addEventListener('load', function() { setTimeout(init, 200); });
+</script></body></html>

@@ -1,0 +1,97 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Compass</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:16px}
+h1{font-size:20px;margin-bottom:4px}
+.sub{font-size:11px;color:rgba(255,255,255,0.4);margin-bottom:24px}
+.compass-wrap{position:relative;width:280px;height:280px;margin-bottom:24px}
+.compass-ring{width:280px;height:280px;border-radius:50%;border:3px solid #1a1a2e;position:relative;transition:transform 0.3s ease-out}
+.compass-ring svg{width:100%;height:100%}
+.needle{position:absolute;top:50%;left:50%;width:4px;height:120px;margin-left:-2px;margin-top:-120px;background:linear-gradient(to bottom,#ff6b6b 50%,#eaeaea 50%);border-radius:2px;transform-origin:bottom center;z-index:2}
+.center-dot{position:absolute;top:50%;left:50%;width:12px;height:12px;margin:-6px;background:#4fc3f7;border-radius:50%;z-index:3}
+.heading-display{font-size:64px;font-weight:700;color:#4fc3f7;margin-bottom:4px}
+.direction{font-size:24px;color:rgba(255,255,255,0.7);margin-bottom:24px}
+.info{background:#1a1a2e;border-radius:12px;padding:16px;width:100%;max-width:320px}
+.info-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05)}
+.info-row:last-child{border:none}
+.info-label{color:rgba(255,255,255,0.4);font-size:13px}
+.info-val{font-size:13px;font-weight:600}
+.btn{background:#4fc3f7;color:#0d0d1a;border:none;border-radius:50px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;width:100%;max-width:320px;margin-top:16px}
+.btn:active{opacity:0.8}
+</style></head><body>
+<h1>Compass</h1>
+<p class="sub">Digital compass with heading</p>
+
+<div class="heading-display" id="deg">---°</div>
+<div class="direction" id="dir">--</div>
+
+<div class="compass-wrap">
+  <div class="compass-ring" id="ring">
+    <svg viewBox="0 0 280 280">
+      <circle cx="140" cy="140" r="130" fill="none" stroke="#1a1a2e" stroke-width="2"/>
+      <text x="140" y="28" text-anchor="middle" fill="#ff6b6b" font-size="18" font-weight="700">N</text>
+      <text x="258" y="145" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-size="16">E</text>
+      <text x="140" y="262" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-size="16">S</text>
+      <text x="22" y="145" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-size="16">W</text>
+      <line x1="140" y1="36" x2="140" y2="46" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+      <line x1="244" y1="140" x2="234" y2="140" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+      <line x1="140" y1="244" x2="140" y2="234" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+      <line x1="36" y1="140" x2="46" y2="140" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+    </svg>
+  </div>
+  <div class="needle" id="needle"></div>
+  <div class="center-dot"></div>
+</div>
+
+<div class="info">
+  <div class="info-row"><span class="info-label">Heading</span><span class="info-val" id="headingVal">--</span></div>
+  <div class="info-row"><span class="info-label">Accuracy</span><span class="info-val" id="accVal">--</span></div>
+  <div class="info-row"><span class="info-label">Status</span><span class="info-val" id="statusVal">Starting...</span></div>
+</div>
+
+<button class="btn" id="startBtn" onclick="toggleCompass()">Stop</button>
+
+<script>
+var running=false;
+function init(){if(typeof iappyx==='undefined'){setTimeout(init,50);return;}startCompass();}
+window.addEventListener('load',function(){setTimeout(init,200)});
+
+function getDirection(h){
+  var dirs=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  return dirs[Math.round(h/22.5)%16];
+}
+
+var accLabels=['Unreliable','Low','Medium','High'];
+
+window.onCompass=function(e){
+  if(e.error){document.getElementById('statusVal').textContent=e.error;return;}
+  var h=Math.round(e.heading*10)/10;
+  document.getElementById('deg').textContent=Math.round(h)+'°';
+  document.getElementById('dir').textContent=getDirection(h);
+  document.getElementById('headingVal').textContent=h+'°';
+  document.getElementById('accVal').textContent=accLabels[e.accuracy]||'Unknown';
+  document.getElementById('statusVal').textContent='Active';
+  document.getElementById('ring').style.transform='rotate('+ (-h) +'deg)';
+  document.getElementById('needle').style.transform='rotate(0deg)';
+};
+
+function startCompass(){
+  iappyx.sensor.startCompass('window.onCompass');
+  running=true;
+  document.getElementById('startBtn').textContent='Stop';
+  document.getElementById('statusVal').textContent='Starting...';
+}
+
+function toggleCompass(){
+  if(running){iappyx.sensor.stop();running=false;document.getElementById('startBtn').textContent='Start';document.getElementById('statusVal').textContent='Stopped';}
+  else{startCompass();}
+}
+</script></body></html>

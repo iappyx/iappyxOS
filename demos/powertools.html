@@ -1,0 +1,105 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Power Tools</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;padding:16px}
+h1{font-size:20px;text-align:center;margin-bottom:4px}
+.sub{text-align:center;font-size:11px;color:rgba(255,255,255,0.4);margin-bottom:16px}
+.card{background:#1a1a2e;border-radius:12px;padding:16px;margin-bottom:12px}
+.card-title{font-size:13px;color:#4fc3f7;font-weight:600;margin-bottom:10px}
+.btn{background:#4fc3f7;color:#0d0d1a;border:none;border-radius:50px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;width:100%;margin-bottom:10px}
+.btn:active{opacity:0.8}
+.btn-outline{background:transparent;border:1.5px solid #4fc3f7;color:#4fc3f7}
+input{background:#0f3460;border:1px solid #1a4a8a;color:#fff;border-radius:8px;padding:10px 12px;font-size:14px;width:100%;outline:none;margin-bottom:8px}
+.result{background:#0f3460;border-radius:8px;padding:12px;margin:8px 0;font-size:13px;white-space:pre-wrap;max-height:200px;overflow-y:auto;word-break:break-all}
+.log{font-size:12px;color:rgba(255,255,255,0.5);max-height:150px;overflow-y:auto;margin-top:8px}
+.log-item{padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.05)}
+p.hint{font-size:11px;color:rgba(255,255,255,0.3);margin-bottom:8px}
+</style></head><body>
+<h1>Power Tools</h1>
+<p class="sub">Clipboard monitor, read Downloads, text selection</p>
+
+<div class="card">
+  <div class="card-title">Clipboard Monitor</div>
+  <p class="hint">Copy any text on your device — it will appear here automatically</p>
+  <button class="btn btn-outline" onclick="startClipboard()">Start Monitoring</button>
+  <div id="clipLog"><div style="color:rgba(255,255,255,0.2);text-align:center;padding:10px">Not monitoring yet</div></div>
+</div>
+
+<div class="card">
+  <div class="card-title">Read from Downloads</div>
+  <p class="hint">Read a text file from your Downloads folder by name</p>
+  <input id="dlFilename" placeholder="filename.txt" value="">
+  <button class="btn btn-outline" onclick="readDl()">Read File</button>
+  <div id="dlResult"></div>
+</div>
+
+<div class="card">
+  <div class="card-title">Text Selection</div>
+  <p class="hint">Select any text below to see the selection callback fire</p>
+  <div style="background:#0f3460;border-radius:8px;padding:12px;font-size:14px;line-height:1.8;user-select:text">
+    The quick brown fox jumps over the lazy dog. iappyxOS is a platform for creating real Android apps from prompts. Select any text in this paragraph to see the text selection callback in action.
+  </div>
+  <div id="selResult" style="margin-top:8px;font-size:12px;color:#69f0ae"></div>
+</div>
+
+<div class="card">
+  <div class="card-title">Event Log</div>
+  <div id="log"><div style="color:rgba(255,255,255,0.2);text-align:center;padding:10px">Waiting...</div></div>
+</div>
+
+<script>
+function init(){
+  if(typeof iappyx==='undefined'){setTimeout(init,50);return;}
+  // Register text selection callback
+  iappyx.onTextSelected(function(e){
+    document.getElementById('selResult').textContent='Selected: "'+e.text+'"';
+    addLog('Text selected: "'+e.text.substring(0,50)+(e.text.length>50?'...':'')+'"');
+  });
+  addLog('Ready');
+}
+window.addEventListener('load',function(){setTimeout(init,200)});
+
+function addLog(msg){
+  var el=document.getElementById('log');
+  el.innerHTML='<div class="log-item"><span style="color:#4fc3f7">'+new Date().toLocaleTimeString()+'</span> '+esc(msg)+'</div>'+el.innerHTML;
+}
+
+function startClipboard(){
+  iappyx.device.onClipboardChange('window.onClipChange');
+  document.getElementById('clipLog').innerHTML='<div style="color:#69f0ae;text-align:center;padding:10px">Monitoring active — copy something!</div>';
+  addLog('Clipboard monitoring started');
+  iappyx.vibration.tick();
+}
+
+window.onClipChange=function(e){
+  var el=document.getElementById('clipLog');
+  el.innerHTML='<div class="result">'+esc(e.text)+'</div>'+el.innerHTML;
+  addLog('Clipboard: "'+e.text.substring(0,30)+(e.text.length>30?'...':'')+'"');
+  iappyx.vibration.tick();
+};
+
+function readDl(){
+  var filename=document.getElementById('dlFilename').value.trim();
+  if(!filename){addLog('Enter a filename');return;}
+  var content=iappyx.device.readFromDownloads(filename);
+  var el=document.getElementById('dlResult');
+  if(content){
+    el.innerHTML='<div class="result">'+esc(content.substring(0,2000))+(content.length>2000?'\n...truncated':'')+'</div>';
+    addLog('Read '+filename+' ('+content.length+' chars)');
+  } else {
+    el.innerHTML='<div class="result" style="color:#ff6b6b">File not found: '+esc(filename)+'</div>';
+    addLog('File not found: '+filename);
+  }
+  iappyx.vibration.click();
+}
+
+function esc(s){return s?s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):''}
+</script></body></html>

@@ -1,0 +1,54 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Calendar</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;display:flex;flex-direction:column}
+header{padding:16px 20px;border-bottom:1px solid #1a1a2e;flex-shrink:0}
+h1{font-size:1.3rem;margin-bottom:8px}
+.btns{display:flex;gap:8px}
+.btn{flex:1;background:#0f3460;border:none;border-radius:8px;padding:10px;color:#fff;font-size:.82rem;cursor:pointer}
+.btn.sec{background:#1a1a2e}
+.list{padding:8px 20px}
+.event{padding:12px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.event-title{font-weight:600;font-size:.9rem}
+.event-time{font-size:.78rem;color:rgba(255,255,255,.45);margin-top:2px}
+.empty{text-align:center;color:rgba(255,255,255,.3);padding:40px;font-size:.9rem}
+</style></head><body>
+<header>
+  <h1>📅 Calendar</h1>
+  <div class="btns">
+    <button class="btn" onclick="loadEvents()">Load Events</button>
+    <button class="btn sec" onclick="addEvent()">+ Add Event</button>
+  </div>
+</header>
+<div class="list" id="list"><div class="empty">Tap Load Events</div></div>
+<script>
+function init(){if(typeof iappyx==='undefined'){setTimeout(init,50);return;}}
+function loadEvents(){
+  var cbId='cal'+Date.now();
+  window._iappyxCb=window._iappyxCb||{};
+  window._iappyxCb[cbId]=function(r){
+    if(!r.ok){document.getElementById('list').innerHTML='<div class="empty">'+r.error+'</div>';return;}
+    if(!r.events.length){document.getElementById('list').innerHTML='<div class="empty">No events</div>';return;}
+    document.getElementById('list').innerHTML=r.events.map(function(e){
+      return '<div class="event"><div class="event-title">'+e.title+'</div><div class="event-time">'+new Date(e.start).toLocaleString()+'</div></div>';
+    }).join('');
+  };
+  iappyx.calendar.getEvents(cbId,String(Date.now()),String(Date.now()+30*24*60*60*1000));
+}
+function addEvent(){
+  var cbId='caladd'+Date.now();
+  window._iappyxCb=window._iappyxCb||{};
+  window._iappyxCb[cbId]=function(){};
+  var s=Date.now()+3600000;
+  iappyx.calendar.addEvent(cbId,'iappyxOS Event',String(s),String(s+3600000),'Created by iappyxOS');
+}
+window.addEventListener('load',function(){setTimeout(init,100)});
+</script></body></html>

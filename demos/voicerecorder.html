@@ -1,0 +1,86 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Voicerecorder</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px}
+h1{font-size:1.3rem}
+.circle{width:120px;height:120px;border-radius:50%;background:#1a1a2e;display:flex;align-items:center;justify-content:center;font-size:3rem;border:3px solid #0f3460;transition:.3s}
+.circle.recording{border-color:#FF6B6B;animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,107,107,.4)}50%{box-shadow:0 0 0 16px rgba(255,107,107,0)}}
+.btn{background:#0f3460;border:none;border-radius:50px;padding:14px 32px;color:#fff;font-size:1rem;cursor:pointer;min-height:44px}
+.btn.stop{background:#FF6B6B}
+.btn.play{background:#1a1a2e}
+.status{font-size:13px;color:rgba(255,255,255,0.4)}
+audio{width:100%;max-width:300px;margin-top:8px}
+.recordings{width:100%;max-width:320px}
+.rec-item{background:#1a1a2e;border-radius:8px;padding:10px;margin-bottom:6px}
+.rec-item audio{width:100%}
+.rec-label{font-size:11px;color:rgba(255,255,255,0.3);margin-bottom:4px}
+</style></head><body>
+<h1>Voicerecorder</h1>
+<div class="circle" id="mic">🎙️</div>
+<div>
+  <button class="btn" id="recBtn" onclick="toggleRecord()">Record</button>
+</div>
+<div class="status" id="status">Tap Record to start</div>
+<div class="recordings" id="recordings"></div>
+<script>
+var appRecording=false,recList=[];
+function init(){
+  if(typeof iappyx==='undefined'){setTimeout(init,50);return;}
+  var s=iappyx.load('recordings');
+  if(s){try{recList=JSON.parse(s);renderList();}catch(e){}}
+}
+function toggleRecord(){
+  if(!appRecording){
+    var cbId='rec_'+Date.now();
+    window._iappyxCb=window._iappyxCb||{};
+    window._iappyxCb[cbId]=function(r){
+      if(r.ok){
+        appRecording=true;
+        document.getElementById('mic').className='circle recording';
+        document.getElementById('recBtn').textContent='Stop';
+        document.getElementById('recBtn').className='btn stop';
+        document.getElementById('status').textContent='Recording...';
+      }else{
+        document.getElementById('status').textContent=r.error||'Failed';
+      }
+    };
+    iappyx.audio.startRecording(cbId);
+  }else{
+    var cbId='stop_'+Date.now();
+    window._iappyxCb=window._iappyxCb||{};
+    window._iappyxCb[cbId]=function(r){
+      appRecording=false;
+      document.getElementById('mic').className='circle';
+      document.getElementById('recBtn').textContent='Record';
+      document.getElementById('recBtn').className='btn';
+      if(r.ok){
+        recList.unshift({dataUrl:r.dataUrl,time:new Date().toLocaleTimeString()});
+        if(recList.length>10)recList=recList.slice(0,10);
+        iappyx.save('recordings',JSON.stringify(recList));
+        renderList();
+        document.getElementById('status').textContent='Recording saved!';
+        iappyx.vibration.click();
+      }else{
+        document.getElementById('status').textContent=r.error||'Stop failed';
+      }
+    };
+    iappyx.audio.stopRecording(cbId);
+  }
+}
+function renderList(){
+  var el=document.getElementById('recordings');
+  el.innerHTML=recList.map(function(r){
+    return '<div class="rec-item"><div class="rec-label">'+r.time+'</div><audio controls src="'+r.dataUrl+'"></audio></div>';
+  }).join('');
+}
+window.addEventListener('load',function(){setTimeout(init,100)});
+</script></body></html>

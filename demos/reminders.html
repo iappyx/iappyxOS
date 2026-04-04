@@ -1,0 +1,126 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Reminders</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d0d1a;color:#eaeaea;min-height:100vh;padding:16px}
+h1{font-size:20px;text-align:center;margin-bottom:4px}
+.sub{text-align:center;font-size:11px;color:rgba(255,255,255,0.4);margin-bottom:16px}
+.card{background:#1a1a2e;border-radius:12px;padding:16px;margin-bottom:12px}
+.card-title{font-size:13px;color:#4fc3f7;font-weight:600;margin-bottom:10px}
+.btn{background:#4fc3f7;color:#0d0d1a;border:none;border-radius:50px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;width:100%;margin-bottom:10px}
+.btn:active{opacity:0.8}
+.btn-outline{background:transparent;border:1.5px solid #4fc3f7;color:#4fc3f7}
+.btn-sm{padding:10px 14px;font-size:13px;width:auto;border-radius:8px}
+input{background:#0f3460;border:1px solid #1a4a8a;color:#fff;border-radius:8px;padding:10px 12px;font-size:14px;width:100%;outline:none;margin-bottom:8px}
+.row{display:flex;gap:8px}
+.log{font-size:12px;color:rgba(255,255,255,0.5);max-height:200px;overflow-y:auto;margin-top:8px}
+.log-item{padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)}
+.badge-row{display:flex;align-items:center;justify-content:center;gap:16px;margin:10px 0}
+.badge-btn{width:40px;height:40px;border-radius:50%;border:1.5px solid #4fc3f7;background:transparent;color:#4fc3f7;font-size:18px;cursor:pointer}
+.badge-num{font-size:28px;font-weight:700;color:#4fc3f7}
+</style></head><body>
+<h1>Reminders</h1>
+<p class="sub">Scheduled notifications, repeating alarms, badge count</p>
+
+<div class="card">
+  <div class="card-title">Schedule a Notification</div>
+  <input id="notifTitle" placeholder="Title" value="Don't forget!">
+  <input id="notifBody" placeholder="Message" value="Time to check in">
+  <div class="row">
+    <button class="btn-sm btn-outline" onclick="scheduleNotif(10)" style="flex:1">In 10s</button>
+    <button class="btn-sm btn-outline" onclick="scheduleNotif(60)" style="flex:1">In 1min</button>
+    <button class="btn-sm btn-outline" onclick="scheduleNotif(300)" style="flex:1">In 5min</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Repeating Alarm</div>
+  <button class="btn btn-outline" onclick="startRepeating()">Start every 60 seconds</button>
+  <button class="btn-sm btn-outline" onclick="stopRepeating()" style="width:100%">Stop repeating</button>
+</div>
+
+<div class="card">
+  <div class="card-title">App Badge Count</div>
+  <div class="badge-row">
+    <button class="badge-btn" onclick="changeBadge(-1)">-</button>
+    <div class="badge-num" id="badgeNum">0</div>
+    <button class="badge-btn" onclick="changeBadge(1)">+</button>
+  </div>
+  <button class="btn-sm btn-outline" onclick="clearBadge()" style="width:100%">Clear badge</button>
+</div>
+
+<div class="card">
+  <div class="card-title">Do Not Disturb</div>
+  <button class="btn btn-outline" id="dndBtn" onclick="toggleDnd()">Enable DND</button>
+</div>
+
+<div class="card">
+  <div class="card-title">Event Log</div>
+  <div id="log"><div style="color:rgba(255,255,255,0.2);text-align:center;padding:10px">Waiting...</div></div>
+</div>
+
+<script>
+var badgeCount=0;
+function init(){if(typeof iappyx==='undefined'){setTimeout(init,50);return;}
+  updateDndBtn();
+}
+window.addEventListener('load',function(){setTimeout(init,200)});
+
+function addLog(msg){
+  var el=document.getElementById('log');
+  el.innerHTML='<div class="log-item"><span style="color:#4fc3f7">'+new Date().toLocaleTimeString()+'</span> '+msg+'</div>'+el.innerHTML;
+}
+
+function scheduleNotif(secs){
+  var title=document.getElementById('notifTitle').value||'Reminder';
+  var body=document.getElementById('notifBody').value||'';
+  var id=String(Date.now()%100000);
+  iappyx.notification.schedule(id,title,body,Date.now()+secs*1000);
+  addLog('Scheduled notification in '+secs+'s (id: '+id+')');
+  iappyx.vibration.tick();
+}
+
+window.onRepeatAlarm=function(){
+  addLog('Repeating alarm fired!');
+  iappyx.vibration.click();
+};
+
+function startRepeating(){
+  iappyx.alarm.setRepeating('repeat60',60000,'window.onRepeatAlarm');
+  addLog('Started repeating alarm every 60s');
+  iappyx.vibration.tick();
+}
+
+function stopRepeating(){
+  iappyx.alarm.cancelById('repeat60');
+  addLog('Stopped repeating alarm');
+}
+
+function changeBadge(d){
+  badgeCount=Math.max(0,badgeCount+d);
+  document.getElementById('badgeNum').textContent=badgeCount;
+  iappyx.notification.setBadge(badgeCount);
+  iappyx.vibration.tick();
+}
+
+function clearBadge(){badgeCount=0;document.getElementById('badgeNum').textContent='0';iappyx.notification.setBadge(0);}
+
+function toggleDnd(){
+  var active=iappyx.device.isDndActive();
+  iappyx.device.setDndMode(!active);
+  setTimeout(updateDndBtn,500);
+  addLog('DND '+(active?'disabled':'enabled'));
+}
+
+function updateDndBtn(){
+  var active=iappyx.device.isDndActive();
+  document.getElementById('dndBtn').textContent=active?'Disable DND':'Enable DND';
+}
+</script></body></html>
