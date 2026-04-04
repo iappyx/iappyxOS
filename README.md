@@ -17,13 +17,13 @@ Describe what you want to your favorite AI, and iappyxOS turns it into a real in
   <img src="docs/screenshot_6_preview.png" width="24%" />
 </p>
 
-*My Apps • Create • 48 Demos • Generated Radio App • Icon Editor • Preview with Console*
+*My Apps • Create • 60+ Demos • Generated Radio App • Icon Editor • Preview with Console*
 
 ## What it does
 
 - **AI-generated App** — describe your app in plain language, let an AI generate the code, preview it, and build
 - **Website as App** — turn any website into a lightweight standalone app (1MB, no bridges, sandboxed)
-- **Demo Apps** — 48 pre-built apps to test native bridges (camera, GPS, NFC, sensors, audio, SQLite, and more)
+- **Demo Apps** — 60+ pre-built apps to test native bridges (camera, GPS, NFC, BLE, SSH, network shares, and more)
 
 Every generated app is a real signed APK that appears in your Android launcher. You can share it, uninstall it, or update it — just like any app.
 
@@ -58,13 +58,15 @@ Every generated app is a real signed APK that appears in your Android launcher. 
 ## Features
 
 - **AI generation** — automatic via API (Anthropic, OpenRouter) or manual copy-paste to any AI
-- **55+ native bridges** — camera, location, sensors, audio, notifications, NFC, biometric, SQLite, contacts, SMS, calendar, clipboard, TTS, screen, vibration, alarms, media gallery, download manager, compass, wallpaper, audio focus, and more
-- **Icon editor** — emoji, text, images, custom colors, rotation, multiple layers
-- **App management** — launch, rebuild, edit, share (APK or HTML), uninstall
+- **31 native bridge classes (110+ methods)** — camera, location, sensors, audio, notifications, NFC, Bluetooth LE, SSH/SFTP, SMB network shares, HTTP server/client, TCP/UDP sockets, WiFi Direct, mDNS, biometric, SQLite, contacts, SMS, calendar, clipboard, TTS, screen, vibration, alarms, media gallery, download manager, and more
+- **Icon editor** — emoji, text, images, custom colors, gradients, shadows, filters, rotation, multiple layers
+- **App management** — launch, rebuild, edit, share (APK, HTML, QR code, WiFi Direct), uninstall
+- **QR code transfer** — share apps between devices via animated QR codes (no internet needed)
 - **P2P sharing** — share built apps directly between devices via WiFi Direct
+- **CSS style presets** — Material, Glassmorphic, Minimal, Dynamic (Material You colors) — applied globally
 - **Preview** — test your app in a WebView with live JS console and simulated bridges before building
 - **Offline-first** — everything except AI generation works in airplane mode
-- **Configurable** — custom system prompt, app ID prefix, multiple AI providers
+- **Configurable** — custom system prompt, app ID prefix, multiple AI providers, CSS styles
 
 ## Quick start
 
@@ -73,8 +75,8 @@ Every generated app is a real signed APK that appears in your Android launcher. 
 3. Open iappyxOS → Create → pick a mode → build
 
 **AI generation (two options):**
+- **Manual (recommended)** — copy the generated prompt, paste it into any AI chat (Claude, ChatGPT, Gemini, etc.), paste the HTML back, preview, build
 - **Automatic** — add your API key in Settings (Anthropic or OpenRouter), then tap "Generate" in the Create flow
-- **Manual** — copy the generated prompt, paste it into any AI chat (Claude, ChatGPT, Gemini, etc.), paste the HTML back, preview, build
 
 ## Native bridges
 
@@ -82,13 +84,14 @@ Generated apps access device hardware through a JavaScript bridge (`window.iappy
 
 | Bridge | What it does |
 |--------|-------------|
-| Storage | Key-value persistence, file storage, save to Downloads, share files |
-| Camera | Photo, video, QR/barcode scan, OCR text scan, ML image classification, background removal |
+| Storage | Key-value, file storage, pick files, save to Downloads, share files, move/copy with content URI support |
+| Camera | Photo, video, QR/barcode scan, OCR, ML image classification, background removal, EXIF metadata, real-time frame scanning |
 | Location | GPS single shot, continuous tracking, foreground service, geofencing |
 | Sensors | Accelerometer, gyroscope, magnetometer, compass heading, proximity, light, pressure, step counter |
 | Audio | Play/pause/seek/loop, record, speech-to-text, media session (lock screen controls), sound effects, audio focus |
 | Notifications | Send with actions, schedule, repeating, badge count, cancel |
 | NFC | Read tags, write NDEF text/URI |
+| Bluetooth LE | Scan, connect, read/write characteristics, subscribe to notifications |
 | SQLite | Full SQL database with transactions |
 | Biometric | Fingerprint/face authentication |
 | TTS | Text-to-speech with language, pitch, rate, completion callback |
@@ -100,9 +103,17 @@ Generated apps access device hardware through a JavaScript bridge (`window.iappy
 | Vibration | Patterns, haptic feedback (click, tick, heavy) |
 | Alarms | Exact and repeating alarms (fire even when app is closed) |
 | Share | Photos, text, files via share sheet; receive shared content from other apps |
-| Device | Info, connectivity, torch, print, wallpaper, DND, shortcuts, dark mode |
+| Device | Info, connectivity, torch, print, wallpaper, DND, shortcuts, dark mode, Material You theme colors |
 | Media | Browse gallery (photos/videos/music), pick images, save to gallery, get metadata |
 | Download | Queue file downloads with progress, survives app close |
+| HTTP Server | Local HTTP/HTTPS server with TLS, CORS, file streaming |
+| HTTP Client | Native requests with self-signed cert support, multipart upload, cookies (OkHttp) |
+| SSH / SFTP | Remote terminal, command execution, file transfer, port forwarding (JSch) |
+| SMB | Browse Windows/NAS network shares, upload, download, copy, rename, delete (jcifs-ng) |
+| TCP Socket | Persistent bidirectional connections with TLS support |
+| UDP | Datagram send/receive, unicast and multicast |
+| NSD (mDNS) | Service registration, discovery, and resolve |
+| WiFi Direct | P2P peer discovery, connection, group management |
 | Capabilities | Query available bridges and permissions at runtime |
 
 ## Building from source
@@ -155,6 +166,8 @@ See [FAQ.md](FAQ.md) for answers to common questions — including the hard ones
 ## License
 
 MIT
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ## Support
 
