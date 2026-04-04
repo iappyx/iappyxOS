@@ -22,13 +22,13 @@ Only for AI generation (sending prompts to the AI). Everything else — building
 
 - **AI-generated App** — Describe what you want in plain language. An AI generates the HTML/JavaScript code, you preview it, then build. The app can use native features like camera, GPS, sensors, and more.
 - **Website as App** — Enter a URL, and iappyxOS wraps it into a lightweight standalone app (~1MB). The website opens full-screen with its own launcher icon, separate from your browser. No native bridges — just a clean, sandboxed WebView.
-- **Demo App** — 48 pre-built apps that showcase what's possible. Useful for testing native features (camera, NFC, sensors, etc.) and as starting points for your own ideas.
+- **Demo App** — 60+ pre-built apps that showcase what's possible. Useful for testing native features (camera, NFC, BLE, sensors, networking, etc.) and as starting points for your own ideas.
 
 ### How does AI generation work?
 iappyxOS generates a detailed prompt that includes your app description plus documentation for all available native features. You send this prompt to an AI, and it returns complete HTML/JavaScript code. There are two ways:
 
-- **AI API (automatic)** — Connect your own API key (Anthropic or OpenRouter) in Settings. Then tap "Generate" and the app talks to the AI directly. You can have a conversation to refine the result.
-- **AI Manual (copy-paste)** — The app generates a prompt. Copy it, paste it into any AI chat (Claude, ChatGPT, Gemini, etc.), copy the HTML response back, and paste it in. Works with any AI, free or paid.
+- **AI Manual (recommended)** — The app generates a prompt. Copy it, paste it into any AI chat (Claude, ChatGPT, Gemini, etc.), copy the HTML response back, and paste it in. This gives you the most control — you can use any AI, have a back-and-forth conversation to refine the result, and iterate until it's right.
+- **AI API (automatic)** — Connect your own API key (Anthropic or OpenRouter) in Settings. Then tap "Generate" and the app talks to the AI directly.
 
 ### What AI provider should I use?
 Any large language model works. For best results with native features, use Claude (Anthropic) or GPT-4. The system prompt is detailed enough that most modern AI models produce working apps. If you want the cheapest option, use OpenRouter — it gives you access to many models including free ones.
@@ -50,9 +50,9 @@ Use Preview to check for errors. The console shows JavaScript errors, warnings, 
 Yes. Each generated app is a real signed Android APK. It gets its own launcher icon, runs independently from iappyxOS, and can be shared with other people. You can uninstall iappyxOS and your generated apps keep working.
 
 ### What can generated apps do?
-Generated apps run inside a WebView with access to 55+ native bridges:
+Generated apps run inside a WebView with access to 31 native bridge classes (110+ methods):
 
-Camera (photo, video, QR scan, OCR, ML classification, background removal), GPS (tracking, geofencing), sensors (accelerometer, gyroscope, magnetometer, compass, proximity, light, pressure, step counter), audio (playback, recording, speech-to-text, media session with lock screen controls, sound effects, audio focus), notifications (with actions, scheduled, repeating, badge), NFC read/write, SQLite database, biometric authentication, text-to-speech, contacts, SMS, calendar, clipboard (read/write/monitor), screen control, vibration, alarms (exact and repeating), media gallery (browse photos/videos/music, save to gallery, metadata), download manager, wallpaper, torch, print, DND, app shortcuts, share target, and persistent storage.
+Camera (photo, video, QR scan, OCR, ML classification, background removal, EXIF, real-time scanning), GPS (tracking, geofencing), sensors (accelerometer, gyroscope, magnetometer, compass, proximity, light, pressure, step counter), audio (playback, recording, speech-to-text, media session with lock screen controls, sound effects, audio focus), notifications (with actions, scheduled, repeating, badge), NFC read/write, Bluetooth LE (scan, connect, read/write characteristics, notifications), SQLite database, biometric authentication, text-to-speech, contacts, SMS, calendar, clipboard (read/write/monitor), screen control, vibration, alarms (exact and repeating), media gallery (browse photos/videos/music, save to gallery, metadata), download manager, HTTP server/client with TLS, SSH/SFTP, SMB network shares, TCP/UDP sockets, mDNS service discovery, WiFi Direct, wallpaper, torch, print, DND, app shortcuts, share target, Material You theme colors, and persistent storage.
 
 The AI knows about all of these and will use them when appropriate for your app description.
 
@@ -60,7 +60,13 @@ The AI knows about all of these and will use them when appropriate for your app 
 Yes. Generated apps can load images, fetch APIs, and make network requests just like a regular web page. They can also cache external JavaScript libraries (like Chart.js or pdf-lib) for offline use after first download.
 
 ### Can I share an app I made?
-Yes. In My Apps, tap the menu on any app and choose Share. You can share the APK file (so others can install it), the HTML source code, or use **Share Nearby** to send the app directly to another device via WiFi Direct — no internet needed. The receiver can choose to receive just the APK or the APK plus full source code.
+Yes. In My Apps, tap the menu on any app and choose Share. Options include:
+- **Share APK** — send via any app (WhatsApp, email, etc.)
+- **Share via QR** — beam the app using animated QR codes (no WiFi or internet needed)
+- **Share Nearby** — transfer directly via WiFi Direct
+- **Share HTML** — export the source code
+
+The receiver can rebuild shared apps in their own iappyxOS with their own icon and name.
 
 ### Do generated apps auto-update?
 No. If you rebuild an app with the same name, it updates on your device. But apps you've shared with others won't update — they'd need the new APK.
@@ -118,7 +124,7 @@ The HTML/JavaScript has an error. Edit the app in iappyxOS, open Preview, and ch
 ## Technical
 
 ### How does it work under the hood?
-iappyxOS contains two pre-built WebView shell APK templates — a full shell (~46MB, with all native bridges and ML Kit) and a lightweight web-only shell (~1MB, sandboxed, no bridges). When you build an app:
+iappyxOS contains two pre-built WebView shell APK templates — a full shell (~26MB, with all native bridges, ML Kit, and protocol libraries) and a lightweight web-only shell (~1MB, sandboxed, no bridges). When you build an app:
 1. Your HTML/JavaScript is injected into the appropriate template as an asset
 2. The Android binary manifest is patched with a unique package name and your app label
 3. Unused ML Kit libraries are automatically stripped if the app doesn't use camera/ML features
@@ -151,10 +157,10 @@ An independent maker from the Netherlands with a non-developer day job, who like
 ### Isn't this just a WebView wrapper?
 Yes — and that's the point. A WebView wrapper that patches its own binary manifest, signs itself with a hardware-backed key, generates multi-density icons, injects 55+ native bridges, and installs itself through the system package manager. All on a phone. The "just a wrapper" does a lot of heavy lifting.
 
-More seriously: the value isn't the WebView. It's that you go from "I want an app that does X" to a real installed app in your launcher in under a minute, without touching a computer. The WebView is an implementation detail. The experience is the product.
+More seriously: the value isn't the WebView. It's that you go from "I want an app that does X" to a real installed app in your launcher in under a minute, without touching a computer. With 31 bridge classes giving access to Bluetooth, SSH, network shares, HTTP servers, ML Kit, and more — the "wrapper" is a full native development platform. The WebView is an implementation detail. The experience is the product.
 
 ### Why would I use this instead of just making a website?
-A website needs a browser, a URL, and an internet connection. An iappyxOS app has its own icon, launches instantly, works offline, and can access your camera, GPS, NFC, sensors, contacts, and 50+ other native features a website can't touch. It also doesn't disappear when you clear your browser tabs.
+A website needs a browser, a URL, and an internet connection. An iappyxOS app has its own icon, launches instantly, works offline, and can access your camera, GPS, NFC, Bluetooth, sensors, contacts, SSH servers, network shares, and 100+ other native features a website can't touch. It also doesn't disappear when you clear your browser tabs.
 
 If a bookmark is enough for your use case, make a bookmark. If you want something that feels like an app and works like an app — that's what this is for.
 
