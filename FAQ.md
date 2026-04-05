@@ -47,7 +47,7 @@ Use Preview to check for errors. The console shows JavaScript errors, warnings, 
 ## Generated apps
 
 ### Are these real apps?
-Yes. Each generated app is a real signed Android APK. It gets its own launcher icon, runs independently from iappyxOS, and can be shared with other people. You can uninstall iappyxOS and your generated apps keep working.
+Yes. Each generated app is a real signed Android APK. It gets its own launcher icon, runs independently from iappyxOS, and can be shared with other people. You can uninstall iappyxOS and your generated apps keep working. Generated apps pass Google Play Protect scanning.
 
 ### What can generated apps do?
 Generated apps run inside a WebView with access to 31 native bridge classes (110+ methods):
