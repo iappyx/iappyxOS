@@ -78,7 +78,9 @@ function loadLib(url, filename, callback) {
 IMPORTANT: Use `runScript()` (script tag injection), NOT `eval()`. Libraries using `var` at top level won't register as globals with eval.
 First launch needs internet. All subsequent launches work fully offline.
 
-External JS libraries like pdf-lib, Chart.js, jsZip, Papa Parse, marked, QRCode.js, day.js, html2canvas, Tone.js, and math.js all work with this pattern. Use unpkg.com or cdnjs.com to find the latest CDN URL for any library.
+External JS libraries like pdf-lib, Chart.js, jsZip, Papa Parse, marked, QRCode.js, day.js, html2canvas, Tone.js, and math.js all work with this pattern. Use unpkg.com or cdnjs.com to find the CDN URL for any library.
+
+Before using any CDN URL in generated code, verify the URL actually serves JavaScript. Check that the response is application/javascript and not an HTML error page. If the URL returns 404 or HTML, find the correct URL before proceeding — do not guess and do not use an unverified URL. Always pin CDN libraries to explicit versions (e.g. library@4.4.0) — never use "latest" or unversioned URLs, as breaking changes in new major versions can break the app.
 
 ### Camera (async, cbId pattern)
 `iappyx.camera.takePhoto(cbId)` → `{ok,dataUrl}` (JPEG base64, max 1200px wide)
