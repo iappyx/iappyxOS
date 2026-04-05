@@ -202,6 +202,15 @@ public class ShellActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // Dark status bar matching app theme
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            getWindow().setStatusBarColor(0xFF0D0D1A);
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            // Light status bar icons (white icons on dark background)
+            getWindow().getDecorView().setSystemUiVisibility(0);
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true);
             setTurnScreenOn(true);
@@ -210,9 +219,6 @@ public class ShellActivity extends Activity {
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
         }
-        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
-                             WindowManager.LayoutParams.FLAG_FULLSCREEN);
-
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         nfcAdapter = NfcAdapter.getDefaultAdapter(this);
 
@@ -5634,7 +5640,8 @@ public class ShellActivity extends Activity {
                                     if (newState == android.bluetooth.BluetoothProfile.STATE_CONNECTED) {
                                         try { g.discoverServices(); } catch (SecurityException ignored) {}
                                     } else if (newState == android.bluetooth.BluetoothProfile.STATE_DISCONNECTED) {
-                                        bleDevices.remove(address);
+                                        boolean wasTracked = bleDevices.remove(address) != null;
+                                        if (wasTracked && bleDevices.isEmpty()) NetworkService.requestStop(ShellActivity.this);
                                         if (resultHolder[0] == null) {
                                             try {
                                                 resultHolder[0] = new JSONObject();
@@ -6068,11 +6075,12 @@ public class ShellActivity extends Activity {
 
         @JavascriptInterface
         public void close() {
+            boolean wasRunning = tcpRunning;
             tcpRunning = false;
             try { if (tcpSocket != null && !tcpSocket.isClosed()) tcpSocket.close(); } catch (Exception ignored) {}
             tcpSocket = null;
             tcpOut = null;
-            NetworkService.requestStop(ShellActivity.this);
+            if (wasRunning) NetworkService.requestStop(ShellActivity.this);
         }
 
         @JavascriptInterface

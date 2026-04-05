@@ -10,7 +10,7 @@
         android:allowBackup="false"
         android:label="IAPPYX_PLACEHOLDER_LABEL_XXXXXXXXXXXX"
         android:icon="@mipmap/ic_launcher"
-        android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+        android:theme="@android:style/Theme.NoTitleBar"
         android:hardwareAccelerated="true">
 
         <activity

@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import '../models/icon_config.dart';
 
 class IconEditorScreen extends StatefulWidget {
@@ -488,87 +489,59 @@ class _IconEditorScreenState extends State<IconEditorScreen> {
   final _emojiInputController = TextEditingController();
 
   void _addEmoji() {
-    _emojiInputController.clear();
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1A1A2E),
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (ctx) {
-        return Padding(
-          padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + MediaQuery.of(ctx).viewInsets.bottom),
-          child: SingleChildScrollView(
-            child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Add Emoji', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 8, runSpacing: 8,
-                children: _defaultEmojis.map((e) => GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _config.elements.add(IconElement(content: e));
-                      _selectedIndex = _config.elements.length - 1;
-                    });
-                    Navigator.pop(ctx);
-                  },
-                  child: Container(
-                    width: 44, height: 44,
-                    decoration: BoxDecoration(color: const Color(0xFF0D0D1A), borderRadius: BorderRadius.circular(10)),
-                    child: Center(child: Text(e, style: const TextStyle(fontSize: 24))),
+        return SizedBox(
+          height: MediaQuery.of(ctx).size.height * 0.55,
+          child: Column(children: [
+            Container(width: 40, height: 4, margin: const EdgeInsets.only(top: 12, bottom: 8),
+              decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+            const Text('Add Emoji', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Expanded(
+              child: EmojiPicker(
+                onEmojiSelected: (category, emoji) {
+                  setState(() {
+                    _config.elements.add(IconElement(content: emoji.emoji));
+                    _selectedIndex = _config.elements.length - 1;
+                  });
+                  Navigator.pop(ctx);
+                },
+                config: Config(
+                  emojiViewConfig: EmojiViewConfig(
+                    columns: 8,
+                    emojiSizeMax: 28,
+                    backgroundColor: const Color(0xFF1A1A2E),
                   ),
-                )).toList(),
-              ),
-              const SizedBox(height: 12),
-              Row(children: [
-                Expanded(child: TextField(
-                  controller: _emojiInputController,
-                  style: const TextStyle(fontSize: 24),
-                  decoration: const InputDecoration(hintText: 'Or type any emoji...'),
-                  onChanged: (val) {
-                    // Auto-accept when an emoji is entered (non-ASCII character)
-                    if (val.isNotEmpty && val.runes.any((r) => r > 127)) {
-                      setState(() {
-                        _config.elements.add(IconElement(content: val.trim()));
-                        _selectedIndex = _config.elements.length - 1;
-                      });
-                      Navigator.pop(ctx);
-                    }
-                  },
-                  onSubmitted: (val) {
-                    if (val.isNotEmpty) {
-                      setState(() {
-                        _config.elements.add(IconElement(content: val));
-                        _selectedIndex = _config.elements.length - 1;
-                      });
-                    }
-                    Navigator.pop(ctx);
-                  },
-                )),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: () {
-                    final val = _emojiInputController.text.trim();
-                    if (val.isNotEmpty) {
-                      setState(() {
-                        _config.elements.add(IconElement(content: val));
-                        _selectedIndex = _config.elements.length - 1;
-                      });
-                    }
-                    Navigator.pop(ctx);
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    decoration: BoxDecoration(color: const Color(0xFF0F3460), borderRadius: BorderRadius.circular(10)),
-                    child: const Text('Add', style: TextStyle(color: Color(0xFF4FC3F7), fontWeight: FontWeight.w600)),
+                  skinToneConfig: const SkinToneConfig(
+                    dialogBackgroundColor: Color(0xFF0D0D1A),
+                    indicatorColor: Color(0xFF4FC3F7),
+                    enabled: true,
+                  ),
+                  categoryViewConfig: const CategoryViewConfig(
+                    backgroundColor: Color(0xFF1A1A2E),
+                    indicatorColor: Color(0xFF4FC3F7),
+                    iconColorSelected: Color(0xFF4FC3F7),
+                    iconColor: Colors.white38,
+                  ),
+                  searchViewConfig: const SearchViewConfig(
+                    backgroundColor: Color(0xFF1A1A2E),
+                    buttonIconColor: Colors.white38,
+                    hintText: 'Search emoji...',
+                  ),
+                  bottomActionBarConfig: const BottomActionBarConfig(
+                    backgroundColor: Color(0xFF1A1A2E),
+                    buttonIconColor: Colors.white38,
+                    buttonColor: Color(0xFF0F3460),
                   ),
                 ),
-              ]),
-            ],
-          ),
-          ),
+              ),
+            ),
+          ]),
         );
       },
     );

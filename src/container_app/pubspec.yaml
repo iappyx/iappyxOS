@@ -17,6 +17,7 @@ dependencies:
   http: ^1.6.0
   qr_flutter: ^4.1.0
   mobile_scanner: ^5.0.0
+  emoji_picker_flutter: ^3.0.0
 
 flutter:
   uses-material-design: true
