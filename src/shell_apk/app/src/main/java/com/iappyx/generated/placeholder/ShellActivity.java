@@ -601,11 +601,13 @@ public class ShellActivity extends Activity {
         // Stop SMB
         disconnectSmb();
         // Stop TCP socket
+        boolean tcpWasRunning = tcpRunning;
         tcpRunning = false;
         if (tcpSocket != null && !tcpSocket.isClosed()) {
             try { tcpSocket.close(); } catch (Exception ignored) {}
         }
         tcpSocket = null; tcpOut = null;
+        if (tcpWasRunning) NetworkService.requestStop(this);
         // Stop HTTP client pool
         httpClientPool.shutdownNow();
         // Stop UDP
@@ -4982,7 +4984,10 @@ public class ShellActivity extends Activity {
                     config.put("StrictHostKeyChecking", "no");
                     sshSession.setConfig(config);
                     sshSession.setTimeout(timeout);
+                    sshSession.setServerAliveInterval(15000);
+                    sshSession.setServerAliveCountMax(3);
                     sshSession.connect(timeout);
+                    NetworkService.requestStart(ShellActivity.this, "SSH session");
 
                     String fingerprint = sshSession.getHostKey().getFingerPrint(jsch);
                     deliverResult(cbId, "{\"ok\":true,\"fingerprint\":\"" + escapeJson(fingerprint) + "\"}");
@@ -5248,7 +5253,11 @@ public class ShellActivity extends Activity {
     private void disconnectSsh() {
         if (sshChannel != null) { try { sshChannel.disconnect(); } catch (Exception ignored) {} sshChannel = null; }
         sshShellOut = null;
-        if (sshSession != null) { try { sshSession.disconnect(); } catch (Exception ignored) {} sshSession = null; }
+        if (sshSession != null) {
+            try { sshSession.disconnect(); } catch (Exception ignored) {}
+            sshSession = null;
+            NetworkService.requestStop(this);
+        }
     }
 
     // ── SMB / Network Shares ──
@@ -5640,6 +5649,7 @@ public class ShellActivity extends Activity {
                                 public void onServicesDiscovered(android.bluetooth.BluetoothGatt g, int status) {
                                     try {
                                         bleDevices.put(address, g);
+                                        if (bleDevices.size() == 1) NetworkService.requestStart(ShellActivity.this, "BLE device connected");
                                         JSONObject r = new JSONObject();
                                         r.put("ok", true);
                                         JSONArray services = new JSONArray();
@@ -5734,6 +5744,7 @@ public class ShellActivity extends Activity {
             android.bluetooth.BluetoothGatt gatt = bleDevices.remove(address);
             if (gatt != null) {
                 try { gatt.disconnect(); gatt.close(); } catch (Exception ignored) {}
+                if (bleDevices.isEmpty()) NetworkService.requestStop(ShellActivity.this);
             }
         }
 
@@ -5869,10 +5880,12 @@ public class ShellActivity extends Activity {
     }
 
     private void disconnectAllBle() {
+        boolean hadDevices = !bleDevices.isEmpty();
         for (android.bluetooth.BluetoothGatt gatt : bleDevices.values()) {
             try { gatt.disconnect(); gatt.close(); } catch (Exception ignored) {}
         }
         bleDevices.clear();
+        if (hadDevices) NetworkService.requestStop(this);
         bleSubscriptions.clear();
         if (bleScanner != null && bleScanCallback != null) {
             try { bleScanner.stopScan(bleScanCallback); } catch (Exception ignored) {}
@@ -5912,6 +5925,7 @@ public class ShellActivity extends Activity {
                     tcpSocket.setKeepAlive(true);
                     tcpOut = tcpSocket.getOutputStream();
                     tcpRunning = true;
+                    NetworkService.requestStart(ShellActivity.this, "TCP connection");
 
                     // Start read loop
                     tcpReadThread = new Thread(() -> {
@@ -5932,7 +5946,7 @@ public class ShellActivity extends Activity {
                         } catch (Exception e) {
                             if (tcpRunning) Log.e("iappyxOS", "TCP read: " + e.getMessage());
                         }
-                        tcpRunning = false;
+                        if (tcpRunning) { tcpRunning = false; NetworkService.requestStop(ShellActivity.this); }
                         if (tcpCloseCallbackFn != null) fireEvent(tcpCloseCallbackFn, "{}");
                     });
                     tcpReadThread.setDaemon(true);
@@ -5942,7 +5956,7 @@ public class ShellActivity extends Activity {
                     int localPort = tcpSocket.getLocalPort();
                     deliverResult(cbId, "{\"ok\":true,\"localAddress\":\"" + escapeJson(localAddr) + "\",\"localPort\":" + localPort + "}");
                 } catch (Exception e) {
-                    tcpRunning = false;
+                    if (tcpRunning) { tcpRunning = false; NetworkService.requestStop(ShellActivity.this); }
                     deliverResult(cbId, "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
                 }
             });
@@ -5974,6 +5988,7 @@ public class ShellActivity extends Activity {
                     tcpSocket.setKeepAlive(true);
                     tcpOut = tcpSocket.getOutputStream();
                     tcpRunning = true;
+                    NetworkService.requestStart(ShellActivity.this, "TCP connection");
 
                     tcpReadThread = new Thread(() -> {
                         byte[] buf = new byte[65536];
@@ -5992,7 +6007,7 @@ public class ShellActivity extends Activity {
                         } catch (Exception e) {
                             if (tcpRunning) Log.e("iappyxOS", "TCP read: " + e.getMessage());
                         }
-                        tcpRunning = false;
+                        if (tcpRunning) { tcpRunning = false; NetworkService.requestStop(ShellActivity.this); }
                         if (tcpCloseCallbackFn != null) fireEvent(tcpCloseCallbackFn, "{}");
                     });
                     tcpReadThread.setDaemon(true);
@@ -6000,7 +6015,7 @@ public class ShellActivity extends Activity {
 
                     deliverResult(cbId, "{\"ok\":true}");
                 } catch (Exception e) {
-                    tcpRunning = false;
+                    if (tcpRunning) { tcpRunning = false; NetworkService.requestStop(ShellActivity.this); }
                     deliverResult(cbId, "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
                 }
             });
@@ -6057,6 +6072,7 @@ public class ShellActivity extends Activity {
             try { if (tcpSocket != null && !tcpSocket.isClosed()) tcpSocket.close(); } catch (Exception ignored) {}
             tcpSocket = null;
             tcpOut = null;
+            NetworkService.requestStop(ShellActivity.this);
         }
 
         @JavascriptInterface
@@ -6480,6 +6496,7 @@ public class ShellActivity extends Activity {
 
     private void startAcceptLoop(java.net.ServerSocket serverSocket, int port, String cbId) {
         httpServerPool = java.util.concurrent.Executors.newCachedThreadPool(r -> { Thread t = new Thread(r); t.setDaemon(true); return t; });
+        NetworkService.requestStart(this, "HTTP server");
         String fingerprint = null;
         if (httpSelfSignedCert != null) {
             try {
@@ -6729,7 +6746,9 @@ public class ShellActivity extends Activity {
     }
 
     private void stopHttpServer() {
+        boolean wasRunning = httpServerRunning;
         httpServerRunning = false;
+        if (wasRunning) NetworkService.requestStop(this);
         try { if (httpSslServerSocket != null) httpSslServerSocket.close(); } catch (Exception ignored) {}
         try { if (httpPlainServerSocket != null) httpPlainServerSocket.close(); } catch (Exception ignored) {}
         httpSslServerSocket = null;
