@@ -28,11 +28,12 @@ class ApkInjector(private val keystoreAlias: String = "iappyx_signing_key") {
         private const val TAG = "iappyxOS"
         private const val MANIFEST_PATH = "AndroidManifest.xml"
         private const val LABEL_PLACEHOLDER = "IAPPYX_PLACEHOLDER_LABEL_XXXXXXXXXXXX"
-        private const val TEMPLATE_PACKAGE   = "com.iappyx.generated.placeholder"
-        private const val TEMPLATE_AUTHORITY = "com.iappyx.generated.placeholder.provider"
-        private const val TEMPLATE_DYNPERM  = "com.iappyx.generated.placeholder.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
-        private const val TEMPLATE_MLKIT   = "com.iappyx.generated.placeholder.mlkitinitprovider"
-        private const val TEMPLATE_STARTUP = "com.iappyx.generated.placeholder.androidx-startup"
+        private const val TEMPLATE_PACKAGE   = "com.iappyx.generated.placeholderx.xxxxxxxx"
+        private const val TEMPLATE_AUTHORITY = "com.iappyx.generated.placeholderx.xxxxxxxx.provider"
+        private const val TEMPLATE_DYNPERM  = "com.iappyx.generated.placeholderx.xxxxxxxx.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        private const val TEMPLATE_MLKIT   = "com.iappyx.generated.placeholderx.xxxxxxxx.mlkitinitprovider"
+        private const val TEMPLATE_FIREBASE = "com.iappyx.generated.placeholderx.xxxxxxxx.firebaseinitprovider"
+        private const val TEMPLATE_STARTUP = "com.iappyx.generated.placeholderx.xxxxxxxx.androidx-startup"
 
         // These must be STORED (uncompressed) AND 4-byte aligned
         private val STORED_ALIGNED = setOf("AndroidManifest.xml", "resources.arsc")
@@ -242,10 +243,12 @@ class ApkInjector(private val keystoreAlias: String = "iappyx_signing_key") {
         val authority = "$packageName.provider"
         val dynPerm = "$packageName.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
         val mlkit = "$packageName.mlkitinitprovider"
+        val firebase = "$packageName.firebaseinitprovider"
         val startup = "$packageName.androidx-startup"
         var r = data
         // Order matters: patch longer strings first to avoid partial matches
         r = replaceAllUtf16(r, TEMPLATE_DYNPERM,   dynPerm)
+        r = replaceAllUtf16(r, TEMPLATE_FIREBASE,  firebase)
         r = replaceAllUtf16(r, TEMPLATE_STARTUP,   startup)
         r = replaceAllUtf16(r, TEMPLATE_MLKIT,     mlkit)
         r = replaceAllUtf16(r, TEMPLATE_AUTHORITY, authority)

@@ -50,9 +50,9 @@ Use Preview to check for errors. The console shows JavaScript errors, warnings, 
 Yes. Each generated app is a real signed Android APK. It gets its own launcher icon, runs independently from iappyxOS, and can be shared with other people. You can uninstall iappyxOS and your generated apps keep working. Generated apps pass Google Play Protect scanning.
 
 ### What can generated apps do?
-Generated apps run inside a WebView with access to 31 native bridge classes (110+ methods):
+Generated apps run inside a WebView with access to 32 native bridge classes (115+ methods):
 
-Camera (photo, video, QR scan, OCR, ML classification, background removal, EXIF, real-time scanning), GPS (tracking, geofencing), sensors (accelerometer, gyroscope, magnetometer, compass, proximity, light, pressure, step counter), audio (playback, recording, speech-to-text, media session with lock screen controls, sound effects, audio focus), notifications (with actions, scheduled, repeating, badge), NFC read/write, Bluetooth LE (scan, connect, read/write characteristics, notifications), SQLite database, biometric authentication, text-to-speech, contacts, SMS, calendar, clipboard (read/write/monitor), screen control, vibration, alarms (exact and repeating), media gallery (browse photos/videos/music, save to gallery, metadata), download manager, HTTP server/client with TLS, SSH/SFTP, SMB network shares, TCP/UDP sockets, mDNS service discovery, WiFi Direct, wallpaper, torch, print, DND, app shortcuts, share target, Material You theme colors, and persistent storage.
+Camera (photo, video, QR scan, OCR, ML classification, background removal, EXIF, real-time scanning), GPS (tracking, geofencing), sensors (accelerometer, gyroscope, magnetometer, compass, proximity, light, pressure, step counter), audio (playback, recording, speech-to-text, media session with lock screen controls, sound effects, audio focus), notifications (with actions, scheduled, repeating, badge), NFC read/write, Bluetooth LE (scan, connect, read/write characteristics, notifications), SQLite database, biometric authentication, text-to-speech, contacts, SMS, calendar, clipboard (read/write/monitor), screen control, vibration, alarms (exact and repeating), media gallery (browse photos/videos/music, save to gallery, metadata), download manager, HTTP server/client with TLS, SSH/SFTP, SMB network shares, TCP/UDP sockets, mDNS service discovery, WiFi Direct, wallpaper, torch, print, DND, app shortcuts, share target, Material You theme colors, push notifications (FCM), and persistent storage.
 
 The AI knows about all of these and will use them when appropriate for your app description.
 
@@ -67,6 +67,9 @@ Yes. In My Apps, tap the menu on any app and choose Share. Options include:
 - **Share HTML** — export the source code
 
 The receiver can rebuild shared apps in their own iappyxOS with their own icon and name.
+
+### Can generated apps receive push notifications?
+Yes, with setup. In the app's edit flow, expand "Advanced Settings" — you'll see the app's package name and a file picker for Firebase config. Create a free Firebase project at console.firebase.google.com, add an Android app with that package name, download `google-services.json`, and pick it. Rebuild the app. The AI can then use push notifications when you ask for them.
 
 ### Do generated apps auto-update?
 No. If you rebuild an app with the same name, it updates on your device. But apps you've shared with others won't update — they'd need the new APK.
@@ -157,7 +160,7 @@ An independent maker from the Netherlands with a non-developer day job, who like
 ### Isn't this just a WebView wrapper?
 Yes — and that's the point. A WebView wrapper that patches its own binary manifest, signs itself with a hardware-backed key, generates multi-density icons, injects 55+ native bridges, and installs itself through the system package manager. All on a phone. The "just a wrapper" does a lot of heavy lifting.
 
-More seriously: the value isn't the WebView. It's that you go from "I want an app that does X" to a real installed app in your launcher in under a minute, without touching a computer. With 31 bridge classes giving access to Bluetooth, SSH, network shares, HTTP servers, ML Kit, and more — the "wrapper" is a full native development platform. The WebView is an implementation detail. The experience is the product.
+More seriously: the value isn't the WebView. It's that you go from "I want an app that does X" to a real installed app in your launcher in under a minute, without touching a computer. With 32 bridge classes giving access to Bluetooth, SSH, network shares, push notifications, HTTP servers, ML Kit, and more — the "wrapper" is a full native development platform. The WebView is an implementation detail. The experience is the product.
 
 ### Why would I use this instead of just making a website?
 A website needs a browser, a URL, and an internet connection. An iappyxOS app has its own icon, launches instantly, works offline, and can access your camera, GPS, NFC, Bluetooth, sensors, contacts, SSH servers, network shares, and 100+ other native features a website can't touch. It also doesn't disappear when you clear your browser tabs.

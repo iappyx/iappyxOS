@@ -34,6 +34,7 @@ class CreateScreenState extends State<CreateScreen> {
   IconConfig _iconConfig = IconConfig();
   String? _editingId;
   String? _existingPackageName;
+  String _firebaseConfig = '';
 
   final _urlController = TextEditingController();
   String? _urlError;
@@ -79,11 +80,14 @@ class CreateScreenState extends State<CreateScreen> {
     _generatedPrompt = app.prompt;
     _editingId = app.id;
     _existingPackageName = app.packageName;
+    _firebaseConfig = app.firebaseConfig;
     _selectedDemoId = null;
     _isBuilding = false;
     _showBuildLog = false;
     _log.clear();
-    _genMethod = '';
+    _genMethod = 'manual';
+    _descExpanded = true;
+    _htmlExpanded = true;
     _conversation.clear();
     _aiGenerating = false;
     _selectedHtml = null;
@@ -112,8 +116,8 @@ class CreateScreenState extends State<CreateScreen> {
       setState(() => _mode = 'demo');
     } else {
       _promptVisible = app.prompt.isNotEmpty;
-      _htmlExpanded = app.html.isNotEmpty;
-      _descExpanded = app.html.isEmpty;
+      _htmlExpanded = true;
+      _descExpanded = true;
       setState(() => _mode = 'ai');
     }
   }
@@ -369,13 +373,13 @@ class CreateScreenState extends State<CreateScreen> {
     setState(() { _isBuilding = true; _showBuildLog = true; _log.clear(); });
     try {
       final ic = _ensureIconConfig(label);
-      final result = await Generator.injectHtml(label: label, htmlContent: html, packageName: _existingPackageName, iconConfig: ic.toJsonString(), onProgress: _addLog, webOnly: appType == 'web');
+      final result = await Generator.injectHtml(label: label, htmlContent: html, packageName: _existingPackageName, iconConfig: ic.toJsonString(), firebaseConfig: _firebaseConfig.isNotEmpty ? _firebaseConfig : null, onProgress: _addLog, webOnly: appType == 'web');
       final now = DateTime.now();
       final appId = _editingId ?? '${now.millisecondsSinceEpoch}_${Random().nextInt(9999)}';
       await AppStorage.save(AppData(
         id: appId, name: label,
         description: description, prompt: prompt, html: html, appType: appType,
-        packageName: result.packageName, apkPath: result.apkPath, iconConfig: ic.toJsonString(),
+        packageName: result.packageName, apkPath: result.apkPath, iconConfig: ic.toJsonString(), firebaseConfig: _firebaseConfig,
         createdAt: _editingId != null ? (await _getExistingCreatedAt(_editingId!) ?? now) : now, updatedAt: now,
       ));
       _editingId = appId;
@@ -405,6 +409,80 @@ class CreateScreenState extends State<CreateScreen> {
       body: SafeArea(
         child: _showBuildLog ? _buildingView() : _mode == null ? _modeSelection() : _formView(),
       ),
+    );
+  }
+
+  Widget _advancedSettings() {
+    if (_existingPackageName == null || _existingPackageName!.isEmpty) return const SizedBox.shrink();
+    return ExpansionTile(
+      title: const Text('Advanced Settings', style: TextStyle(fontSize: 13, color: Colors.white54)),
+      tilePadding: EdgeInsets.zero,
+      childrenPadding: const EdgeInsets.only(bottom: 12),
+      iconColor: Colors.white38,
+      collapsedIconColor: Colors.white38,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0D0D1A),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Package Name', style: TextStyle(fontSize: 11, color: Colors.white38)),
+            const SizedBox(height: 4),
+            SelectableText(_existingPackageName!, style: const TextStyle(fontSize: 13, fontFamily: 'monospace', color: Color(0xFF4FC3F7))),
+            const SizedBox(height: 4),
+            const Text('Use this when adding an Android app in Firebase Console.', style: TextStyle(fontSize: 10, color: Colors.white24)),
+            const SizedBox(height: 16),
+            const Text('Firebase Config (optional)', style: TextStyle(fontSize: 11, color: Colors.white38)),
+            const SizedBox(height: 4),
+            const Text('Enables push notifications. Create a Firebase project, add an Android app with the package name above, download google-services.json.',
+              style: TextStyle(fontSize: 10, color: Colors.white24)),
+            const SizedBox(height: 8),
+            Row(children: [
+              GestureDetector(
+                onTap: () async {
+                  final result = await FilePicker.platform.pickFiles(type: FileType.any);
+                  if (result != null && result.files.single.path != null) {
+                    final file = File(result.files.single.path!);
+                    final content = await file.readAsString();
+                    if (content.contains('project_id') && content.contains('client')) {
+                      setState(() => _firebaseConfig = content);
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Invalid google-services.json')),
+                      );
+                    }
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F3460),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    _firebaseConfig.isEmpty ? 'Pick google-services.json' : 'Replace config',
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF4FC3F7)),
+                  ),
+                ),
+              ),
+              if (_firebaseConfig.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                const Icon(Icons.check_circle, color: Color(0xFF69F0AE), size: 16),
+                const SizedBox(width: 4),
+                const Text('Configured', style: TextStyle(fontSize: 11, color: Color(0xFF69F0AE))),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => setState(() => _firebaseConfig = ''),
+                  child: const Icon(Icons.close, color: Colors.white38, size: 16),
+                ),
+              ],
+            ]),
+          ]),
+        ),
+      ],
     );
   }
 
@@ -508,6 +586,7 @@ class CreateScreenState extends State<CreateScreen> {
       keyboardType: TextInputType.url,
       onChanged: (_) { if (_urlError != null) _validateUrl(); },
       onEditingComplete: _validateUrl),
+    _advancedSettings(),
     const SizedBox(height: 24),
     h.buildActionButton(label: 'Build App', onPressed: _isBuilding ? null : _buildWebApp, icon: Icons.rocket_launch),
   ]);
@@ -717,6 +796,8 @@ class CreateScreenState extends State<CreateScreen> {
           ]),
         ),
       ],
+
+      _advancedSettings(),
 
       // Section: Preview & Build (both flows)
       if (_htmlController.text.trim().startsWith('<') || _selectedHtml != null) ...[

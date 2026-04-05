@@ -54,8 +54,8 @@ AppError friendlyError(String? raw) {
   if (e.contains('handshake') || e.contains('ssl') || e.contains('certificate'))
     return const AppError('Secure connection failed', 'The server\'s certificate may be invalid');
 
-  // Permission errors
-  if (e.contains('permission denied') || e.contains('permission'))
+  // Permission errors — only match explicit denial, not every string containing "permission"
+  if (e.contains('permission denied'))
     return const AppError('Permission required', 'Grant the permission and try again');
 
   // Fallback: show shortened raw error

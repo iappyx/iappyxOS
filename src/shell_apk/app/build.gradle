@@ -5,7 +5,7 @@ android {
     namespace 'com.iappyx.generated.placeholder'
     compileSdk 34
     defaultConfig {
-        applicationId "com.iappyx.generated.placeholder"
+        applicationId "com.iappyx.generated.placeholderx.xxxxxxxx"
         minSdk 26
         targetSdk 34
         versionCode 1
@@ -36,10 +36,12 @@ dependencies {
     implementation 'com.google.mlkit:text-recognition:16.0.0'
     implementation 'com.google.mlkit:image-labeling:17.0.8'
     implementation 'com.google.mlkit:segmentation-selfie:16.0.0-beta6'
-    implementation 'androidx.media:media:1.7.0'
+    implementation 'androidx.media3:media3-exoplayer:1.3.0'
+    implementation 'androidx.media3:media3-session:1.3.0'
     implementation 'androidx.exifinterface:exifinterface:1.3.7'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'com.github.mwiede:jsch:0.2.21'
     implementation 'eu.agno3.jcifs:jcifs-ng:2.1.10'
     implementation 'no.nordicsemi.android:ble:2.11.0'
+    implementation 'com.google.firebase:firebase-messaging:24.0.0'
 }

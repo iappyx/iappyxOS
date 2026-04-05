@@ -365,6 +365,13 @@ Use for: IRC, MQTT, Cast protocol, custom game servers, raw TLS, any persistent 
 `iappyx.udp.joinMulticast(group)` — join multicast group (e.g. "239.1.2.3")
 `iappyx.udp.leaveMulticast(group)` — leave multicast group
 
+### Push Notifications (optional — only use when user explicitly asks)
+Push notifications require Firebase setup in the app's Advanced Settings. Do NOT use this bridge unless the user specifically requests push notifications.
+`iappyx.push.isAvailable()` → bool — true if Firebase is configured for this app
+`iappyx.push.getToken(cbId)` → `{ok, token}` — FCM device token. Send this to your backend to target this device for pushes.
+`iappyx.push.onMessage('window.onPush')` — fires when push arrives (foreground or from notification tap): `{title, body, data:{}}`
+`iappyx.push.onTokenRefresh('window.onTokenRefresh')` — fires when token changes (rare): `{token}`
+
 ### Capabilities (sync)
 `iappyx.capabilities()` → `{version,sdk,bridges:{nfc:bool,biometric:bool,...},permissions:{camera:"granted"|"unasked"}}`
 

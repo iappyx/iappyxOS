@@ -26,7 +26,7 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.media.AudioAttributes;
 import android.media.AudioManager;
-import android.media.MediaPlayer;
+// MediaPlayer replaced by ExoPlayer (Media3)
 import android.net.Uri;
 import android.nfc.NdefMessage;
 import android.nfc.NdefRecord;
@@ -86,7 +86,7 @@ public class ShellActivity extends Activity {
     private volatile boolean ttsReady = false; // Bug #6: track TTS init
     private SensorManager sensorManager;
     private final java.util.Map<Integer, SensorEventListener> activeSensors = new java.util.HashMap<>();
-    private MediaPlayer mediaPlayer;
+    private androidx.media3.exoplayer.ExoPlayer exoPlayer;
     private PowerManager.WakeLock wakeLock;
     private NfcAdapter nfcAdapter;
     private String pendingNfcCallbackFn;
@@ -184,7 +184,7 @@ public class ShellActivity extends Activity {
     private String recordingCallbackId;
     private String audioCompleteCallbackFn;
     private String lastAudioUrl;
-    private final java.util.List<MediaPlayer> soundPlayers = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+    private final java.util.List<androidx.media3.exoplayer.ExoPlayer> soundPlayers = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
     private LocationListener sharedGeofenceListener;
     private boolean mediaSessionActive = false;
     private String watchPositionErrorFn; // for location error callback
@@ -290,6 +290,7 @@ public class ShellActivity extends Activity {
         webView.addJavascriptInterface(new TcpBridge(),          "iappyxTcp");
         webView.addJavascriptInterface(new UdpBridge(),          "iappyxUdp");
         webView.addJavascriptInterface(new BleBridge(),           "iappyxBle");
+        webView.addJavascriptInterface(new PushBridge(),         "iappyxPush");
         webView.addJavascriptInterface(new WifiDirectBridge(),   "iappyxWifiDirect");
         webView.addJavascriptInterface(new NsdBridge(),          "iappyxNsd");
         webView.addJavascriptInterface(new HttpServerBridge(),   "iappyxHttpServer");
@@ -411,7 +412,7 @@ public class ShellActivity extends Activity {
                     "contacts:iappyxContacts,sms:iappyxSms,calendar:iappyxCalendar," +
                     "biometric:iappyxBiometric," +
                     "nfc:iappyxNfc,sqlite:iappyxSqlite,download:iappyxDownload,media:iappyxMedia," +
-                    "httpServer:iappyxHttpServer,httpClient:iappyxHttpClient,ssh:iappyxSsh,smb:iappyxSmb,ble:iappyxBle,tcp:iappyxTcp,nsd:iappyxNsd,udp:iappyxUdp,wifiDirect:iappyxWifiDirect," +
+                    "httpServer:iappyxHttpServer,httpClient:iappyxHttpClient,ssh:iappyxSsh,smb:iappyxSmb,ble:iappyxBle,push:iappyxPush,tcp:iappyxTcp,nsd:iappyxNsd,udp:iappyxUdp,wifiDirect:iappyxWifiDirect," +
                     "save:function(k,v){iappyxStorage.save(k,v)}," +
                     "load:function(k){return iappyxStorage.load(k)}," +
                     "remove:function(k){iappyxStorage.remove(k)}," +
@@ -562,7 +563,7 @@ public class ShellActivity extends Activity {
     @Override protected void onDestroy() {
         activityAlive = false;
         if (tts != null) { tts.stop(); tts.shutdown(); }
-        if (mediaPlayer != null) { mediaPlayer.release(); mediaPlayer = null; }
+        if (exoPlayer != null) { exoPlayer.release(); exoPlayer = null; }
         // Stop any audio playing in WebView (HTML <audio> tags, Web Audio API)
         if (webView != null) {
             webView.loadUrl("about:blank");
@@ -573,8 +574,8 @@ public class ShellActivity extends Activity {
             mediaSessionActive = false;
         }
         // Release overlay sound players
-        for (MediaPlayer mp : new java.util.ArrayList<>(soundPlayers)) {
-            try { mp.release(); } catch (Exception ignored) {}
+        for (androidx.media3.exoplayer.ExoPlayer sp : new java.util.ArrayList<>(soundPlayers)) {
+            try { sp.release(); } catch (Exception ignored) {}
         }
         soundPlayers.clear();
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
@@ -602,6 +603,8 @@ public class ShellActivity extends Activity {
         }
         // Stop SSH
         disconnectSsh();
+        // Clear push references
+        PushService.activeActivity = null;
         // Stop BLE
         disconnectAllBle();
         // Stop SMB
@@ -651,6 +654,15 @@ public class ShellActivity extends Activity {
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        // Handle push notification tap
+        if (intent.hasExtra("push_data") && PushService.foregroundCallbackFn != null) {
+            String title = intent.getStringExtra("push_title");
+            String body = intent.getStringExtra("push_body");
+            String data = intent.getStringExtra("push_data");
+            fireEvent(PushService.foregroundCallbackFn, "{\"title\":\"" + escapeJson(title) +
+                "\",\"body\":\"" + escapeJson(body) + "\",\"data\":" + data + "}");
+            intent.removeExtra("push_data");
+        }
         String action = intent.getAction() != null ? intent.getAction() : "";
         // Handle NFC tag discovered (any NFC action, or check for tag extra)
         Tag tag = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG);
@@ -3139,29 +3151,26 @@ public class ShellActivity extends Activity {
     // ── Audio ──
     // Bug #9: add error listener before prepareAsync, protect state
     class AudioBridge {
-        /** Play a one-shot sound effect that overlays the main audio track.
-         *  Auto-releases when done. Does not affect play/pause/stop/seekTo. */
+        /** Play a one-shot sound effect that overlays the main audio track. */
         @JavascriptInterface
         public void playSound(final String url) {
             runOnUiThread(() -> {
                 try {
-                    MediaPlayer mp = new MediaPlayer();
-                    mp.setAudioAttributes(new AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_GAME)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build());
-                    mp.setDataSource(url);
-                    mp.setOnPreparedListener(p -> p.start());
-                    mp.setOnCompletionListener(p -> runOnUiThread(() -> {
-                        p.release();
-                        soundPlayers.remove(p);
-                    }));
-                    mp.setOnErrorListener((p, w, e) -> {
-                        runOnUiThread(() -> { p.release(); soundPlayers.remove(p); });
-                        return true;
+                    androidx.media3.exoplayer.ExoPlayer sp = new androidx.media3.exoplayer.ExoPlayer.Builder(ShellActivity.this).build();
+                    sp.setMediaItem(androidx.media3.common.MediaItem.fromUri(resolveDataUrl(url)));
+                    sp.addListener(new androidx.media3.common.Player.Listener() {
+                        @Override public void onPlaybackStateChanged(int state) {
+                            if (state == androidx.media3.common.Player.STATE_ENDED) {
+                                runOnUiThread(() -> { sp.release(); soundPlayers.remove(sp); });
+                            }
+                        }
+                        @Override public void onPlayerError(androidx.media3.common.PlaybackException e) {
+                            runOnUiThread(() -> { sp.release(); soundPlayers.remove(sp); });
+                        }
                     });
-                    soundPlayers.add(mp);
-                    mp.prepareAsync();
+                    soundPlayers.add(sp);
+                    sp.prepare();
+                    sp.play();
                 } catch (Exception e) {
                     Log.e("iappyxOS", "playSound error: " + e.getMessage());
                 }
@@ -3172,15 +3181,14 @@ public class ShellActivity extends Activity {
         @JavascriptInterface
         public void stopSounds() {
             runOnUiThread(() -> {
-                for (MediaPlayer mp : new java.util.ArrayList<>(soundPlayers)) {
-                    try { mp.release(); } catch (Exception ignored) {}
+                for (androidx.media3.exoplayer.ExoPlayer sp : new java.util.ArrayList<>(soundPlayers)) {
+                    try { sp.release(); } catch (Exception ignored) {}
                 }
                 soundPlayers.clear();
             });
         }
 
         private String resolveDataUrl(String url) {
-            // Convert data: URL to temp file for MediaPlayer
             if (url != null && url.startsWith("data:")) {
                 try {
                     int commaIdx = url.indexOf(',');
@@ -3202,7 +3210,6 @@ public class ShellActivity extends Activity {
             final String resolved = resolveDataUrl(url);
             lastAudioUrl = resolved;
             if (mediaSessionActive) {
-                // Route to AudioService
                 Intent intent = new Intent(ShellActivity.this, AudioService.class);
                 intent.setAction(AudioService.ACTION_PLAY);
                 intent.putExtra("url", resolved);
@@ -3212,33 +3219,22 @@ public class ShellActivity extends Activity {
             }
             runOnUiThread(() -> {
                 try {
-                    if (mediaPlayer != null) {
-                        try { mediaPlayer.release(); } catch (Exception ignored) {}
-                        mediaPlayer = null;
-                    }
-                    mediaPlayer = new MediaPlayer();
-                    mediaPlayer.setOnErrorListener((mp, what, extra) -> {
-                        Log.e("iappyxOS", "MediaPlayer error: " + what + "/" + extra);
-                        return true;
+                    if (exoPlayer != null) { try { exoPlayer.pause(); exoPlayer.stop(); exoPlayer.release(); } catch (Exception ignored) {} }
+                    exoPlayer = new androidx.media3.exoplayer.ExoPlayer.Builder(ShellActivity.this).build();
+                    exoPlayer.addListener(new androidx.media3.common.Player.Listener() {
+                        @Override public void onPlaybackStateChanged(int state) {
+                            if (state == androidx.media3.common.Player.STATE_ENDED && activityAlive && audioCompleteCallbackFn != null)
+                                fireEvent(audioCompleteCallbackFn, "{\"done\":true}");
+                        }
+                        @Override public void onPlayerError(androidx.media3.common.PlaybackException e) {
+                            Log.e("iappyxOS", "ExoPlayer error: " + e.getMessage());
+                        }
                     });
-                    mediaPlayer.setAudioAttributes(new AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .build());
-                    mediaPlayer.setDataSource(resolved);
-                    mediaPlayer.setLooping(false);
-                    mediaPlayer.setOnPreparedListener(mp -> mp.start());
-                    mediaPlayer.setOnCompletionListener(mp -> {
-                        if (activityAlive && audioCompleteCallbackFn != null)
-                            fireEvent(audioCompleteCallbackFn, "{\"done\":true}");
-                    });
-                    mediaPlayer.prepareAsync();
+                    exoPlayer.setMediaItem(androidx.media3.common.MediaItem.fromUri(resolved));
+                    exoPlayer.prepare();
+                    exoPlayer.play();
                 } catch (Exception e) {
                     Log.e("iappyxOS", "Audio play error: " + e.getMessage());
-                    if (mediaPlayer != null) {
-                        try { mediaPlayer.release(); } catch (Exception ignored) {}
-                        mediaPlayer = null;
-                    }
                 }
             });
         }
@@ -3252,48 +3248,40 @@ public class ShellActivity extends Activity {
                     intent.setAction(AudioService.ACTION_STOP);
                     startService(intent);
                 } catch (Exception ignored) {}
-                // Keep mediaSessionActive true — service stays alive for quick restart
                 return;
             }
             runOnUiThread(() -> {
-                if (mediaPlayer != null) {
-                    try {
-                        if (mediaPlayer.isPlaying()) mediaPlayer.stop();
-                        mediaPlayer.release();
-                    } catch (Exception ignored) {}
-                    mediaPlayer = null;
+                if (exoPlayer != null) {
+                    try { exoPlayer.pause(); exoPlayer.stop(); exoPlayer.clearMediaItems(); exoPlayer.release(); } catch (Exception ignored) {}
+                    exoPlayer = null;
                 }
             });
         }
 
-        private MediaPlayer activePlayer() {
+        private androidx.media3.exoplayer.ExoPlayer activePlayer() {
             if (mediaSessionActive && AudioService.player != null) return AudioService.player;
-            return mediaPlayer;
+            return exoPlayer;
         }
 
         @JavascriptInterface
         public void setVolume(final double level) {
             runOnUiThread(() -> {
-                MediaPlayer p = activePlayer();
-                if (p != null) {
-                    try { p.setVolume((float)level, (float)level); } catch (Exception ignored) {}
-                }
+                androidx.media3.exoplayer.ExoPlayer p = activePlayer();
+                if (p != null) { try { p.setVolume((float)level); } catch (Exception ignored) {} }
             });
         }
 
         @JavascriptInterface
         public void setLooping(final boolean loop) {
             runOnUiThread(() -> {
-                MediaPlayer p = activePlayer();
-                if (p != null) {
-                    try { p.setLooping(loop); } catch (Exception ignored) {}
-                }
+                androidx.media3.exoplayer.ExoPlayer p = activePlayer();
+                if (p != null) { try { p.setRepeatMode(loop ? androidx.media3.common.Player.REPEAT_MODE_ONE : androidx.media3.common.Player.REPEAT_MODE_OFF); } catch (Exception ignored) {} }
             });
         }
 
         @JavascriptInterface
         public boolean isPlaying() {
-            try { MediaPlayer p = activePlayer(); return p != null && p.isPlaying(); }
+            try { androidx.media3.exoplayer.ExoPlayer p = activePlayer(); return p != null && p.isPlaying(); }
             catch (Exception e) { return false; }
         }
 
@@ -3327,14 +3315,11 @@ public class ShellActivity extends Activity {
                 String artist = info.optString("artist", null);
                 String album = info.optString("album", null);
 
-                // Kill local player if exists — AudioService takes over all audio
-                if (mediaPlayer != null) {
-                    final MediaPlayer mp = mediaPlayer;
-                    mediaPlayer = null;
-                    // Clear listeners to prevent onPrepared from starting playback after transfer
-                    try { mp.setOnPreparedListener(null); mp.setOnCompletionListener(null); mp.setOnErrorListener(null); } catch (Exception ignored) {}
-                    runOnUiThread(() -> { try { mp.release(); } catch (Exception ignored) {} });
-                    // Replay on AudioService if we had a URL
+                // Kill local player — AudioService takes over
+                if (exoPlayer != null) {
+                    final androidx.media3.exoplayer.ExoPlayer old = exoPlayer;
+                    exoPlayer = null;
+                    runOnUiThread(() -> { try { old.pause(); old.stop(); old.release(); } catch (Exception ignored) {} });
                     if (lastAudioUrl != null) {
                         Intent playIntent = new Intent(ShellActivity.this, AudioService.class);
                         playIntent.setAction(AudioService.ACTION_PLAY);
@@ -3345,21 +3330,18 @@ public class ShellActivity extends Activity {
                     }
                 }
 
-                // Send metadata — only if service is or will be active
                 if (mediaSessionActive || lastAudioUrl != null) {
                     Intent intent = new Intent(ShellActivity.this, AudioService.class);
                     intent.setAction(AudioService.ACTION_SET_SESSION);
                     if (title != null) intent.putExtra("title", title);
                     if (artist != null) intent.putExtra("artist", artist);
                     if (album != null) intent.putExtra("album", album);
-                    if (mediaSessionActive) {
-                        startService(intent); // Service already running, just update metadata
-                    } else {
+                    if (mediaSessionActive) startService(intent);
+                    else {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent);
                         else startService(intent);
                     }
                 }
-
                 mediaSessionActive = true;
             } catch (Exception e) { Log.e("iappyxOS", "setMediaSession: " + e.getMessage()); }
         }
@@ -3373,9 +3355,7 @@ public class ShellActivity extends Activity {
                 return;
             }
             runOnUiThread(() -> {
-                if (mediaPlayer != null && mediaPlayer.isPlaying()) {
-                    try { mediaPlayer.pause(); } catch (Exception ignored) {}
-                }
+                if (exoPlayer != null) { try { exoPlayer.pause(); } catch (Exception ignored) {} }
             });
         }
 
@@ -3388,45 +3368,33 @@ public class ShellActivity extends Activity {
                 return;
             }
             runOnUiThread(() -> {
-                if (mediaPlayer != null && !mediaPlayer.isPlaying()) {
-                    try { mediaPlayer.start(); } catch (Exception ignored) {}
-                }
+                if (exoPlayer != null) { try { exoPlayer.play(); } catch (Exception ignored) {} }
             });
         }
 
         @JavascriptInterface
         public void seekTo(final double positionMs) {
             runOnUiThread(() -> {
-                MediaPlayer p = activePlayer();
-                if (p != null) {
-                    try { p.seekTo((int) positionMs); } catch (Exception ignored) {}
-                }
+                androidx.media3.exoplayer.ExoPlayer p = activePlayer();
+                if (p != null) { try { p.seekTo((long) positionMs); } catch (Exception ignored) {} }
             });
         }
 
         @JavascriptInterface
         public double getDuration() {
-            try { MediaPlayer p = activePlayer(); return p != null ? p.getDuration() : 0; }
+            try { androidx.media3.exoplayer.ExoPlayer p = activePlayer(); return p != null ? p.getDuration() : 0; }
             catch (Exception e) { return 0; }
         }
 
         @JavascriptInterface
         public double getCurrentPosition() {
-            try { MediaPlayer p = activePlayer(); return p != null ? p.getCurrentPosition() : 0; }
+            try { androidx.media3.exoplayer.ExoPlayer p = activePlayer(); return p != null ? p.getCurrentPosition() : 0; }
             catch (Exception e) { return 0; }
         }
 
         @JavascriptInterface
         public void onComplete(String callbackFn) {
             audioCompleteCallbackFn = callbackFn;
-            runOnUiThread(() -> {
-                if (mediaPlayer != null) {
-                    mediaPlayer.setOnCompletionListener(mp -> {
-                        if (activityAlive && audioCompleteCallbackFn != null)
-                            fireEvent(audioCompleteCallbackFn, "{\"done\":true}");
-                    });
-                }
-            });
         }
 
         // ── Audio Focus ──
@@ -4327,16 +4295,11 @@ public class ShellActivity extends Activity {
                 MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, audioId);
             runOnUiThread(() -> {
                 try {
-                    if (mediaPlayer != null) { mediaPlayer.release(); mediaPlayer = null; }
-                    mediaPlayer = new MediaPlayer();
-                    mediaPlayer.setAudioAttributes(new AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .build());
-                    mediaPlayer.setDataSource(ShellActivity.this, uri);
-                    mediaPlayer.setOnPreparedListener(mp -> mp.start());
-                    mediaPlayer.setOnErrorListener((mp, w, e) -> { Log.e("iappyxOS", "media.playAudio error: " + w); return true; });
-                    mediaPlayer.prepareAsync();
+                    if (exoPlayer != null) { exoPlayer.release(); }
+                    exoPlayer = new androidx.media3.exoplayer.ExoPlayer.Builder(ShellActivity.this).build();
+                    exoPlayer.setMediaItem(androidx.media3.common.MediaItem.fromUri(uri));
+                    exoPlayer.prepare();
+                    exoPlayer.play();
                 } catch (Exception e) { Log.e("iappyxOS", "media.playAudio: " + e.getMessage()); }
             });
         }
@@ -5900,6 +5863,92 @@ public class ShellActivity extends Activity {
         bleScanCallback = null;
     }
 
+    // ── Push Notifications (FCM) ──
+    private boolean firebaseInitialized = false;
+
+    private void initFirebaseIfNeeded() {
+        if (firebaseInitialized) return;
+        try {
+            // Read firebase config from assets (injected during APK build)
+            java.io.InputStream is = getAssets().open("firebase_config.json");
+            byte[] buf = new byte[is.available()];
+            is.read(buf);
+            is.close();
+            String json = new String(buf, java.nio.charset.StandardCharsets.UTF_8);
+            JSONObject cfg = new JSONObject(json);
+
+            // Extract values — handle both formats (raw google-services.json and simplified)
+            String projectId = cfg.optString("project_id", "");
+            String appId = "";
+            String apiKey = "";
+            String senderId = cfg.optString("project_number", "");
+
+            // google-services.json has nested client array
+            JSONArray clients = cfg.optJSONArray("client");
+            if (clients != null && clients.length() > 0) {
+                JSONObject client = clients.getJSONObject(0);
+                JSONObject clientInfo = client.optJSONObject("client_info");
+                if (clientInfo != null) appId = clientInfo.optString("mobilesdk_app_id", "");
+                JSONArray apiKeys = client.optJSONArray("api_key");
+                if (apiKeys != null && apiKeys.length() > 0) apiKey = apiKeys.getJSONObject(0).optString("current_key", "");
+            }
+
+            if (projectId.isEmpty() || appId.isEmpty() || apiKey.isEmpty()) {
+                Log.w("iappyxOS", "Firebase config incomplete — push disabled");
+                return;
+            }
+
+            com.google.firebase.FirebaseOptions options = new com.google.firebase.FirebaseOptions.Builder()
+                .setProjectId(projectId)
+                .setApplicationId(appId)
+                .setApiKey(apiKey)
+                .setGcmSenderId(senderId)
+                .build();
+
+            if (com.google.firebase.FirebaseApp.getApps(this).isEmpty()) {
+                com.google.firebase.FirebaseApp.initializeApp(this, options);
+            }
+            firebaseInitialized = true;
+            Log.i("iappyxOS", "Firebase initialized for push notifications");
+        } catch (java.io.FileNotFoundException e) {
+            // No firebase config — push not available, this is fine
+        } catch (Exception e) {
+            Log.e("iappyxOS", "Firebase init failed: " + e.getMessage());
+        }
+    }
+
+    class PushBridge {
+        @JavascriptInterface
+        public boolean isAvailable() {
+            initFirebaseIfNeeded();
+            return firebaseInitialized;
+        }
+
+        @JavascriptInterface
+        public void getToken(String cbId) {
+            initFirebaseIfNeeded();
+            if (!firebaseInitialized) {
+                deliverResult(cbId, "{\"ok\":false,\"error\":\"Firebase not configured\"}");
+                return;
+            }
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().getToken()
+                .addOnSuccessListener(token -> deliverResult(cbId, "{\"ok\":true,\"token\":\"" + token + "\"}"))
+                .addOnFailureListener(e -> deliverResult(cbId, "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}"));
+        }
+
+        @JavascriptInterface
+        public void onMessage(String callbackFn) {
+            PushService.foregroundCallbackFn = callbackFn;
+            PushService.activeActivity = ShellActivity.this;
+        }
+
+        @JavascriptInterface
+        public void onTokenRefresh(String callbackFn) {
+            PushService.tokenRefreshFn = callbackFn;
+            PushService.activeActivity = ShellActivity.this;
+        }
+    }
+
     // ── TCP Socket ──
     private java.net.Socket tcpSocket;
     private java.io.OutputStream tcpOut;
@@ -6813,6 +6862,7 @@ public class ShellActivity extends Activity {
                 bridges.put("ssh", true);
                 bridges.put("smb", true);
                 bridges.put("ble", true);
+                bridges.put("push", firebaseInitialized);
                 bridges.put("tcp", true);
                 bridges.put("nsd", true);
                 bridges.put("udp", true);

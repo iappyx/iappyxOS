@@ -5,7 +5,7 @@ android {
     namespace 'com.iappyx.generated.placeholder'
     compileSdk 34
     defaultConfig {
-        applicationId "com.iappyx.generated.placeholder"
+        applicationId "com.iappyx.generated.placeholderx.xxxxxxxx"
         minSdk 26
         targetSdk 34
         versionCode 1

@@ -46,6 +46,7 @@ class Generator {
     required void Function(String) onProgress,
     String? packageName,
     String? iconConfig,
+    String? firebaseConfig,
     bool webOnly = false,
   }) async {
     if (_building) throw PlatformException(code: 'BUSY', message: 'A build is already in progress');
@@ -59,6 +60,7 @@ class Generator {
         'html': htmlContent,
         if (packageName != null) 'packageName': packageName,
         if (iconConfig != null) 'iconConfig': iconConfig,
+        if (firebaseConfig != null && firebaseConfig.isNotEmpty) 'firebaseConfig': firebaseConfig,
         'webOnly': webOnly,
       });
       return BuildResult(

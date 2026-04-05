@@ -85,6 +85,7 @@ class AppGenerator(private val context: Context) {
         htmlContent: String,
         existingPackageName: String? = null,
         iconConfig: String? = null,
+        firebaseConfig: String? = null,
         webOnly: Boolean = false,
         onProgress: (String) -> Unit,
     ): Map<String, String> {
@@ -101,7 +102,10 @@ class AppGenerator(private val context: Context) {
             withContext(Dispatchers.Main) { onProgress("\uD83D\uDCC2 Loading template APK...") }
             val templateApk = extractTemplateApk(if (webOnly) TEMPLATE_ASSET_WEB else TEMPLATE_ASSET)
 
-            val assets = mapOf("index.html" to htmlContent.toByteArray(Charsets.UTF_8))
+            val assets = mutableMapOf("index.html" to htmlContent.toByteArray(Charsets.UTF_8))
+            if (!firebaseConfig.isNullOrBlank()) {
+                assets["firebase_config.json"] = firebaseConfig.toByteArray(Charsets.UTF_8)
+            }
 
             withContext(Dispatchers.Main) { onProgress("\uD83C\uDFA8 Generating icon...") }
             val icons = IconGenerator.generateAllFromConfig(iconConfig, appLabel)
@@ -213,7 +217,9 @@ class AppGenerator(private val context: Context) {
         val filtered = label.lowercase().filter { it.isLetterOrDigit() }.take(6).ifEmpty { "app" }
         // Ensure segment starts with a letter (Android package name requirement)
         val safe = if (filtered.first().isDigit()) "a$filtered".take(6) else filtered
-        return "$prefix.$safe${System.currentTimeMillis() % 100_000_000L}"
+        val base = "$prefix.$safe${System.currentTimeMillis() % 100_000_000L}"
+        // Max 43 chars — DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION placeholder is 84 chars total
+        return if (base.length > 43) base.take(43) else base
     }
 
     private fun getValidPrefix(): String {
