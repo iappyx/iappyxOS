@@ -20,6 +20,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   AiProvider? _activeProvider;
   bool _hasCustomPrompt = false;
+  bool _promptOutdated = false;
   String _packagePrefix = '';
   final _prefixController = TextEditingController();
   String? _prefixError;
@@ -43,6 +44,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _load() async {
     final activeProvider = await Settings.getActiveProvider();
     final hasCustom = await Settings.hasCustomPrompt();
+    final promptOutdated = await PromptBuilder.isPromptOutdated();
+    if (!hasCustom) await PromptBuilder.markPromptAsSeen(); // track hash on first launch / after reset
     final prefix = await Settings.getPackagePrefix();
     final apps = await AppStorage.loadAll();
     Map<String, dynamic> keyInfo = {};
@@ -52,6 +55,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setState(() {
         _activeProvider = activeProvider;
         _hasCustomPrompt = hasCustom;
+        _promptOutdated = promptOutdated;
         _packagePrefix = prefix;
         _prefixController.text = prefix;
         _appCount = apps.length;
@@ -130,7 +134,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
               // AI Prompt
               _sectionTitle('AI System Prompt'),
               _card(children: [
-                _row('Status', _hasCustomPrompt ? 'Custom' : 'Default'),
+                _row('Status', _hasCustomPrompt ? (_promptOutdated ? 'Custom (outdated)' : 'Custom') : 'Default'),
+                if (_promptOutdated) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3E2723),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Row(children: [
+                        Icon(Icons.warning_amber, color: Color(0xFFFFB74D), size: 18),
+                        SizedBox(width: 8),
+                        Expanded(child: Text('New bridges have been added. Reset to default to get them.',
+                          style: TextStyle(fontSize: 11, color: Color(0xFFFFB74D)))),
+                      ]),
+                    ),
+                  ),
+                ],
                 const Divider(height: 1, color: Color(0xFF0D0D1A)),
                 _actionRow('View / Edit Prompt', Icons.edit_outlined, _editPrompt),
                 if (_hasCustomPrompt) ...[
@@ -274,7 +296,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         onChanged: (v) {
                           final val = v.toLowerCase();
-                          if (val != v) _prefixController.text = val;
+                          if (val != v) {
+                            _prefixController.value = TextEditingValue(
+                              text: val,
+                              selection: TextSelection.collapsed(offset: val.length),
+                            );
+                          }
                           setState(() {
                             if (val.isEmpty) {
                               _prefixError = null;
@@ -505,6 +532,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _resetPrompt() async {
     await Settings.setCustomPrompt(null);
+    await PromptBuilder.markPromptAsSeen();
     _load();
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Prompt reset to default.'), backgroundColor: Color(0xFF1A1A2E), duration: Duration(seconds: 4)),
