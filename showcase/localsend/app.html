@@ -1,0 +1,757 @@
+<!-- Built with iappyxOS — https://github.com/iappyx/iappyxOS -->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>LocalSend Custom</title>
+<style>
+:root{
+  --primary:#4FC3F7;--primary-light:#81d4fa;--primary-dark:#0f3460;
+  --secondary:#69F0AE;--bg:#0d0d1a;--surface:#1a1a2e;
+  --text:#eaeaea;--text-secondary:rgba(255,255,255,0.5);
+  --on-primary:#0d0d1a;--on-surface:#eaeaea;--on-bg:#eaeaea;
+  --error:#FF6B6B;--success:#69F0AE;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Roboto,"Noto Color Emoji","Apple Color Emoji","Segoe UI Emoji",sans-serif;background:var(--bg);color:var(--on-bg);min-height:100vh;overflow-x:hidden}
+#app{max-width:600px;margin:0 auto;padding:16px;padding-bottom:80px}
+.header{display:flex;align-items:center;justify-content:space-between;padding:16px 0 20px}
+.header-title{font-size:22px;font-weight:700;color:var(--primary);letter-spacing:-0.5px}
+.header-sub{font-size:12px;color:var(--text-secondary);margin-top:2px}
+.status-dot{width:10px;height:10px;border-radius:50%;background:var(--error);display:inline-block;margin-right:6px;transition:background 0.3s}
+.status-dot.online{background:var(--success);box-shadow:0 0 8px var(--success)}
+.card{background:var(--surface);color:var(--on-surface);border-radius:12px;padding:16px;margin-bottom:12px;box-shadow:0 2px 4px rgba(0,0,0,0.2)}
+.card-title{font-size:13px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px}
+.my-device{display:flex;align-items:center;gap:12px}
+.device-icon{width:48px;height:48px;border-radius:12px;background:var(--primary-dark);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0}
+.device-name{font-size:17px;font-weight:600}
+.device-ip{font-size:13px;color:var(--text-secondary);margin-top:2px;font-family:monospace}
+.device-alias{font-size:12px;color:var(--primary);margin-top:3px}
+.peer-list{display:flex;flex-direction:column;gap:8px}
+.peer-item{display:flex;align-items:center;gap:12px;background:var(--primary-dark);border-radius:12px;padding:12px;cursor:pointer;touch-action:manipulation;transition:all 150ms ease;border:1.5px solid transparent}
+.peer-item:active{opacity:0.7}
+.peer-item.selected{border-color:var(--primary)}
+.peer-icon{width:40px;height:40px;border-radius:10px;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.peer-info{flex:1;min-width:0}
+.peer-name{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.peer-addr{font-size:12px;color:var(--text-secondary);font-family:monospace;margin-top:2px}
+.peer-badge{font-size:11px;padding:2px 8px;border-radius:50px;background:color-mix(in srgb,var(--primary) 15%,transparent);color:var(--primary);border:1px solid color-mix(in srgb,var(--primary) 30%,transparent)}
+.empty-peers{text-align:center;padding:24px;color:var(--text-secondary);font-size:14px}
+.scan-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px;background:var(--primary-dark);border:none;border-radius:12px;color:var(--primary);font-size:15px;font-weight:600;cursor:pointer;touch-action:manipulation;margin-top:8px;min-height:48px;transition:all 150ms ease;position:relative;overflow:hidden}
+.scan-btn:active{opacity:0.75}
+.spin{display:inline-block;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.send-area{display:flex;flex-direction:column;gap:10px}
+.file-drop{border:2px dashed color-mix(in srgb,var(--primary) 30%,transparent);border-radius:12px;padding:28px 16px;text-align:center;cursor:pointer;touch-action:manipulation;transition:all 150ms ease}
+.file-drop:active{border-color:var(--primary)}
+.file-drop-icon{font-size:36px;margin-bottom:8px}
+.file-drop-text{color:var(--text-secondary);font-size:14px}
+.file-drop-hint{font-size:12px;color:color-mix(in srgb,var(--text) 30%,transparent);margin-top:4px}
+.selected-files{display:flex;flex-direction:column;gap:6px}
+.file-chip{display:flex;align-items:center;gap:10px;background:var(--primary-dark);border-radius:12px;padding:10px 12px}
+.file-chip-icon{font-size:20px;flex-shrink:0}
+.file-chip-name{flex:1;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.file-chip-size{font-size:11px;color:var(--text-secondary);flex-shrink:0}
+.file-chip-del{font-size:18px;color:var(--text-secondary);cursor:pointer;touch-action:manipulation;flex-shrink:0;padding:2px 4px;min-width:32px;min-height:32px;display:flex;align-items:center;justify-content:center}
+.send-btn{padding:14px;background:var(--primary);border:none;border-radius:12px;color:var(--on-primary);font-size:16px;font-weight:700;cursor:pointer;touch-action:manipulation;letter-spacing:0.3px;min-height:48px;transition:all 150ms ease;position:relative;overflow:hidden}
+.send-btn:active{opacity:0.75}
+.send-btn:disabled{opacity:0.35;cursor:default}
+.receive-toggle{display:flex;align-items:center;justify-content:space-between}
+.toggle-wrap{display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;cursor:pointer;touch-action:manipulation;flex-shrink:0}
+.toggle{width:44px;height:26px;border-radius:50px;background:var(--text-secondary);position:relative;transition:all 150ms ease;pointer-events:none}
+.toggle.on{background:var(--primary)}
+.toggle::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:transform 150ms ease}
+.toggle.on::after{transform:translateX(18px)}
+.receive-label{font-size:15px;font-weight:500}
+.receive-sub{font-size:12px;color:var(--text-secondary);margin-top:2px}
+.receive-mode{margin-top:12px;display:flex;gap:8px}
+.mode-btn{flex:1;padding:9px;border-radius:12px;border:1.5px solid color-mix(in srgb,var(--text) 15%,transparent);background:transparent;color:var(--text-secondary);font-size:13px;cursor:pointer;touch-action:manipulation;min-height:48px;transition:all 150ms ease}
+.mode-btn.active{border-color:var(--primary);color:var(--primary);background:color-mix(in srgb,var(--primary) 10%,transparent)}
+.transfers{display:flex;flex-direction:column;gap:10px}
+.transfer-item{background:var(--primary-dark);border-radius:12px;padding:12px;box-shadow:0 2px 4px rgba(0,0,0,0.2)}
+.transfer-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.transfer-name{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;margin-right:8px}
+.transfer-status{font-size:12px;flex-shrink:0}
+.transfer-status.sending{color:var(--primary)}
+.transfer-status.done{color:var(--success)}
+.transfer-status.error{color:var(--error)}
+.transfer-status.waiting{color:var(--text-secondary)}
+.progress-bar{height:4px;background:color-mix(in srgb,var(--text) 10%,transparent);border-radius:2px;overflow:hidden}
+.progress-fill{height:100%;border-radius:2px;background:var(--primary);transition:width 0.3s;width:0%}
+.progress-fill.done{background:var(--success)}
+.transfer-meta{display:flex;justify-content:space-between;margin-top:6px}
+.transfer-speed{font-size:11px;color:var(--text-secondary)}
+.transfer-size{font-size:11px;color:var(--text-secondary)}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100;display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.2s}
+.modal-overlay.open{opacity:1;pointer-events:all}
+.modal{background:var(--surface);color:var(--on-surface);border-radius:20px 20px 0 0;padding:20px;width:100%;max-width:600px;transform:translateY(100%);transition:transform 0.3s;box-shadow:0 -4px 16px rgba(0,0,0,0.4)}
+.modal-overlay.open .modal{transform:translateY(0)}
+.modal-title{font-size:18px;font-weight:700;margin-bottom:6px}
+.modal-sub{font-size:13px;color:var(--text-secondary);margin-bottom:20px}
+.modal-actions{display:flex;gap:10px;margin-top:16px}
+.modal-btn{flex:1;padding:13px;border-radius:12px;border:none;font-size:15px;font-weight:600;cursor:pointer;touch-action:manipulation;min-height:48px;transition:all 150ms ease}
+.modal-btn:active{opacity:0.75}
+.modal-btn.accept{background:var(--success);color:var(--on-primary)}
+.modal-btn.decline{background:var(--primary-dark);color:var(--on-surface)}
+.incoming-files{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.incoming-file{display:flex;align-items:center;gap:8px;font-size:13px}
+.input-field{width:100%;padding:12px 14px;background:transparent;border:none;border-bottom:2px solid color-mix(in srgb,var(--text) 15%,transparent);color:var(--text);font-size:15px;outline:none;font-family:Roboto,"Noto Color Emoji","Apple Color Emoji","Segoe UI Emoji",sans-serif;transition:border-color 150ms ease;margin-bottom:4px}
+.input-field:focus{border-bottom-color:var(--primary)}
+.input-label{font-size:13px;color:var(--text-secondary);margin-bottom:6px;margin-top:12px;display:block}
+.tabs{display:flex;background:var(--surface);border-radius:12px;padding:4px;margin-bottom:16px;gap:4px;box-shadow:0 2px 4px rgba(0,0,0,0.2)}
+.tab{flex:1;padding:10px;border-radius:9px;border:none;background:transparent;color:var(--text-secondary);font-size:14px;font-weight:600;cursor:pointer;touch-action:manipulation;min-height:44px;transition:all 150ms ease}
+.tab.active{background:var(--primary-dark);color:var(--primary)}
+.toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--surface);border:1px solid color-mix(in srgb,var(--primary) 30%,transparent);color:var(--text);padding:10px 20px;border-radius:50px;font-size:14px;opacity:0;transition:all 0.3s;pointer-events:none;white-space:nowrap;z-index:200;max-width:90vw;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.4)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.success{border-color:color-mix(in srgb,var(--success) 40%,transparent);color:var(--success)}
+.toast.error{border-color:color-mix(in srgb,var(--error) 40%,transparent);color:var(--error)}
+</style>
+</head><body>
+<div id="app">
+  <div class="header">
+    <div>
+      <div class="header-title">📡 LocalSend</div>
+      <div class="header-sub"><span class="status-dot" id="statusDot"></span><span id="statusText">Starting…</span></div>
+    </div>
+    <button class="scan-btn" style="width:auto;padding:9px 14px;font-size:13px" onclick="addPeerManual()">＋ Add</button>
+  </div>
+  <div class="tabs">
+    <button class="tab active" id="tab-send" onclick="switchTab('send')">Send</button>
+    <button class="tab" id="tab-receive" onclick="switchTab('receive')">Receive</button>
+    <button class="tab" id="tab-history" onclick="switchTab('history')">History</button>
+  </div>
+  <div id="view-send">
+    <div class="card">
+      <div class="card-title">Nearby Devices</div>
+      <div class="peer-list" id="peerList"><div class="empty-peers">Scanning for devices…</div></div>
+      <button class="scan-btn" id="scanBtn" onclick="startScan()">🔍 Scan Network</button>
+    </div>
+    <div class="card">
+      <div class="card-title">Files to Send</div>
+      <div class="send-area">
+        <div class="file-drop" onclick="pickFile()">
+          <div class="file-drop-icon">📂</div>
+          <div class="file-drop-text">Tap to select files</div>
+          <div class="file-drop-hint">Any file type · any size</div>
+        </div>
+        <div class="selected-files" id="selectedFiles"></div>
+        <button class="send-btn" id="sendBtn" disabled onclick="startSend()">Send to Selected Device</button>
+      </div>
+    </div>
+    <div class="card" id="transfersCard" style="display:none">
+      <div class="card-title">Transfers</div>
+      <div class="transfers" id="transfersList"></div>
+    </div>
+  </div>
+  <div id="view-receive" style="display:none">
+    <div class="card">
+      <div class="card-title">Receive Mode</div>
+      <div class="receive-toggle">
+        <div>
+          <div class="receive-label">Accept incoming files</div>
+          <div class="receive-sub" id="receiveSub">Discovery active, receive off</div>
+        </div>
+        <div class="toggle-wrap" onclick="toggleReceive()"><div class="toggle" id="receiveToggle"></div></div>
+      </div>
+      <div class="receive-mode" id="receiveModeRow" style="display:none">
+        <button class="mode-btn active" id="mode-ask" onclick="setReceiveMode('ask')">Ask first</button>
+        <button class="mode-btn" id="mode-auto" onclick="setReceiveMode('auto')">Auto-accept</button>
+      </div>
+    </div>
+    <div class="card" id="receiveTransfersCard" style="display:none">
+      <div class="card-title">Incoming Transfers</div>
+      <div class="transfers" id="receiveTransfersList"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">This Device</div>
+      <div class="my-device">
+        <div class="device-icon">📱</div>
+        <div>
+          <div class="device-name" id="myDeviceName">—</div>
+          <div class="device-ip" id="myDeviceIP">Getting IP…</div>
+          <div class="device-alias">LocalSend compatible · Port 53317</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="view-history" style="display:none">
+    <div class="card">
+      <div class="card-title">Transfer History</div>
+      <div id="historyList"><div class="empty-peers">No transfers yet</div></div>
+      <button class="scan-btn" style="margin-top:8px;color:#FF6B6B" onclick="clearHistory()">🗑 Clear History</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="requestModal">
+  <div class="modal">
+    <div class="modal-title" id="requestTitle">Incoming Transfer</div>
+    <div class="modal-sub" id="requestSub">From: Unknown</div>
+    <div class="incoming-files" id="requestFiles"></div>
+    <div class="modal-actions">
+      <button class="modal-btn decline" onclick="respondRequest(false)">Decline</button>
+      <button class="modal-btn accept" onclick="respondRequest(true)">Accept</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="addPeerModal">
+  <div class="modal">
+    <div class="modal-title">Add Device Manually</div>
+    <div class="modal-sub">Enter the IP address of the device running LocalSend</div>
+    <label class="input-label">IP Address</label>
+    <input class="input-field" id="manualIP" placeholder="192.168.1.x" type="text" inputmode="decimal">
+    <label class="input-label">Port (default 53317)</label>
+    <input class="input-field" id="manualPort" placeholder="53317" type="number" value="53317" inputmode="numeric">
+    <div class="modal-actions">
+      <button class="modal-btn decline" onclick="closeAddPeer()">Cancel</button>
+      <button class="modal-btn accept" onclick="confirmAddPeer()">Add</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── Constants ────────────────────────────────────────────────────────────────
+var LS_PORT = 53317;
+var LS_MULTICAST = '224.0.0.167';
+var NSD_TYPE = '_localsend._tcp';
+var FINGERPRINT = 'iappyx-' + Math.random().toString(36).substr(2,8);
+function peerUrl(peer,path){var s=(peer.scheme==='https'||peer.protocol==='https')?'https':'http';return s+'://'+peer.ip+':'+peer.port+path;}
+
+// ─── State ────────────────────────────────────────────────────────────────────
+var appState = {
+  myAlias: 'iappyxOS-' + Math.random().toString(36).substr(2,4).toUpperCase(),
+  receiveMode: 'ask',
+  receiveEnabled: false,
+  peers: [],
+  history: []
+};
+var selectedFiles = [], selectedPeer = null;
+var activeTransfers = {}, receiveTransfers = {};
+var pendingSession = null, pendingRequestId = null;
+var myIP = '?', currentTab = 'send', scanRunning = false;
+var udpOpen = false;
+
+// ─── Bridge Init ──────────────────────────────────────────────────────────────
+function _initBridge(){if(typeof iappyx==='undefined'){setTimeout(_initBridge,50);return;}onReady();}
+window.addEventListener('load',function(){setTimeout(_initBridge,200);});
+
+function onReady(){
+  try{
+    var t=JSON.parse(iappyx.device.getThemeColors());
+    var s=document.documentElement.style;
+    s.setProperty('--primary',t.primary);
+    s.setProperty('--primary-light',t.primaryLight);
+    s.setProperty('--primary-dark',t.primaryDark);
+    s.setProperty('--secondary',t.secondary);
+    s.setProperty('--bg',t.background);
+    s.setProperty('--surface',t.surface);
+    s.setProperty('--text',t.neutralLight);
+    s.setProperty('--text-secondary',t.neutral);
+    s.setProperty('--on-primary',t.onPrimary);
+    s.setProperty('--on-surface',t.onSurface);
+    s.setProperty('--on-bg',t.onBackground);
+  }catch(e){}
+  var saved=iappyx.load('localsend_state');
+  if(saved){try{var s=JSON.parse(saved);appState.myAlias=s.myAlias||appState.myAlias;appState.receiveMode=s.receiveMode||'ask';appState.peers=s.peers||[];appState.history=s.history||[];}catch(e){}}
+  try{myIP=iappyx.httpServer.getLocalIpAddress()||'?';}catch(e){}
+  document.getElementById('myDeviceIP').textContent=myIP!=='?'?myIP+':'+LS_PORT:'No Wi-Fi';
+  getDeviceInfo();
+  renderAll();
+  startHttpServer();
+  startUdp();
+  startNsdDiscovery();
+  setTimeout(startScan, 1500);
+}
+
+function saveState(){iappyx.save('localsend_state',JSON.stringify({myAlias:appState.myAlias,receiveMode:appState.receiveMode,peers:appState.peers,history:appState.history}));}
+
+function getDeviceInfo(){
+  try{var info=JSON.parse(iappyx.device.getDeviceInfo());var model=((info.brand||'')+' '+(info.model||'')).trim();document.getElementById('myDeviceName').textContent=appState.myAlias+(model?' ('+model+')':'');}
+  catch(e){document.getElementById('myDeviceName').textContent=appState.myAlias;}
+}
+
+// ─── HTTP Server ──────────────────────────────────────────────────────────────
+function startHttpServer(){
+  try{
+    var cbId='srv_'+Date.now();
+    window._iappyxCb=window._iappyxCb||{};
+    window._iappyxCb[cbId]=function(r){
+      if(r.ok){
+        iappyx.httpServer.onRequest('window.onHttpReq');
+        setStatus(true,'Ready · '+myIP);
+      }else{
+        setStatus(false,'Server error: '+(r.error||'?'));
+      }
+    };
+    setTimeout(function(){delete window._iappyxCb[cbId];},30000);
+    iappyx.httpServer.start(LS_PORT,'false',cbId);
+  }catch(e){setStatus(false,'HTTP unavailable');}
+}
+
+window.onHttpReq=function(req){
+  try{
+    var cp=(req.path||'').split('?')[0];
+    if(cp==='/api/localsend/v2/info'||cp==='/api/localsend/v1/info'){
+      iappyx.httpServer.respond(req.requestId,200,JSON.stringify({'Content-Type':'application/json'}),JSON.stringify(buildInfoPayload()));
+      return;
+    }
+    if(cp==='/api/localsend/v2/prepare-upload'||cp==='/api/localsend/v1/send-request'){handlePrepareUpload(req);return;}
+    if(cp==='/api/localsend/v2/upload'||cp==='/api/localsend/v1/send'){handleUpload(req);return;}
+    if(cp==='/api/localsend/v2/cancel'){
+      pendingSession=null;pendingRequestId=null;
+      iappyx.httpServer.respond(req.requestId,200,'{}','');
+      return;
+    }
+    iappyx.httpServer.respond(req.requestId,404,'{}','Not found');
+  }catch(e){try{iappyx.httpServer.respond(req.requestId,500,'{}','Error');}catch(e2){}}
+};
+
+function buildInfoPayload(){
+  return {alias:appState.myAlias,version:'2.0',deviceModel:'iappyxOS',deviceType:'mobile',
+    fingerprint:FINGERPRINT,port:LS_PORT,protocol:'http',download:appState.receiveEnabled,announcement:true};
+}
+
+function handlePrepareUpload(req){
+  try{
+    var data=JSON.parse(req.body||'{}');
+    var files=data.files||{},senderInfo=data.info||{alias:'Unknown'};
+    var sessionId='in_'+Date.now(),respFiles={};
+    Object.keys(files).forEach(function(fid){respFiles[fid]='tok_'+Math.random().toString(36).substr(2,8);});
+    pendingSession={sessionId:sessionId,files:files,sender:senderInfo,tokens:respFiles};
+    if(appState.receiveEnabled&&appState.receiveMode==='auto'){
+      startIncomingTransfers(pendingSession);
+      iappyx.httpServer.respond(req.requestId,200,JSON.stringify({'Content-Type':'application/json'}),JSON.stringify({sessionId:sessionId,files:respFiles}));
+    }else if(appState.receiveEnabled){
+      pendingRequestId=req.requestId;
+      showRequestModal(senderInfo,files,sessionId,respFiles);
+      var safetyTid=setTimeout(function(){
+        if(pendingRequestId===req.requestId){
+          try{iappyx.httpServer.respond(req.requestId,403,'{}','Timed out');}catch(e){}
+          pendingRequestId=null;pendingSession=null;
+          document.getElementById('requestModal').className='modal-overlay';
+        }
+      },25000);
+      pendingSession._safetyTid=safetyTid;
+    }else{
+      iappyx.httpServer.respond(req.requestId,403,'{}','Receive not enabled');
+    }
+  }catch(e){try{iappyx.httpServer.respond(req.requestId,500,'{}','Error');}catch(e2){}}
+}
+
+function handleUpload(req){
+  try{
+    var q=parseQueryString(req.query||''),fileId=q.fileId||'',token=q.token||'';
+    if(!pendingSession||!pendingSession.files[fileId]){iappyx.httpServer.respond(req.requestId,404,'{}','Unknown file');return;}
+    if(token&&pendingSession.tokens[fileId]&&token!==pendingSession.tokens[fileId]){iappyx.httpServer.respond(req.requestId,403,'{}','Bad token');return;}
+    var meta=pendingSession.files[fileId];
+    iappyx.httpServer.respond(req.requestId,200,'{}','');
+    if(req.bodyFile){
+      try{
+        iappyx.storage.copyFileToDownloads(req.bodyFile,sanitizeFilename(meta.fileName),meta.fileType||'application/octet-stream');
+        showToast('Received: '+meta.fileName,'success');
+        markReceiveDone(fileId,meta,pendingSession.sender);
+      }catch(se){showToast('Save error: '+se.message,'error');}
+    }else if(req.body){
+      try{
+        var b64=btoa(unescape(encodeURIComponent(req.body)));
+        iappyx.storage.saveToDownloads(sanitizeFilename(meta.fileName),b64,meta.fileType||'application/octet-stream');
+        showToast('Received: '+meta.fileName,'success');
+        markReceiveDone(fileId,meta,pendingSession.sender);
+      }catch(se){showToast('Save error: '+se.message,'error');}
+    }
+  }catch(e){try{iappyx.httpServer.respond(req.requestId,500,'{}','Error');}catch(e2){}}
+}
+
+function markReceiveDone(fileId,meta,sender){
+  if(receiveTransfers[fileId]){receiveTransfers[fileId].itemStatus='done';receiveTransfers[fileId].progress=100;renderReceiveTransfers();}
+  addHistory('received',[meta.fileName],(sender&&sender.alias)||'Unknown');
+}
+
+function showRequestModal(senderInfo,files){
+  document.getElementById('requestTitle').textContent='Incoming Transfer';
+  document.getElementById('requestSub').textContent='From: '+(senderInfo.alias||'Unknown');
+  var fkeys=Object.keys(files);
+  document.getElementById('requestFiles').innerHTML=fkeys.slice(0,5).map(function(fid){
+    var f=files[fid];
+    return '<div class="incoming-file">'+fileEmoji(f.fileName)+' <b>'+escHtml(f.fileName)+'</b> <span style="color:rgba(255,255,255,0.4)">'+formatSize(f.size)+'</span></div>';
+  }).join('')+(fkeys.length>5?'<div class="incoming-file" style="color:rgba(255,255,255,0.4)">…and '+(fkeys.length-5)+' more</div>':'');
+  document.getElementById('requestModal').className='modal-overlay open';
+  iappyx.vibration.pattern('0,200,100,200');
+  iappyx.notification.send('Incoming file','From '+(senderInfo.alias||'Unknown')+' – tap to respond');
+}
+
+function respondRequest(accept){
+  document.getElementById('requestModal').className='modal-overlay';
+  if(pendingSession&&pendingSession._safetyTid)clearTimeout(pendingSession._safetyTid);
+  if(!accept){
+    if(pendingRequestId)try{iappyx.httpServer.respond(pendingRequestId,403,'{}','Declined');}catch(e){}
+    pendingRequestId=null;pendingSession=null;
+    return;
+  }
+  if(pendingSession&&pendingRequestId){
+    var sess=pendingSession;
+    startIncomingTransfers(sess);
+    iappyx.httpServer.respond(pendingRequestId,200,JSON.stringify({'Content-Type':'application/json'}),JSON.stringify({sessionId:sess.sessionId,files:sess.tokens}));
+    pendingRequestId=null;
+  }
+}
+
+function startIncomingTransfers(session){
+  document.getElementById('receiveTransfersCard').style.display='';
+  Object.keys(session.files).forEach(function(fid){
+    var f=session.files[fid];receiveTransfers[fid]={name:f.fileName,size:f.size,progress:0,itemStatus:'waiting'};
+  });
+  renderReceiveTransfers();
+}
+
+// ─── UDP Multicast Discovery ──────────────────────────────────────────────────
+function startUdp(){
+  try{
+    var cbId='udp_open_'+Date.now();
+    window._iappyxCb=window._iappyxCb||{};
+    window._iappyxCb[cbId]=function(r){
+      if(r.ok){
+        udpOpen=true;
+        iappyx.udp.onReceive('window.onUdpMsg');
+        try{iappyx.udp.joinMulticast(LS_MULTICAST);}catch(e){}
+        sendUdpAnnouncement();
+        setInterval(sendUdpAnnouncement, 30000);
+      }
+    };
+    setTimeout(function(){delete window._iappyxCb[cbId];},10000);
+    iappyx.udp.open(LS_PORT,cbId);
+  }catch(e){}
+}
+
+function sendUdpAnnouncement(){
+  if(!udpOpen)return;
+  try{
+    var msg=JSON.stringify(buildInfoPayload());
+    iappyx.udp.send(LS_MULTICAST,LS_PORT,msg);
+  }catch(e){}
+}
+
+window.onUdpMsg=function(pkt){
+  if(!pkt||!pkt.data)return;
+  try{
+    var info=JSON.parse(pkt.data);
+    if(info&&info.alias&&info.fingerprint!==FINGERPRINT){
+      var ip=pkt.from;
+      if(ip)addOrUpdatePeer(info,ip);
+    }
+  }catch(e){}
+};
+
+// ─── NSD Discovery (mDNS fallback) ───────────────────────────────────────────
+function startNsdDiscovery(){
+  try{
+    var cbId='nsd_reg_'+Date.now();
+    window._iappyxCb=window._iappyxCb||{};
+    window._iappyxCb[cbId]=function(){};
+    setTimeout(function(){delete window._iappyxCb[cbId];},30000);
+    iappyx.nsd.register(NSD_TYPE,appState.myAlias,LS_PORT,
+      JSON.stringify({alias:appState.myAlias,fingerprint:FINGERPRINT,version:'2.0'}),cbId);
+    iappyx.nsd.startDiscovery(NSD_TYPE,'window.onNsdEvent');
+  }catch(e){}
+}
+
+window.onNsdEvent=function(evt){
+  if(!evt)return;
+  if(evt.event==='found'&&evt.serviceName!==appState.myAlias){
+    var rCbId='nsd_r_'+Date.now()+'_'+Math.random().toString(36).substr(2,4);
+    window._iappyxCb=window._iappyxCb||{};
+    window._iappyxCb[rCbId]=function(r){if(r.ok&&r.host)probeAndAddPeer(r.host,r.port||LS_PORT);};
+    setTimeout(function(){delete window._iappyxCb[rCbId];},10000);
+    try{iappyx.nsd.resolve(NSD_TYPE,evt.serviceName,rCbId);}catch(e){}
+  }
+  if(evt.event==='lost'){
+    appState.peers=appState.peers.filter(function(p){return p.alias!==evt.serviceName;});
+    if(selectedPeer&&selectedPeer.alias===evt.serviceName){selectedPeer=null;updateSendBtn();}
+    saveState();renderPeers();
+  }
+};
+
+// ─── IP Scan (second fallback) ────────────────────────────────────────────────
+function startScan(){
+  if(scanRunning)return;scanRunning=true;
+  var btn=document.getElementById('scanBtn');btn.innerHTML='<span class="spin">⟳</span> Scanning…';btn.disabled=true;
+  var subnet='192.168.1';
+  if(myIP&&myIP!=='?'&&myIP.split('.').length===4){var pts=myIP.split('.');subnet=pts[0]+'.'+pts[1]+'.'+pts[2];}
+  var batch=[];for(var i=1;i<255;i++)batch.push(subnet+'.'+i);
+  var pd=0,dn=0,tot=batch.length,idx=0,CONC=20;
+  function nxt(){
+    while(pd<CONC&&idx<tot){
+      (function(ip){
+        pd++;
+        var cbId='scan_'+Date.now()+'_'+Math.random().toString(36).substr(2,4);
+        window._iappyxCb=window._iappyxCb||{};
+        var tid=setTimeout(function(){delete window._iappyxCb[cbId];pd--;dn++;if(dn===tot)scanDone();else nxt();},2000);
+        window._iappyxCb[cbId]=function(r){
+          clearTimeout(tid);
+          if(r.ok&&r.status===200){
+            try{var info=JSON.parse(r.body);if(info&&info.alias)addOrUpdatePeer(info,ip);}catch(e){}
+          }
+          pd--;dn++;if(dn===tot)scanDone();else nxt();
+        };
+        try{
+          iappyx.httpClient.request(JSON.stringify({
+            url:'http://'+ip+':'+LS_PORT+'/api/localsend/v2/info',
+            method:'GET',timeout:1500,trustAllCerts:false
+          }),cbId);
+        }catch(e){clearTimeout(tid);pd--;dn++;if(dn===tot)scanDone();else nxt();}
+      })(batch[idx++]);
+    }
+  }
+  function scanDone(){scanRunning=false;btn.innerHTML='🔍 Scan Network';btn.disabled=false;if(!appState.peers.length)setStatus(false,'No devices found');renderPeers();}
+  nxt();
+}
+
+function probeAndAddPeer(ip,port,infoReady){
+  if(infoReady){addOrUpdatePeer(infoReady,ip);return;}
+  var cbId='probe_'+Date.now()+'_'+Math.random().toString(36).substr(2,4);
+  window._iappyxCb=window._iappyxCb||{};
+  var tid=setTimeout(function(){delete window._iappyxCb[cbId];},5000);
+  window._iappyxCb[cbId]=function(r){
+    clearTimeout(tid);
+    if(r.ok&&r.status===200){try{var info=JSON.parse(r.body);if(info&&info.alias)addOrUpdatePeer(info,ip);}catch(e){}}
+  };
+  try{
+    iappyx.httpClient.request(JSON.stringify({
+      url:'http://'+ip+':'+(port||LS_PORT)+'/api/localsend/v2/info',
+      method:'GET',timeout:4000,trustAllCerts:true
+    }),cbId);
+  }catch(e){clearTimeout(tid);}
+}
+
+function addOrUpdatePeer(info,ip){
+  if(!info||!info.alias||info.fingerprint===FINGERPRINT)return;
+  var port=info.port||LS_PORT;
+  var ex=appState.peers.findIndex(function(p){return p.ip===ip&&p.port===port;});
+  var peer={alias:info.alias,ip:ip,port:port,deviceModel:info.deviceModel||'',
+    deviceType:info.deviceType||'desktop',fingerprint:info.fingerprint||'',
+    protocol:info.version?'v'+info.version:'v2',scheme:info.protocol||'http'};
+  if(ex>=0)appState.peers[ex]=peer;else appState.peers.push(peer);
+  saveState();renderPeers();
+  setStatus(true,appState.peers.length+' device'+(appState.peers.length>1?'s':'')+' found');
+}
+
+// ─── Manual Add ───────────────────────────────────────────────────────────────
+function addPeerManual(){document.getElementById('manualIP').value='';document.getElementById('manualPort').value=''+LS_PORT;document.getElementById('addPeerModal').className='modal-overlay open';}
+function closeAddPeer(){document.getElementById('addPeerModal').className='modal-overlay';}
+function confirmAddPeer(){
+  var ip=document.getElementById('manualIP').value.trim();
+  var port=parseInt(document.getElementById('manualPort').value)||LS_PORT;
+  if(!ip){showToast('Enter an IP address','error');return;}
+  closeAddPeer();probeAndAddPeer(ip,port);showToast('Probing '+ip+'…');
+}
+
+// ─── Receive Toggle ───────────────────────────────────────────────────────────
+function toggleReceive(){
+  appState.receiveEnabled=!appState.receiveEnabled;saveState();
+  document.getElementById('receiveToggle').className='toggle'+(appState.receiveEnabled?' on':'');
+  document.getElementById('receiveModeRow').style.display=appState.receiveEnabled?'flex':'none';
+  document.getElementById('receiveSub').textContent=appState.receiveEnabled?'Listening on port '+LS_PORT:'Discovery active, receive off';
+  try{
+    var cbId='nsd_rr_'+Date.now();window._iappyxCb=window._iappyxCb||{};window._iappyxCb[cbId]=function(){};
+    setTimeout(function(){delete window._iappyxCb[cbId];},30000);
+    iappyx.nsd.unregister();
+    iappyx.nsd.register(NSD_TYPE,appState.myAlias,LS_PORT,
+      JSON.stringify({alias:appState.myAlias,fingerprint:FINGERPRINT,version:'2.0',download:appState.receiveEnabled}),cbId);
+  }catch(e){}
+  sendUdpAnnouncement();
+}
+
+function setReceiveMode(mode){appState.receiveMode=mode;saveState();document.getElementById('mode-ask').className='mode-btn'+(mode==='ask'?' active':'');document.getElementById('mode-auto').className='mode-btn'+(mode==='auto'?' active':'');}
+
+// ─── Send ─────────────────────────────────────────────────────────────────────
+function startSend(){
+  if(!selectedPeer||selectedFiles.length===0)return;
+  var peer=selectedPeer,files=selectedFiles.slice();
+  selectedFiles=[];renderSelectedFiles();updateSendBtn();
+  var sessionId='sess_'+Date.now();
+  var filesMeta=files.map(function(f){
+    return {id:'f_'+Math.random().toString(36).substr(2,6),fileName:f.name,size:f.size,
+      fileType:f.mimeType||f.type||'application/octet-stream',sha256:'',preview:''};
+  });
+  document.getElementById('transfersCard').style.display='';
+  filesMeta.forEach(function(fm){activeTransfers[fm.id]={name:fm.fileName,size:fm.size,progress:0,itemStatus:'waiting',speed:0,startTime:0};});
+  renderTransfers();
+
+  var bodyStr=JSON.stringify({
+    info:{alias:appState.myAlias,version:'2.0',deviceModel:'Android',deviceType:'mobile',
+      fingerprint:FINGERPRINT,port:LS_PORT,protocol:'http',download:false},
+    files:filesMeta.reduce(function(acc,f){acc[f.id]=f;return acc;},{})
+  });
+
+  var cbId='prep_'+Date.now();
+  window._iappyxCb=window._iappyxCb||{};
+  var tid=setTimeout(function(){
+    delete window._iappyxCb[cbId];
+    filesMeta.forEach(function(fm){activeTransfers[fm.id].itemStatus='error';activeTransfers[fm.id].error='Timeout';});
+    renderTransfers();showToast('Send failed: timeout','error');
+  },30000);
+  window._iappyxCb[cbId]=function(r){
+    clearTimeout(tid);
+    if(!r.ok){
+      filesMeta.forEach(function(fm){activeTransfers[fm.id].itemStatus='error';activeTransfers[fm.id].error=r.error||'Failed';});
+      renderTransfers();showToast('Send failed: '+(r.error||'error'),'error');
+      return;
+    }
+    var resp;
+    try{resp=JSON.parse(r.body);}catch(e){resp={};}
+    if(r.status===204)resp={sessionId:sessionId,files:{}};
+    var remoteSession=resp.sessionId||sessionId,fileTokens=resp.files||{};
+    var chain=Promise.resolve();
+    filesMeta.forEach(function(fm,fi){chain=chain.then(function(){return uploadFile(peer,remoteSession,fm,files[fi],fileTokens[fm.id]);});});
+    chain.then(function(){
+      showToast('All files sent!','success');
+      addHistory('sent',files.map(function(f){return f.name;}),peer.alias);
+    }).catch(function(err){showToast('Upload failed: '+err.message,'error');});
+  };
+  try{
+    iappyx.httpClient.request(JSON.stringify({
+      url:peerUrl(peer,'/api/localsend/v2/prepare-upload'),
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:bodyStr,
+      timeout:28000,
+      trustAllCerts:true
+    }),cbId);
+  }catch(e){clearTimeout(tid);showToast('Send error: '+e.message,'error');}
+}
+
+function uploadFile(peer,sessionId,fm,file,token){
+  return new Promise(function(resolve,reject){
+    var startTime=Date.now();
+    activeTransfers[fm.id].itemStatus='sending';activeTransfers[fm.id].startTime=startTime;
+    renderTransfers();
+
+    var uploadUrl=peerUrl(peer,'/api/localsend/v2/upload')
+      +'?sessionId='+encodeURIComponent(sessionId)
+      +'&fileId='+encodeURIComponent(fm.id)
+      +(token?'&token='+encodeURIComponent(token):'');
+
+    var fp=0;var pi=setInterval(function(){
+      fp=Math.min(fp+4,90);activeTransfers[fm.id].progress=fp;
+      var elapsed=(Date.now()-startTime)/1000;
+      activeTransfers[fm.id].speed=elapsed>0?Math.round(fm.size*(fp/100)/elapsed):0;
+      renderTransfers();
+    },250);
+
+    var cbId='upl_'+Date.now()+'_'+Math.random().toString(36).substr(2,4);
+    window._iappyxCb=window._iappyxCb||{};
+    var tid=setTimeout(function(){
+      clearInterval(pi);delete window._iappyxCb[cbId];
+      activeTransfers[fm.id].itemStatus='error';activeTransfers[fm.id].error='Timeout';
+      renderTransfers();reject(new Error('Upload timeout'));
+    },120000);
+    window._iappyxCb[cbId]=function(r){
+      clearTimeout(tid);clearInterval(pi);
+      if(!r.ok||r.status>=300){
+        activeTransfers[fm.id].itemStatus='error';activeTransfers[fm.id].error='HTTP '+(r.status||r.error);
+        renderTransfers();reject(new Error('HTTP '+(r.status||r.error)));
+      }else{
+        activeTransfers[fm.id].progress=100;activeTransfers[fm.id].itemStatus='done';
+        renderTransfers();resolve();
+      }
+    };
+    try{
+      iappyx.httpClient.uploadFile(JSON.stringify({
+        url:uploadUrl,method:'POST',
+        headers:{'Content-Type':fm.fileType},
+        timeout:118000,trustAllCerts:true
+      }),file.filePath,cbId);
+    }catch(e){clearTimeout(tid);clearInterval(pi);reject(e);}
+  });
+}
+function pickFile(){
+  var cbId='pick_'+Date.now();
+  window._iappyxCb=window._iappyxCb||{};
+  var tid=setTimeout(function(){delete window._iappyxCb[cbId];},60000);
+  window._iappyxCb[cbId]=function(r){
+    clearTimeout(tid);
+    if(r.ok&&r.filePath){
+      selectedFiles.push({filePath:r.filePath,name:r.name,size:r.size,mimeType:r.mimeType||'application/octet-stream'});
+      renderSelectedFiles();updateSendBtn();
+    }
+  };
+  try{iappyx.storage.pickFile(cbId);}catch(e){clearTimeout(tid);}
+}
+function removeFile(i){selectedFiles.splice(i,1);renderSelectedFiles();updateSendBtn();}
+function renderSelectedFiles(){
+  var el=document.getElementById('selectedFiles');
+  if(!selectedFiles.length){el.innerHTML='';return;}
+  el.innerHTML=selectedFiles.map(function(f,i){
+    return '<div class="file-chip"><span class="file-chip-icon">'+fileEmoji(f.name)+'</span><span class="file-chip-name">'+escHtml(f.name)+'</span><span class="file-chip-size">'+formatSize(f.size)+'</span><span class="file-chip-del" onclick="removeFile('+i+')">✕</span></div>';
+  }).join('');
+}
+function updateSendBtn(){
+  var btn=document.getElementById('sendBtn');btn.disabled=!selectedPeer||selectedFiles.length===0;
+  if(selectedPeer&&selectedFiles.length>0)btn.textContent='Send to '+selectedPeer.alias;
+  else if(!selectedPeer)btn.textContent='Select a device first';
+  else btn.textContent='Select files first';
+}
+
+// ─── Peers ────────────────────────────────────────────────────────────────────
+function renderPeers(){
+  var el=document.getElementById('peerList');
+  if(!appState.peers.length){el.innerHTML='<div class="empty-peers">No devices found<br><span style="font-size:12px">Make sure devices are on the same Wi-Fi</span></div>';return;}
+  el.innerHTML=appState.peers.map(function(p,i){
+    var sel=selectedPeer&&selectedPeer.ip===p.ip&&selectedPeer.port===p.port;
+    return '<div class="peer-item'+(sel?' selected':'')+'" onclick="selectPeer('+i+')">'
+      +'<div class="peer-icon">'+deviceEmoji(p.deviceType)+'</div>'
+      +'<div class="peer-info"><div class="peer-name">'+escHtml(p.alias)+'</div><div class="peer-addr">'+p.ip+':'+p.port+'</div></div>'
+      +'<span class="peer-badge">'+escHtml(p.protocol||'v2')+'</span></div>';
+  }).join('');
+}
+function selectPeer(i){selectedPeer=appState.peers[i];renderPeers();updateSendBtn();iappyx.vibration.tick();}
+function deviceEmoji(t){return t==='mobile'?'📱':t==='desktop'?'🖥️':t==='tablet'?'📟':'💻';}
+
+// ─── Render Transfers ─────────────────────────────────────────────────────────
+function renderTransfers(){
+  var el=document.getElementById('transfersList'),items=Object.keys(activeTransfers);
+  if(!items.length){el.innerHTML='';return;}
+  el.innerHTML=items.map(function(id){
+    var t=activeTransfers[id];var lbl={waiting:'Queued',sending:'Sending…',done:'Done',error:'Failed'}[t.itemStatus]||t.itemStatus;var cls={sending:'sending',done:'done',error:'error',waiting:'waiting'}[t.itemStatus]||'';
+    return '<div class="transfer-item"><div class="transfer-header"><span class="transfer-name">'+escHtml(t.name)+'</span><span class="transfer-status '+cls+'">'+lbl+(t.error?' – '+escHtml(t.error):'')+'</span></div><div class="progress-bar"><div class="progress-fill'+(t.itemStatus==='done'?' done':'')+'" style="width:'+t.progress+'%"></div></div><div class="transfer-meta"><span class="transfer-speed">'+(t.speed>0?formatSize(t.speed)+'/s':'')+'</span><span class="transfer-size">'+formatSize(t.size)+'</span></div></div>';
+  }).join('');
+}
+function renderReceiveTransfers(){
+  var el=document.getElementById('receiveTransfersList'),items=Object.keys(receiveTransfers);
+  if(!items.length){el.innerHTML='';return;}
+  el.innerHTML=items.map(function(id){
+    var t=receiveTransfers[id];var lbl={waiting:'Waiting',sending:'Receiving…',done:'Saved',error:'Failed'}[t.itemStatus]||t.itemStatus;var cls={sending:'sending',done:'done',error:'error',waiting:'waiting'}[t.itemStatus]||'';
+    return '<div class="transfer-item"><div class="transfer-header"><span class="transfer-name">'+escHtml(t.name)+'</span><span class="transfer-status '+cls+'">'+lbl+'</span></div><div class="progress-bar"><div class="progress-fill'+(t.itemStatus==='done'?' done':'')+'" style="width:'+t.progress+'%"></div></div><div class="transfer-meta"><span class="transfer-size">'+formatSize(t.size)+'</span></div></div>';
+  }).join('');
+}
+
+// ─── History ──────────────────────────────────────────────────────────────────
+function addHistory(dir,fileNames,peer){appState.history.unshift({dir:dir,files:fileNames,peer:peer,ts:Date.now()});if(appState.history.length>100)appState.history.pop();saveState();}
+function renderHistory(){
+  var el=document.getElementById('historyList');
+  if(!appState.history.length){el.innerHTML='<div class="empty-peers">No transfers yet</div>';return;}
+  el.innerHTML=appState.history.map(function(h){
+    var arrow=h.dir==='sent'?'↑':'↓',col=h.dir==='sent'?'var(--primary)':'var(--success)';
+    return '<div class="transfer-item"><div class="transfer-header"><span style="color:'+col+';font-size:16px;margin-right:6px">'+arrow+'</span><span class="transfer-name">'+escHtml(h.files[0]||'')+(h.files.length>1?' +'+(h.files.length-1)+'…':'')+'</span><span class="transfer-status '+(h.dir==='sent'?'sending':'done')+'">'+escHtml(h.peer)+'</span></div><div class="transfer-meta"><span class="transfer-speed">'+new Date(h.ts).toLocaleString()+'</span></div></div>';
+  }).join('');
+}
+function clearHistory(){appState.history=[];saveState();renderHistory();showToast('History cleared');}
+
+// ─── UI Helpers ───────────────────────────────────────────────────────────────
+function switchTab(tab){currentTab=tab;['send','receive','history'].forEach(function(t){document.getElementById('view-'+t).style.display=t===tab?'':'none';document.getElementById('tab-'+t).className='tab'+(t===tab?' active':'');});if(tab==='history')renderHistory();}
+function setStatus(online,text){document.getElementById('statusDot').className='status-dot'+(online?' online':'');document.getElementById('statusText').textContent=text;}
+var toastTid=null;
+function showToast(msg,type){var el=document.getElementById('toast');el.textContent=msg;el.className='toast'+(type?' '+type:'');void el.offsetWidth;el.classList.add('show');clearTimeout(toastTid);toastTid=setTimeout(function(){el.className='toast'+(type?' '+type:'');},3000);}
+function renderAll(){renderPeers();updateSendBtn();document.getElementById('receiveToggle').className='toggle'+(appState.receiveEnabled?' on':'');document.getElementById('receiveModeRow').style.display=appState.receiveEnabled?'flex':'none';document.getElementById('receiveSub').textContent=appState.receiveEnabled?'Listening on port '+LS_PORT:'Discovery active, receive off';document.getElementById('mode-ask').className='mode-btn'+(appState.receiveMode==='ask'?' active':'');document.getElementById('mode-auto').className='mode-btn'+(appState.receiveMode==='auto'?' active':'');document.getElementById('myDeviceName').textContent=appState.myAlias;}
+
+// ─── Utility ──────────────────────────────────────────────────────────────────
+function escHtml(s){if(!s)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function formatSize(b){if(!b)return '0 B';if(b<1024)return b+' B';if(b<1048576)return (b/1024).toFixed(1)+' KB';if(b<1073741824)return (b/1048576).toFixed(1)+' MB';return (b/1073741824).toFixed(2)+' GB';}
+function fileEmoji(name){if(!name)return '📄';var ext=(name.split('.').pop()||'').toLowerCase();var map={jpg:'🖼️',jpeg:'🖼️',png:'🖼️',gif:'🖼️',webp:'🖼️',svg:'🖼️',mp4:'🎬',mkv:'🎬',avi:'🎬',mov:'🎬',webm:'🎬',mp3:'🎵',flac:'🎵',wav:'🎵',ogg:'🎵',m4a:'🎵',pdf:'📑',doc:'📝',docx:'📝',txt:'📝',xls:'📊',xlsx:'📊',ppt:'📊',pptx:'📊',zip:'🗜️',rar:'🗜️','7z':'🗜️',tar:'🗜️',gz:'🗜️',apk:'📦',exe:'💿',dmg:'💿',html:'🌐',js:'⚙️',json:'⚙️',css:'🎨',py:'🐍'};return map[ext]||'📄';}
+function parseQueryString(q){var r={};if(!q)return r;q.split('&').forEach(function(p){var kv=p.split('=');if(kv.length>=2)r[decodeURIComponent(kv[0])]=decodeURIComponent(kv.slice(1).join('='));});return r;}
+function sanitizeFilename(name){return (name||'file').replace(/[^a-zA-Z0-9.\-_]/g,'_');}
+</script>
+</body></html>
