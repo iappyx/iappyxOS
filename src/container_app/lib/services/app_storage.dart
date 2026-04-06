@@ -131,6 +131,15 @@ class AppStorage {
     return _file!;
   }
 
+  static const _tag = '<!-- Built with iappyxOS — https://github.com/iappyx/iappyxOS -->\n';
+
+  /// Ensures the iappyxOS attribution tag is present exactly once at the top.
+  static String tagHtml(String html) {
+    if (html.isEmpty) return html;
+    final clean = html.replaceAll(_tag, '');
+    return '$_tag$clean';
+  }
+
   static Future<void>? _writeLock;
 
   /// Serialize write operations to prevent read-modify-write races.

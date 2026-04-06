@@ -384,7 +384,7 @@ class CreateScreenState extends State<CreateScreen> {
       final appId = _editingId ?? '${now.millisecondsSinceEpoch}_${Random().nextInt(9999)}';
       await AppStorage.save(AppData(
         id: appId, name: label,
-        description: description, prompt: prompt, html: html, appType: appType,
+        description: description, prompt: prompt, html: AppStorage.tagHtml(html), appType: appType,
         packageName: result.packageName, apkPath: result.apkPath, iconConfig: ic.toJsonString(), firebaseConfig: _firebaseConfig,
         createdAt: _editingId != null ? (await _getExistingCreatedAt(_editingId!) ?? now) : now, updatedAt: now,
       ));

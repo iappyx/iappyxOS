@@ -102,7 +102,9 @@ class AppGenerator(private val context: Context) {
             withContext(Dispatchers.Main) { onProgress("\uD83D\uDCC2 Loading template APK...") }
             val templateApk = extractTemplateApk(if (webOnly) TEMPLATE_ASSET_WEB else TEMPLATE_ASSET)
 
-            val assets = mutableMapOf("index.html" to htmlContent.toByteArray(Charsets.UTF_8))
+            val cleanHtml = htmlContent.replace("<!-- Built with iappyxOS — https://github.com/iappyx/iappyxOS -->\n", "")
+            val taggedHtml = "<!-- Built with iappyxOS — https://github.com/iappyx/iappyxOS -->\n$cleanHtml"
+            val assets = mutableMapOf("index.html" to taggedHtml.toByteArray(Charsets.UTF_8))
             if (!firebaseConfig.isNullOrBlank()) {
                 assets["firebase_config.json"] = firebaseConfig.toByteArray(Charsets.UTF_8)
             }
@@ -209,7 +211,9 @@ class AppGenerator(private val context: Context) {
             "udpchat"      -> getUdpChatApp(label)
             else           -> todoApp(label)
         }
-        return mapOf("index.html" to html.toByteArray(Charsets.UTF_8))
+        val cleanHtml = html.replace("<!-- Built with iappyxOS — https://github.com/iappyx/iappyxOS -->\n", "")
+        val taggedHtml = "<!-- Built with iappyxOS — https://github.com/iappyx/iappyxOS -->\n$cleanHtml"
+        return mapOf("index.html" to taggedHtml.toByteArray(Charsets.UTF_8))
     }
 
     private fun generatePackageName(label: String): String {
