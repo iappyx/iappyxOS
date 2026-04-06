@@ -1,0 +1,768 @@
+<!-- Built with iappyxOS — https://github.com/iappyx/iappyxOS -->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>SSH</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:#000}
+body{font-family:-apple-system,sans-serif;color:#eaeaea}
+#shell{display:flex;flex-direction:column;height:100vh;max-width:600px;margin:0 auto}
+.hdr{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#1a1a2e;border-bottom:1px solid rgba(79,195,247,0.15);flex-shrink:0}
+.hdr-icon{width:30px;height:30px;background:linear-gradient(135deg,#0f3460,#4FC3F7);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.hdr-title{font-size:15px;font-weight:700}
+.hdr-sub{font-size:10px;color:rgba(255,255,255,0.4);margin-top:1px}
+.hdr-right{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:11px;color:rgba(255,255,255,0.5)}
+.dot{width:8px;height:8px;border-radius:50%;background:#FF6B6B;transition:background .3s;flex-shrink:0}
+.dot.on{background:#69F0AE;animation:blink 2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.5}}
+#lbar{height:2px;background:linear-gradient(90deg,#4FC3F7,#0f3460);animation:lslide 1.2s ease-in-out infinite;display:none;flex-shrink:0}
+@keyframes lslide{0%{margin-left:0;margin-right:100%}50%{margin-left:25%;margin-right:0}100%{margin-left:100%;margin-right:0}}
+#lbar.on{display:block}
+.tabs{display:flex;background:#1a1a2e;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0}
+.tab{flex:1;padding:9px 4px;text-align:center;font-size:11px;font-weight:600;color:rgba(255,255,255,0.4);border-bottom:2px solid transparent;cursor:pointer;letter-spacing:.3px}
+.tab.on{color:#4FC3F7;border-bottom-color:#4FC3F7}
+#content{flex:1;min-height:0;position:relative;overflow:hidden}
+.view{position:absolute;inset:0;display:none;flex-direction:column;overflow:hidden;background:#0d0d1a}
+.view.on{display:flex}
+/* Terminal */
+#view-terminal{background:#000}
+#term-wrap{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+#term-container{flex:1;min-height:0;overflow:hidden}
+#term-container .xterm{height:100%}
+#term-container .xterm-viewport{overflow-y:auto!important}
+.tbar{flex-shrink:0;display:flex;gap:4px;padding:5px 8px;background:#111;border-top:1px solid rgba(255,255,255,0.07);overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tbtn{padding:5px 9px;border-radius:50px;border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.65);font-size:10px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0}
+.tbtn:active{background:rgba(79,195,247,0.2);border-color:#4FC3F7;color:#4FC3F7}
+.tbtn.hi{border-color:rgba(79,195,247,0.3);color:#4FC3F7;background:rgba(79,195,247,0.07)}
+.tbtn.latched{background:rgba(255,107,107,0.2);border-color:#FF6B6B;color:#FF6B6B}
+#ctrl-bar{display:none;flex-shrink:0;align-items:center;gap:6px;padding:5px 8px;background:#0d0011;border-top:1px solid rgba(255,107,107,0.2)}
+#ctrl-bar.show{display:flex}
+#ctrl-bar-label{font-size:11px;color:#FF6B6B;font-weight:700;white-space:nowrap;flex-shrink:0}
+#ctrl-input{flex:1;background:#1a0010;border:1px solid rgba(255,107,107,0.3);border-radius:8px;padding:6px 10px;color:#eaeaea;font-family:'Courier New',monospace;font-size:14px;outline:none;-webkit-appearance:none;caret-color:#FF6B6B}
+#ctrl-cancel{padding:5px 10px;border-radius:50px;border:1px solid rgba(255,255,255,0.14);background:transparent;color:rgba(255,255,255,0.5);font-size:10px;cursor:pointer;flex-shrink:0}
+#no-conn{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:rgba(255,255,255,0.35);text-align:center;padding:24px;background:#000}
+#no-conn.hide{display:none}
+#no-conn .ico{font-size:52px;opacity:.4}
+#no-conn p{font-size:13px;line-height:1.5}
+/* Profiles */
+.plist{flex:1;overflow-y:auto;padding:12px;-webkit-overflow-scrolling:touch}
+.pcard{background:#1a1a2e;border-radius:12px;padding:13px 14px;margin-bottom:9px;border:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;gap:11px}
+.pcard.act{border-color:rgba(105,240,174,.4);background:rgba(105,240,174,.05)}
+.pava{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#0f3460,#4FC3F7);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.pinfo{flex:1;min-width:0}
+.pname{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.phost{font-size:10px;color:rgba(255,255,255,.45);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pacts{display:flex;gap:5px}
+.bico{width:34px;height:34px;border-radius:9px;border:none;display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer;flex-shrink:0}
+.bico:active{opacity:.6}
+.bc{background:rgba(79,195,247,.15);color:#4FC3F7}
+.be{background:rgba(255,255,255,.07);color:rgba(255,255,255,.6)}
+.bd{background:rgba(255,107,107,.12);color:#FF6B6B}
+.empty{text-align:center;padding:60px 20px;color:rgba(255,255,255,.35)}
+.empty .ei{font-size:44px;margin-bottom:10px}
+.empty .et{font-size:15px;font-weight:600;margin-bottom:5px}
+.empty .es{font-size:12px}
+.fab{position:absolute;bottom:16px;right:16px;width:50px;height:50px;border-radius:50%;background:linear-gradient(135deg,#0f3460,#4FC3F7);border:none;color:#fff;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 18px rgba(79,195,247,.35);z-index:5}
+.fab:active{opacity:.7}
+/* SFTP */
+.sbar{padding:9px 11px;background:#1a1a2e;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;gap:7px;flex-shrink:0}
+.spath{flex:1;font-size:11px;color:#4FC3F7;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.slist{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.sitem{display:flex;align-items:center;gap:9px;padding:9px 13px;min-height:44px;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer}
+.sitem:active{background:rgba(255,255,255,.06)}
+.sico{font-size:17px;width:22px;text-align:center;flex-shrink:0}
+.sname{flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ssz{font-size:10px;color:rgba(255,255,255,.4);flex-shrink:0;padding-right:4px}
+.sacts{display:flex;gap:3px}
+.sbtn{width:28px;height:28px;border-radius:7px;border:none;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center}
+.sbtn:active{opacity:.6}
+.sdl{background:rgba(79,195,247,.12);color:#4FC3F7}
+.srm{background:rgba(255,107,107,.1);color:#FF6B6B}
+.subbar{padding:9px 11px;background:#1a1a2e;border-top:1px solid rgba(255,255,255,.07);display:flex;gap:7px;flex-shrink:0}
+.sempty{text-align:center;padding:36px 14px;color:rgba(255,255,255,.3);font-size:12px}
+/* Modal */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:100;display:flex;align-items:flex-end;justify-content:center}
+.overlay.hide{display:none}
+.sheet{background:#1a1a2e;border-radius:18px 18px 0 0;padding:18px 18px 32px;width:100%;max-width:600px;max-height:90vh;overflow-y:auto}
+.shandle{width:34px;height:4px;background:rgba(255,255,255,.15);border-radius:2px;margin:0 auto 18px}
+.stitle{font-size:16px;font-weight:700;margin-bottom:18px}
+.fg{margin-bottom:13px}
+.fl{font-size:11px;font-weight:600;color:rgba(255,255,255,.5);margin-bottom:5px;display:block;letter-spacing:.4px;text-transform:uppercase}
+.fi{width:100%;padding:11px 13px;background:#0d0d1a;border:1px solid rgba(255,255,255,.1);border-radius:11px;color:#eaeaea;font-size:13px;font-family:-apple-system,sans-serif;outline:none;-webkit-appearance:none}
+.fi:focus{border-color:rgba(79,195,247,.5)}
+.frow{display:flex;gap:9px}
+.frow .fg{flex:1}
+.frow .fg.nw{flex:0 0 80px}
+select.fi option{background:#1a1a2e}
+.fhint{font-size:10px;color:rgba(255,255,255,.3);margin-top:3px}
+.sa{display:flex;gap:9px;margin-top:18px}
+.bp{flex:1;padding:13px;border-radius:11px;border:none;background:linear-gradient(135deg,#0f3460,#1a5276);color:#4FC3F7;font-size:14px;font-weight:700;cursor:pointer}
+.bp:active{opacity:.7}
+.bs{padding:13px 18px;border-radius:11px;border:1px solid rgba(255,255,255,.12);background:transparent;color:rgba(255,255,255,.5);font-size:14px;cursor:pointer}
+.bs:active{opacity:.7}
+.ta{min-height:72px;resize:none;font-family:monospace;font-size:11px}
+#toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#1a1a2e;border:1px solid rgba(79,195,247,.3);border-radius:50px;padding:9px 18px;font-size:12px;color:#eaeaea;z-index:300;white-space:nowrap;box-shadow:0 4px 18px rgba(0,0,0,.5);opacity:0;transition:opacity .2s;pointer-events:none}
+#toast.on{opacity:1}
+#toast.err{border-color:rgba(255,107,107,.5);color:#FF6B6B}
+#toast.ok{border-color:rgba(105,240,174,.5);color:#69F0AE}
+</style>
+</head><body>
+<div id="shell">
+  <div class="hdr">
+    <div class="hdr-icon">⌨️</div>
+    <div><div class="hdr-title">SSH Client</div><div class="hdr-sub" id="hdr-sub">No connection</div></div>
+    <div class="hdr-right"><div class="dot" id="dot"></div><span id="conn-lbl">Offline</span></div>
+  </div>
+  <div id="lbar"></div>
+  <div class="tabs">
+    <div class="tab on" id="tab-profiles" onclick="switchTab('profiles')">🖥 Profiles</div>
+    <div class="tab"    id="tab-terminal" onclick="switchTab('terminal')">Terminal</div>
+    <div class="tab"    id="tab-sftp"     onclick="switchTab('sftp')">SFTP</div>
+  </div>
+  <div id="content">
+    <!-- Profiles -->
+    <div class="view on" id="view-profiles">
+      <div class="plist" id="plist"></div>
+      <button class="fab" onclick="openAddProfile()">＋</button>
+    </div>
+    <!-- Terminal -->
+    <div class="view" id="view-terminal">
+      <div id="no-conn">
+        <div class="ico">🔐</div>
+        <p>No active SSH connection.<br>Connect from the Profiles tab.</p>
+      </div>
+      <div id="term-wrap">
+        <div id="term-container"></div>
+        <div class="tbar">
+          <button class="tbtn hi" onclick="ts('\t')">TAB</button>
+          <button class="tbtn hi" onclick="ts('\x03')">^C</button>
+          <button class="tbtn hi" onclick="ts('\x04')">^D</button>
+          <button class="tbtn hi" onclick="ts('\x1b')">ESC</button>
+          <button class="tbtn" onclick="ts('\x1b[A')">▲</button>
+          <button class="tbtn" onclick="ts('\x1b[B')">▼</button>
+          <button class="tbtn" onclick="ts('\x1b[D')">◄</button>
+          <button class="tbtn" onclick="ts('\x1b[C')">►</button>
+          <button class="tbtn" onclick="ts('\x1b[5~')">PgUp</button>
+          <button class="tbtn" onclick="ts('\x1b[6~')">PgDn</button>
+          <button class="tbtn" id="ctrl-latch-btn" onclick="toggleCtrlLatch()">CTRL</button>
+          <button class="tbtn" onclick="zoomOut()">A−</button>
+          <button class="tbtn" onclick="zoomIn()">A+</button>
+          <button class="tbtn" onclick="showQuickCmd()">Quick</button>
+          <button class="tbtn" onclick="doDisconnect()">Disconnect</button>
+        </div>
+        <!-- CTRL input bar — shown when CTRL is latched -->
+        <div id="ctrl-bar">
+          <span id="ctrl-bar-label">CTRL+</span>
+          <input id="ctrl-input" type="text" maxlength="1"
+            autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"
+            placeholder="type a key…">
+          <button id="ctrl-cancel" onclick="cancelCtrlLatch()">✕</button>
+        </div>
+      </div>
+    </div>
+    <!-- SFTP -->
+    <div class="view" id="view-sftp">
+      <div class="sbar">
+        <button class="bico be" style="font-size:12px" onclick="sftpUp()">⬆</button>
+        <div class="spath" id="sftp-path">/</div>
+        <button class="bico be" style="font-size:14px" onclick="sftpList()">↻</button>
+        <button class="bico bc" style="font-size:12px" onclick="sftpMkdir()">📁+</button>
+      </div>
+      <div class="slist" id="sftp-list"></div>
+      <div class="subbar">
+        <button class="bp" style="font-size:12px;padding:9px" onclick="sftpUpload()">⬆ Upload</button>
+        <button class="bs" style="font-size:12px;padding:9px" onclick="sftpGoTo()">Go to…</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Profile modal -->
+<div class="overlay hide" id="modal-profile">
+  <div class="sheet">
+    <div class="shandle"></div>
+    <div class="stitle" id="modal-title">New Profile</div>
+    <div class="fg"><label class="fl">Profile Name</label><input class="fi" id="f-name" placeholder="My Server" autocomplete="off"></div>
+    <div class="frow">
+      <div class="fg"><label class="fl">Hostname / IP</label><input class="fi" id="f-host" placeholder="192.168.1.1" autocomplete="off"></div>
+      <div class="fg nw"><label class="fl">Port</label><input class="fi" id="f-port" type="number" value="22"></div>
+    </div>
+    <div class="fg"><label class="fl">Username</label><input class="fi" id="f-user" placeholder="root" autocomplete="off"></div>
+    <div class="fg">
+      <label class="fl">Auth Method</label>
+      <select class="fi" id="f-auth" onchange="onAuthChange()">
+        <option value="password">Password</option>
+        <option value="key">Private Key (PEM)</option>
+      </select>
+    </div>
+    <div id="f-pass-g" class="fg"><label class="fl">Password</label><input class="fi" id="f-pass" type="password" placeholder="••••••••" autocomplete="off"></div>
+    <div id="f-key-g" class="fg" style="display:none">
+      <label class="fl">Private Key (PEM)</label>
+      <textarea class="fi ta" id="f-key" placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;..."></textarea>
+      <div class="fhint">Paste PEM private key</div>
+    </div>
+    <div class="fg"><label class="fl">Initial SFTP Directory</label><input class="fi" id="f-initdir" placeholder="/" autocomplete="off"></div>
+    <div class="sa">
+      <button class="bs" onclick="closeModal('modal-profile')">Cancel</button>
+      <button class="bp" onclick="saveProfile()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Quick commands modal -->
+<div class="overlay hide" id="modal-quick">
+  <div class="sheet">
+    <div class="shandle"></div>
+    <div class="stitle">Quick Commands</div>
+    <div id="qlist"></div>
+    <div style="margin-top:14px">
+      <div class="frow">
+        <div class="fg"><label class="fl">Label</label><input class="fi" id="qc-lbl" placeholder="ls -la"></div>
+        <div class="fg"><label class="fl">Command</label><input class="fi" id="qc-cmd" placeholder="ls -la"></div>
+      </div>
+      <button class="bp" style="margin-top:8px;font-size:12px" onclick="addQuickCmd()">Add</button>
+    </div>
+    <button class="bs" style="width:100%;margin-top:10px" onclick="closeModal('modal-quick')">Close</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+var profiles=[], quickCmds=[], editId=null;
+var conn={active:false,host:'',user:'',profile:null};
+var sftpPath='/', sftpItems=[], sftpItemStore=[];
+var term=null, resizeObs=null, termOpened=false;
+
+// ── Bridge ────────────────────────────────────────────────────────────────────
+function _initBridge(){if(typeof iappyx==='undefined'){setTimeout(_initBridge,50);return;}onReady();}
+window.addEventListener('load',function(){setTimeout(_initBridge,200);});
+
+function onReady(){
+  profiles  = JSON.parse(iappyx.load('ssh6_profiles')||'[]');
+  quickCmds = JSON.parse(iappyx.load('ssh6_qcmds')||'[]');
+  if(!quickCmds.length){
+    quickCmds=[{l:'ls -la',c:'ls -la\n'},{l:'pwd',c:'pwd\n'},{l:'df -h',c:'df -h\n'},
+               {l:'free -h',c:'free -h\n'},{l:'top',c:'top\n'},{l:'uname -a',c:'uname -a\n'},
+               {l:'ps aux',c:'ps aux\n'},{l:'tail -f /var/log/syslog',c:'tail -f /var/log/syslog\n'}];
+    saveQC();
+  }
+  renderProfiles();
+  loadXterm();
+  // Re-fit terminal if screen dimensions changed while away
+  document.addEventListener('visibilitychange',function(){
+    if(document.visibilityState==='visible'&&termOpened) setTimeout(manualFit,200);
+  });
+}
+function saveP(){iappyx.save('ssh6_profiles',JSON.stringify(profiles));}
+function saveQC(){iappyx.save('ssh6_qcmds',JSON.stringify(quickCmds));}
+
+// ── Load xterm.js (cached after first download) ───────────────────────────────
+function runScript(code){var s=document.createElement('script');s.textContent=code;document.head.appendChild(s);}
+
+var LIB_MIN={'xt53.js':100000,'xt53.css':1000};
+
+function loadLib(url,filename,globalName,callback){
+  var min=LIB_MIN[filename]||5000;
+  var code=iappyx.storage.loadFile(filename);
+  if(code&&code.length>=min){
+    runScript(code);
+    if(!globalName||typeof window[globalName]!=='undefined'){callback();return;}
+    iappyx.storage.deleteFile(filename); // corrupt — fall through to fetch
+  } else if(code){
+    iappyx.storage.deleteFile(filename);
+  }
+  loading(true);
+  fetch(url).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.text();})
+  .then(function(f){
+    loading(false);
+    if(f.length<min)throw new Error('Too small: '+f.length);
+    iappyx.storage.saveFile(filename,f);
+    runScript(f);
+    callback();
+  }).catch(function(e){loading(false);callback(''+e);});
+}
+
+function loadXterm(){
+  var xtJs ='https://unpkg.com/xterm@5.3.0/lib/xterm.js';
+  var xtCss='https://unpkg.com/xterm@5.3.0/css/xterm.css';
+  var css=iappyx.storage.loadFile('xt53.css');
+  if(css&&css.length>=1000){applyCss(css);}
+  else{
+    if(css)iappyx.storage.deleteFile('xt53.css');
+    fetch(xtCss).then(function(r){return r.text();}).then(function(c){
+      if(c.length>500){iappyx.storage.saveFile('xt53.css',c);applyCss(c);}
+    }).catch(function(){});
+  }
+  loadLib(xtJs,'xt53.js','Terminal',function(err){
+    if(err){toast('xterm.js needs internet on first launch','err');return;}
+    buildTerminal();
+  });
+}
+
+function applyCss(css){
+  var s=document.createElement('style');
+  s.textContent=css+
+    '\n#term-container .xterm{height:100%!important}'+
+    '\n#term-container .xterm-viewport{overflow-y:auto!important}'+
+    '\n#term-container .xterm-screen{width:100%!important}';
+  document.head.appendChild(s);
+}
+
+// ── Terminal build & fit ──────────────────────────────────────────────────────
+var fontSize=13; // current font size, persisted
+
+function buildTerminal(){
+  if(term)return;
+  if(typeof Terminal==='undefined'){toast('xterm.js failed to load','err');return;}
+  fontSize=parseInt(iappyx.load('ssh_fontsize')||'13');
+  term=new Terminal({
+    convertEol:true,cursorBlink:true,fontSize:fontSize,
+    fontFamily:'"Courier New",Courier,monospace',
+    lineHeight:1.2,scrollback:5000,cols:80,rows:24,
+    theme:{
+      background:'#0a0a0a',foreground:'#eaeaea',cursor:'#4FC3F7',
+      selectionBackground:'rgba(79,195,247,0.3)',
+      black:'#000',red:'#FF6B6B',green:'#69F0AE',yellow:'#FFD700',
+      blue:'#4FC3F7',magenta:'#C792EA',cyan:'#80CBC4',white:'#eaeaea',
+      brightBlack:'#546e7a',brightRed:'#FF8A80',brightGreen:'#CCFF90',
+      brightYellow:'#FFE57F',brightBlue:'#80D8FF',brightMagenta:'#EA80FC',
+      brightCyan:'#A7FFEB',brightWhite:'#FFF'
+    }
+  });
+  term.onData(function(d){if(conn.active)try{iappyx.ssh.send(d);}catch(e){}});
+}
+
+var _cellW=0,_cellH=0;
+function measureCell(){
+  // Always re-measure — font size may have changed after zoom
+  try{
+    var ctx=document.createElement('canvas').getContext('2d');
+    ctx.font=fontSize+'px "Courier New",Courier,monospace';
+    _cellW=ctx.measureText('W').width;
+    _cellH=Math.ceil(fontSize*1.2);
+  }catch(e){_cellW=fontSize*0.6;_cellH=Math.ceil(fontSize*1.2);}
+}
+
+function zoomIn(){
+  if(fontSize>=28)return;
+  fontSize=Math.min(28,fontSize+1);
+  iappyx.save('ssh_fontsize',String(fontSize));
+  applyFontSize();
+}
+
+function zoomOut(){
+  if(fontSize<=8)return;
+  fontSize=Math.max(8,fontSize-1);
+  iappyx.save('ssh_fontsize',String(fontSize));
+  applyFontSize();
+}
+
+function applyFontSize(){
+  if(!term||!termOpened)return;
+  // xterm supports live font size changes via options
+  try{ term.options.fontSize=fontSize; }catch(e){}
+  // Reset cell cache so manualFit re-measures
+  _cellW=0;_cellH=0;
+  manualFit();
+}
+
+function manualFit(){
+  if(!term||!termOpened)return;
+  var c=document.getElementById('term-container');
+  var w=c.offsetWidth,h=c.offsetHeight;
+  if(w<10||h<10)return;
+  measureCell();
+  var cols=Math.max(20,Math.floor((w-4)/_cellW));
+  var rows=Math.max(5,Math.floor((h-4)/_cellH));
+  try{term.resize(cols,rows);notifyResize();}catch(e){}
+}
+
+function openTerminal(){
+  if(termOpened){manualFit();return;}
+  if(!term)return;
+  var c=document.getElementById('term-container');
+  if(c.offsetWidth<10||c.offsetHeight<10){setTimeout(openTerminal,100);return;}
+  term.open(c);
+  termOpened=true;
+  manualFit();
+  if(typeof ResizeObserver!=='undefined'){
+    resizeObs=new ResizeObserver(function(){if(termOpened)manualFit();});
+    resizeObs.observe(c);
+  }
+  term.focus();
+  term.writeln('\x1b[36m╔══════════════════════════════════╗\x1b[0m');
+  term.writeln('\x1b[36m║\x1b[0m \x1b[1mSSH Client\x1b[0m \x1b[2mfor iappyxOS\x1b[0m      \x1b[36m║\x1b[0m');
+  term.writeln('\x1b[36m║\x1b[0m \x1b[2mConnect from the Profiles tab\x1b[0m   \x1b[36m║\x1b[0m');
+  term.writeln('\x1b[36m╚══════════════════════════════════╝\x1b[0m');
+}
+
+function notifyResize(){
+  if(!conn.active||!term)return;
+  try{iappyx.ssh.resize(String(term.cols),String(term.rows));}catch(e){}
+}
+function ts(d){if(conn.active)try{iappyx.ssh.send(d);}catch(e){}}
+
+// ── CTRL latch ────────────────────────────────────────────────────────────────
+// Tapping CTRL shows an input; the next character typed is sent as Ctrl+char.
+// e.g. type 'x' → sends 0x18 (^X, used by nano to exit)
+//      type 'a' → sends 0x01 (^A, start of line)
+var ctrlLatched=false;
+
+function toggleCtrlLatch(){
+  ctrlLatched=!ctrlLatched;
+  var btn=document.getElementById('ctrl-latch-btn');
+  var bar=document.getElementById('ctrl-bar');
+  var inp=document.getElementById('ctrl-input');
+  if(ctrlLatched){
+    btn.className='tbtn latched';
+    bar.className='show';
+    inp.value='';
+    // Small delay so the toolbar tap doesn't immediately unfocus
+    setTimeout(function(){inp.focus();},50);
+  } else {
+    cancelCtrlLatch();
+  }
+}
+
+function cancelCtrlLatch(){
+  ctrlLatched=false;
+  document.getElementById('ctrl-latch-btn').className='tbtn';
+  document.getElementById('ctrl-bar').className='';
+  document.getElementById('ctrl-input').blur();
+}
+
+// Wire up the CTRL input — runs after DOM is ready
+window.addEventListener('load',function(){
+  var inp=document.getElementById('ctrl-input');
+  inp.addEventListener('keydown',function(e){
+    if(!ctrlLatched)return;
+    var key=e.key;
+    // Special keys first
+    if(key==='Enter'){e.preventDefault();sendCtrl('\r');return;}
+    if(key==='Escape'){e.preventDefault();cancelCtrlLatch();return;}
+    if(key.length===1){
+      e.preventDefault();
+      sendCtrl(key);
+    }
+  });
+  // Also catch input event for on-screen keyboards that don't fire keydown
+  inp.addEventListener('input',function(){
+    if(!ctrlLatched)return;
+    var val=inp.value;
+    inp.value='';
+    if(val.length>0) sendCtrl(val[val.length-1]);
+  });
+});
+
+function sendCtrl(key){
+  // Convert letter/symbol to control character
+  // Ctrl+A=0x01 … Ctrl+Z=0x1A, Ctrl+[=0x1B, Ctrl+\=0x1C, Ctrl+]=0x1D, Ctrl+^=0x1E, Ctrl+_=0x1F
+  var c=key.toLowerCase().charCodeAt(0);
+  var code=null;
+  if(c>=97&&c<=122){        // a-z → 0x01-0x1A
+    code=c-96;
+  } else if(c===91){        // [ → ESC (0x1B)
+    code=0x1B;
+  } else if(c===92){        // \ → 0x1C
+    code=0x1C;
+  } else if(c===93){        // ] → 0x1D
+    code=0x1D;
+  } else if(c===94||c===54){ // ^ or 6 → 0x1E
+    code=0x1E;
+  } else if(c===95||c===45){ // _ or - → 0x1F
+    code=0x1F;
+  } else if(c===32){         // space → 0x00 (Ctrl+Space = NUL)
+    code=0x00;
+  }
+  if(code!==null){
+    ts(String.fromCharCode(code));
+    // Show brief feedback
+    document.getElementById('ctrl-bar-label').textContent='CTRL+'+key.toUpperCase()+' ✓';
+    setTimeout(function(){
+      document.getElementById('ctrl-bar-label').textContent='CTRL+';
+      cancelCtrlLatch();
+    },400);
+  } else {
+    // Unknown combination — just cancel
+    cancelCtrlLatch();
+  }
+}
+
+// ── SSH ───────────────────────────────────────────────────────────────────────
+function connectProfile(p){
+  if(conn.active)doDisconnect(true);
+  loading(true);
+  toast('Connecting to '+p.host+'…');
+  var opts={host:p.host,port:parseInt(p.port)||22,user:p.user,timeout:15000};
+  if(p.authType==='password')opts.password=p.password||'';
+  else opts.privateKey=p.privateKey||'';
+  var connId='sshc_'+Date.now();
+  regCb(connId,function(r){
+    if(!r.ok){loading(false);toast('Connect failed: '+(r.error||'?'),'err');return;}
+    var shellId='sshs_'+Date.now();
+    regCb(shellId,function(r2){
+      loading(false);
+      if(!r2.ok){toast('Shell failed: '+(r2.error||'?'),'err');try{iappyx.ssh.disconnect();}catch(e){}return;}
+      conn={active:true,host:p.host,user:p.user,profile:p};
+      window.onSshData=function(d){var t=typeof d==='object'?d.data:d;if(term&&termOpened)term.write(t);};
+      iappyx.ssh.onData('window.onSshData');
+      window.onSshClose=function(){onLost();};
+      iappyx.ssh.onClose('window.onSshClose');
+      setConnUI(true);
+      toast('Connected','ok');
+      sftpPath=p.initDir||'/';
+      switchTab('terminal');
+      setTimeout(notifyResize,300);
+    },15000);
+    try{iappyx.ssh.shell(shellId);}catch(e){loading(false);toast('Shell error: '+e.message,'err');}
+  },30000);
+  try{iappyx.ssh.connect(JSON.stringify(opts),connId);}
+  catch(e){loading(false);toast('Error: '+e.message,'err');}
+}
+
+function doDisconnect(silent){
+  try{iappyx.ssh.disconnect();}catch(e){}
+  conn={active:false,host:'',user:'',profile:null};
+  setConnUI(false);
+  if(!silent){toast('Disconnected');if(term&&termOpened)term.write('\r\n\x1b[33m[Disconnected]\x1b[0m\r\n');}
+  renderProfiles();
+}
+
+function onLost(){
+  if(!conn.active)return;
+  conn={active:false,host:'',user:'',profile:null};
+  setConnUI(false);
+  if(term&&termOpened)term.write('\r\n\x1b[33m[Connection closed]\x1b[0m\r\n');
+  renderProfiles();
+}
+
+function setConnUI(on){
+  document.getElementById('dot').className='dot'+(on?' on':'');
+  document.getElementById('conn-lbl').textContent=on?'Connected':'Offline';
+  document.getElementById('hdr-sub').textContent=on?(conn.user+'@'+conn.host):'No connection';
+  document.getElementById('no-conn').className=on?'hide':'';
+  renderProfiles();
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+function switchTab(name){
+  ['profiles','terminal','sftp'].forEach(function(t){
+    document.getElementById('tab-'+t).className='tab'+(t===name?' on':'');
+    document.getElementById('view-'+t).className='view'+(t===name?' on':'');
+  });
+  if(name==='terminal'){
+    requestAnimationFrame(function(){
+      if(!termOpened)openTerminal();
+      else{manualFit();if(term)try{term.focus();}catch(e){}}
+    });
+  }
+  if(name==='sftp'&&conn.active&&!sftpItems.length)sftpList();
+}
+
+// ── Profiles ──────────────────────────────────────────────────────────────────
+function renderProfiles(){
+  var el=document.getElementById('plist');
+  if(!profiles.length){
+    el.innerHTML='<div class="empty"><div class="ei">🖥</div><div class="et">No profiles yet</div><div class="es">Tap ＋ to add your first server</div></div>';
+    return;
+  }
+  el.innerHTML=profiles.map(function(p,i){
+    var a=conn.active&&conn.profile&&conn.profile.id===p.id;
+    return '<div class="pcard'+(a?' act':'')+'">'+
+      '<div class="pava">'+(a?'✅':'🖥')+'</div>'+
+      '<div class="pinfo"><div class="pname">'+esc(p.name)+'</div>'+
+      '<div class="phost">'+esc(p.user)+'@'+esc(p.host)+':'+esc(String(p.port||22))+
+      ' · '+(p.authType==='key'?'SSH Key':'Password')+'</div></div>'+
+      '<div class="pacts">'+
+        (a?'<button class="bico bd" onclick="doDisconnect()">⏹</button>'
+          :'<button class="bico bc" onclick="connectProfile(profiles['+i+'])">▶</button>')+
+        '<button class="bico be" onclick="editProfile('+i+')">✏</button>'+
+        '<button class="bico bd" onclick="delProfile('+i+')">🗑</button>'+
+      '</div></div>';
+  }).join('');
+}
+
+function openAddProfile(){
+  editId=null;
+  document.getElementById('modal-title').textContent='New Profile';
+  ['f-name','f-host','f-pass','f-key','f-initdir'].forEach(function(x){document.getElementById(x).value='';});
+  document.getElementById('f-port').value='22';
+  document.getElementById('f-user').value='';
+  document.getElementById('f-auth').value='password';
+  onAuthChange();openModal('modal-profile');
+}
+function editProfile(i){
+  var p=profiles[i];editId=p.id;
+  document.getElementById('modal-title').textContent='Edit Profile';
+  document.getElementById('f-name').value=p.name||'';
+  document.getElementById('f-host').value=p.host||'';
+  document.getElementById('f-port').value=p.port||22;
+  document.getElementById('f-user').value=p.user||'';
+  document.getElementById('f-pass').value=p.password||'';
+  document.getElementById('f-key').value=p.privateKey||'';
+  document.getElementById('f-initdir').value=p.initDir||'';
+  document.getElementById('f-auth').value=p.authType||'password';
+  onAuthChange();openModal('modal-profile');
+}
+function onAuthChange(){
+  var v=document.getElementById('f-auth').value;
+  document.getElementById('f-pass-g').style.display=v==='password'?'':'none';
+  document.getElementById('f-key-g').style.display=v==='key'?'':'none';
+}
+function saveProfile(){
+  var name=document.getElementById('f-name').value.trim();
+  var host=document.getElementById('f-host').value.trim();
+  var user=document.getElementById('f-user').value.trim();
+  if(!name||!host||!user){toast('Name, host and username required','err');return;}
+  var auth=document.getElementById('f-auth').value;
+  var p={id:editId||('p'+Date.now()),name:name,host:host,
+    port:parseInt(document.getElementById('f-port').value)||22,
+    user:user,authType:auth,initDir:document.getElementById('f-initdir').value.trim()||'/'};
+  if(auth==='password')p.password=document.getElementById('f-pass').value;
+  else p.privateKey=document.getElementById('f-key').value.trim();
+  if(editId){var idx=profiles.findIndex(function(x){return x.id===editId;});if(idx>=0)profiles[idx]=p;else profiles.push(p);}
+  else profiles.push(p);
+  saveP();renderProfiles();closeModal('modal-profile');toast('Saved','ok');
+}
+function delProfile(i){
+  if(conn.active&&conn.profile&&conn.profile.id===profiles[i].id){toast('Disconnect first','err');return;}
+  profiles.splice(i,1);saveP();renderProfiles();toast('Deleted');
+}
+
+// ── SFTP ──────────────────────────────────────────────────────────────────────
+function sftpList(){
+  if(!conn.active){toast('Not connected','err');return;}
+  loading(true);
+  var id='sl_'+Date.now();
+  regCb(id,function(r){
+    loading(false);
+    if(r.ok){sftpItems=r.files||[];renderSftp();}
+    else toast('List failed: '+(r.error||'?'),'err');
+  },30000);
+  try{iappyx.ssh.listDir(sftpPath,id);}catch(e){loading(false);toast(e.message,'err');}
+}
+function renderSftp(){
+  document.getElementById('sftp-path').textContent=sftpPath;
+  var el=document.getElementById('sftp-list');
+  if(!sftpItems.length){el.innerHTML='<div class="sempty">Empty directory</div>';return;}
+  var sorted=sftpItems.slice().sort(function(a,b){
+    if(a.isDir!==b.isDir)return a.isDir?-1:1;
+    return a.name.localeCompare(b.name);
+  });
+  sftpItemStore=sorted;
+  el.innerHTML=sorted.map(function(it,i){
+    return '<div class="sitem" onclick="sftpTap('+i+')">'+
+      '<span class="sico">'+(it.isDir?'📁':fIcon(it.name))+'</span>'+
+      '<span class="sname">'+esc(it.name)+'</span>'+
+      '<span class="ssz">'+(it.isDir?'':fmtSz(it.size||0))+'</span>'+
+      (it.isDir
+        ?'<span style="color:rgba(79,195,247,.4)">›</span>'
+        :'<div class="sacts" onclick="event.stopPropagation()">'+
+           '<button class="sbtn sdl" onclick="sftpDl('+i+')">⬇</button>'+
+           '<button class="sbtn srm" onclick="sftpRm('+i+')">🗑</button>'+
+         '</div>')+
+    '</div>';
+  }).join('');
+}
+function sftpTap(i){var it=sftpItemStore[i];if(it&&it.isDir){sftpPath=jp(sftpPath,it.name);sftpList();}}
+function sftpUp(){
+  if(sftpPath==='/')return;
+  var parts=sftpPath.replace(/\/+$/,'').split('/');parts.pop();
+  sftpPath=parts.join('/')||'/';sftpList();
+}
+function sftpGoTo(){var p=prompt('Go to path:',sftpPath);if(p){sftpPath=p;sftpList();}}
+function sftpMkdir(){
+  var n=prompt('New folder name:');if(!n)return;
+  var id='smk_'+Date.now();
+  regCb(id,function(r){if(r.ok){toast('Created','ok');sftpList();}else toast(r.error||'Error','err');},15000);
+  try{iappyx.ssh.mkdir(jp(sftpPath,n),id);}catch(e){toast(e.message,'err');}
+}
+function sftpDl(i){
+  var it=sftpItemStore[i];if(!it)return;
+  loading(true);toast('Downloading…');
+  var id='sdl_'+Date.now();
+  regCb(id,function(r){
+    loading(false);
+    if(r.ok){var ok=iappyx.storage.copyFileToDownloads(r.filePath,it.name,gMime(it.name));toast(ok?'Saved to Downloads':'Save failed',ok?'ok':'err');}
+    else toast('Download failed: '+(r.error||'?'),'err');
+  },60000);
+  try{iappyx.ssh.download(jp(sftpPath,it.name),it.name,id);}catch(e){loading(false);toast(e.message,'err');}
+}
+function sftpRm(i){
+  var it=sftpItemStore[i];if(!it)return;
+  if(!confirm('Delete '+it.name+'?'))return;
+  var id='srm_'+Date.now();
+  regCb(id,function(r){if(r.ok){toast('Deleted','ok');sftpList();}else toast(r.error||'Error','err');},15000);
+  try{iappyx.ssh.exec('rm -rf "'+jp(sftpPath,it.name).replace(/\\/g,'\\\\').replace(/"/g,'\\"')+'"',id);}
+  catch(e){toast(e.message,'err');}
+}
+function sftpUpload(){
+  if(!conn.active){toast('Not connected','err');return;}
+  var id='spk_'+Date.now();
+  regCb(id,function(r){
+    if(!r.ok){toast('Cancelled');return;}
+    loading(true);toast('Uploading…');
+    var id2='sul_'+Date.now();
+    regCb(id2,function(r2){
+      loading(false);
+      if(r2.ok){toast('Upload complete','ok');sftpList();}else toast('Upload failed: '+(r2.error||'?'),'err');
+    },120000);
+    try{iappyx.ssh.upload(r.filePath,jp(sftpPath,r.name||'file'),id2);}catch(e){loading(false);toast(e.message,'err');}
+  },60000);
+  try{iappyx.storage.pickFile(id);}catch(e){toast(e.message,'err');}
+}
+
+// ── Quick commands ────────────────────────────────────────────────────────────
+function showQuickCmd(){renderQC();openModal('modal-quick');}
+function renderQC(){
+  document.getElementById('qlist').innerHTML=quickCmds.map(function(q,i){
+    return '<div style="display:flex;align-items:center;gap:7px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)">'+
+      '<div style="flex:1"><div style="font-size:12px;font-weight:600">'+esc(q.l)+'</div>'+
+      '<div style="font-size:10px;color:rgba(255,255,255,.4);font-family:monospace">'+esc(q.c.replace('\n','↩'))+'</div></div>'+
+      '<button class="bico bc" style="width:30px;height:30px;font-size:12px" onclick="runQC('+i+');closeModal(\'modal-quick\')">▶</button>'+
+      '<button class="bico bd" style="width:30px;height:30px;font-size:12px" onclick="delQC('+i+')">🗑</button>'+
+    '</div>';
+  }).join('');
+}
+function runQC(i){if(!conn.active){toast('Not connected','err');return;}ts(quickCmds[i].c);switchTab('terminal');}
+function addQuickCmd(){
+  var l=document.getElementById('qc-lbl').value.trim();
+  var c=document.getElementById('qc-cmd').value.trim();
+  if(!l||!c){toast('Fill both fields','err');return;}
+  quickCmds.push({l:l,c:c+'\n'});saveQC();
+  document.getElementById('qc-lbl').value='';document.getElementById('qc-cmd').value='';
+  renderQC();toast('Added','ok');
+}
+function delQC(i){quickCmds.splice(i,1);saveQC();renderQC();}
+
+// ── Modal ─────────────────────────────────────────────────────────────────────
+function openModal(id){document.getElementById(id).className='overlay';}
+function closeModal(id){document.getElementById(id).className='overlay hide';}
+document.addEventListener('click',function(e){if(e.target.classList.contains('overlay'))e.target.className='overlay hide';});
+
+// ── Callback registry ─────────────────────────────────────────────────────────
+function regCb(id,fn,timeout){
+  window._iappyxCb=window._iappyxCb||{};
+  window._iappyxCb[id]=fn;
+  if(timeout)setTimeout(function(){if(window._iappyxCb[id]){delete window._iappyxCb[id];loading(false);}},timeout);
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function loading(on){document.getElementById('lbar').className=on?'on':'';}
+var _tt=null;
+function toast(msg,type){
+  var el=document.getElementById('toast');
+  el.textContent=msg;el.className='on'+(type?' '+type:'');
+  if(_tt)clearTimeout(_tt);_tt=setTimeout(function(){el.className='';},2800);
+}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function jp(base,name){return(base==='/'?'':base.replace(/\/+$/,''))+'/'+name;}
+function fmtSz(b){return b<1024?b+'B':b<1048576?(b/1024).toFixed(1)+'KB':b<1073741824?(b/1048576).toFixed(1)+'MB':(b/1073741824).toFixed(1)+'GB';}
+function fIcon(n){var e=(n.split('.').pop()||'').toLowerCase();return{txt:'📄',md:'📄',log:'📋',sh:'📜',bash:'📜',py:'🐍',js:'📜',html:'🌐',json:'📋',csv:'📊',pdf:'📕',jpg:'🖼',jpeg:'🖼',png:'🖼',zip:'📦',tar:'📦',gz:'📦',mp3:'🎵',mp4:'🎬',conf:'⚙',cfg:'⚙',env:'⚙',db:'🗄',sql:'🗄'}[e]||'📄';}
+function gMime(n){var e=(n.split('.').pop()||'').toLowerCase();return{jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',gif:'image/gif',pdf:'application/pdf',zip:'application/zip',txt:'text/plain',mp3:'audio/mpeg',mp4:'video/mp4'}[e]||'application/octet-stream';}
+</script>
+</body></html>

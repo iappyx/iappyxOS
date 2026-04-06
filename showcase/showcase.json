@@ -9,6 +9,13 @@
       "description": "Internet radio player with live station logos, audio visualizer, and now-playing metadata.",
       "bridges": ["audio", "storage", "httpClient", "sensor", "notification", "vibration", "alarm"],
       "added": "2026-04-07"
+    },
+    {
+      "slug": "ssh-terminal",
+      "name": "SSH Client",
+      "description": "Full-featured SSH client with terminal emulation, saved profiles, and SFTP file browser.",
+      "bridges": ["ssh", "storage"],
+      "added": "2026-04-07"
     }
   ]
 }
