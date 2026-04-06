@@ -18,6 +18,23 @@ class PromptBuilder {
     return _defaultPrompt!;
   }
 
+  /// Returns true if user has a custom prompt AND the bundled prompt has changed since they last reset.
+  static Future<bool> isPromptOutdated() async {
+    final hasCustom = await Settings.hasCustomPrompt();
+    if (!hasCustom) return false;
+    final bundled = await getDefaultPrompt();
+    final hash = '${bundled.length}_${bundled.codeUnits.fold<int>(0, (a, b) => a + b)}';
+    final lastSeen = await Settings.getLastSeenPromptHash();
+    return lastSeen.isNotEmpty && lastSeen != hash;
+  }
+
+  /// Call when user resets to default or on first launch to store the current bundled hash.
+  static Future<void> markPromptAsSeen() async {
+    final bundled = await getDefaultPrompt();
+    final hash = '${bundled.length}_${bundled.codeUnits.fold<int>(0, (a, b) => a + b)}';
+    await Settings.setLastSeenPromptHash(hash);
+  }
+
   static Future<String> buildPrompt({
     required String appName,
     required String description,

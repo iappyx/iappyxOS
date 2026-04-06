@@ -73,11 +73,21 @@ class _PreviewScreenState extends State<PreviewScreen> {
   }
 
   // ── Storage (fully in-memory) ──
+  var _files={};
   var storage={
     save:function(k,v){_store[k]=v;},
     load:function(k){return _store.hasOwnProperty(k)?_store[k]:null;},
     remove:function(k){delete _store[k];},
-    clear:function(){_store={};}
+    clear:function(){_store={};},
+    saveFile:function(name,content){_files[name]=content;},
+    loadFile:function(name){return _files.hasOwnProperty(name)?_files[name]:null;},
+    deleteFile:function(name){delete _files[name];},
+    listFiles:function(){return JSON.stringify(Object.keys(_files));},
+    getFileInfo:function(name){var f=_files[name];return JSON.stringify(f!=null?{exists:true,size:f.length,name:name}:{exists:false});},
+    readFileBase64:function(path){return null;},
+    moveFile:function(src,dst){if(_files[src]){_files[dst]=_files[src];delete _files[src];return true;}return false;},
+    copyFileToDownloads:function(){console.warn('[Preview] copyFileToDownloads not available');return false;},
+    pickFile:function(cbId){_unsupported('storage.pickFile',cbId);}
   };
 
   // ── Device (mock data) ──
@@ -90,7 +100,21 @@ class _PreviewScreenState extends State<PreviewScreen> {
       screenWidth:window.innerWidth,screenHeight:window.innerHeight,
       density:window.devicePixelRatio||1,language:navigator.language||'en'
     });},
-    getConnectivity:function(){return JSON.stringify({connected:true,type:'wifi',metered:false});}
+    getConnectivity:function(){return JSON.stringify({connected:true,type:'wifi',metered:false});},
+    getThemeColors:function(){return JSON.stringify({primary:'#4FC3F7',background:'#0D0D1A',surface:'#1A1A2E',onPrimary:'#FFFFFF',onBackground:'#FFFFFF',onSurface:'#FFFFFF'});},
+    isDarkMode:function(){return true;},
+    viewPdf:function(){console.warn('[Preview] viewPdf not available');},
+    print:function(){console.warn('[Preview] print not available');},
+    ping:function(h,t,cbId){_unsupported('device.ping',cbId);},
+    setTorch:function(on){console.log('[Preview] Torch: '+on);},
+    setShortcuts:function(){console.log('[Preview] setShortcuts not available');},
+    setShareCallback:function(fn){console.log('[Preview] setShareCallback registered');},
+    setDndMode:function(on){console.log('[Preview] DND: '+on);},
+    isDndActive:function(){return false;},
+    onClipboardChange:function(fn){console.log('[Preview] onClipboardChange registered');},
+    readFromDownloads:function(){return null;},
+    setWallpaper:function(){console.warn('[Preview] setWallpaper not available');},
+    onBatteryChange:function(fn){console.log('[Preview] onBatteryChange registered');}
   };
 
   // ── Vibration (sends to Dart for haptic feedback) ──
@@ -116,7 +140,9 @@ class _PreviewScreenState extends State<PreviewScreen> {
     send:function(title,body){console.log('[Preview Notification] '+title+': '+body);_call('notification','send',{title:title,body:body});},
     sendWithId:function(id,title,body){console.log('[Preview Notification #'+id+'] '+title+': '+body);},
     cancel:function(id){console.log('[Preview] Notification #'+id+' cancelled');},
-    cancelAll:function(){console.log('[Preview] All notifications cancelled');}
+    cancelAll:function(){console.log('[Preview] All notifications cancelled');},
+    sendWithActions:function(id,title,body,actionsJson,fn){console.log('[Preview Notification #'+id+'] '+title+': '+body+' (actions: '+actionsJson+')');},
+    schedule:function(id,title,body,tsMs){console.log('[Preview] Notification "'+id+'" scheduled for '+new Date(tsMs).toLocaleTimeString());}
   };
 
   // ── Screen (mock) ──
@@ -160,7 +186,26 @@ class _PreviewScreenState extends State<PreviewScreen> {
     onComplete:function(fn){console.log('[Preview] Audio onComplete registered');},
     startRecording:function(cbId){_unsupported('audio.startRecording',cbId);},
     stopRecording:function(cbId){_unsupported('audio.stopRecording',cbId);},
-    isRecording:function(){return false;}
+    isRecording:function(){return false;},
+    playSound:function(url){console.log('[Preview] playSound: '+url);},
+    stopSounds:function(){},
+    setSpeed:function(s){console.log('[Preview] Audio speed: '+s);},
+    addToQueue:function(url){console.log('[Preview] addToQueue: '+url);},
+    clearQueue:function(){},
+    skipToNext:function(){},
+    skipToPrevious:function(){},
+    getEqualizerPresets:function(){return '[]';},
+    setEqualizerPreset:function(){},
+    getEqualizerBands:function(){return '{}';},
+    setEqualizerBand:function(){},
+    disableEqualizer:function(){},
+    setMediaSession:function(){console.log('[Preview] setMediaSession');},
+    onMetadata:function(fn){console.log('[Preview] onMetadata registered');},
+    requestFocus:function(fn){if(fn)try{eval(fn+'({type:\"gain\"})')}catch(e){}},
+    abandonFocus:function(){},
+    startVisualizer:function(fn){console.warn('[Preview] Visualizer not available in preview');},
+    stopVisualizer:function(){},
+    speechToText:function(cbId){_unsupported('audio.speechToText',cbId);}
   };
 
   // ── Sensor (simulated — multiple concurrent sensors supported) ──
@@ -218,6 +263,13 @@ class _PreviewScreenState extends State<PreviewScreen> {
       },1000);
       console.log('[Preview] Step counter started (simulated — 1 step/sec)');
     },
+    startCompass:function(fn){
+      _stopSensor('compass');
+      _sensorTimers['compass']=setInterval(function(){
+        try{eval(fn+'({heading:'+(Math.random()*360).toFixed(1)+',accuracy:1,t:'+Date.now()+'})');}catch(e){}
+      },200);
+      console.log('[Preview] Compass started (simulated)');
+    },
     stop:function(){for(var k in _sensorTimers){clearInterval(_sensorTimers[k]);} _sensorTimers={};}
   };
 
@@ -244,7 +296,8 @@ class _PreviewScreenState extends State<PreviewScreen> {
     },
     cancel:function(){if(_alarms['default']){clearTimeout(_alarms['default']);delete _alarms['default'];}},
     cancelById:function(id){if(_alarms[id]){clearTimeout(_alarms[id]);delete _alarms[id];}},
-    getScheduled:function(){return _alarms['default']?'scheduled':null;}
+    getScheduled:function(){return _alarms['default']?'scheduled':null;},
+    setRepeating:function(id,intervalMs,fn){console.log('[Preview] Repeating alarm "'+id+'" every '+intervalMs+'ms');}
   };
 
   // ── Share (sends to Dart) ──
@@ -271,10 +324,13 @@ class _PreviewScreenState extends State<PreviewScreen> {
   function capabilities(){
     return {
       version:1,sdk:33,preview:true,
-      bridges:['storage','device','vibration','clipboard','notification','screen',
-        'tts','audio','sensor','alarm','share','sqlite','capabilities'],
-      unsupported:['camera','location','contacts','sms','calendar','biometric','nfc','audio.recording'],
-      permissions:[]
+      bridges:{storage:true,device:true,vibration:true,clipboard:true,notification:true,
+        screen:true,tts:true,audio:true,sensor:true,alarm:true,sqlite:true,
+        camera:false,location:false,contacts:false,sms:false,calendar:false,
+        biometric:false,nfc:false,ble:false,ssh:false,smb:false,
+        httpServer:false,httpClient:false,tcp:false,udp:false,nsd:false,
+        wifiDirect:false,push:false,download:false,media:false},
+      permissions:{}
     };
   }
 
@@ -283,8 +339,19 @@ class _PreviewScreenState extends State<PreviewScreen> {
     takePhoto:function(cbId){_unsupported('camera.takePhoto',cbId);},
     takeVideo:function(cbId){_unsupported('camera.takeVideo',cbId);},
     scanQR:function(cbId){_unsupported('camera.scanQR',cbId);},
+    scanText:function(cbId){_unsupported('camera.scanText',cbId);},
+    classify:function(cbId){_unsupported('camera.classify',cbId);},
+    removeBackground:function(cbId){_unsupported('camera.removeBackground',cbId);},
+    getExif:function(path,cbId){_unsupported('camera.getExif',cbId);},
     sharePhoto:sharePhoto,
     shareText:shareText
+  };
+  // Sync camera methods (called directly on iappyxCamera, not through wrapper)
+  window.iappyxCamera={
+    scanFrameQRSync:function(){return JSON.stringify({ok:true,results:[]});},
+    scanFrameTextSync:function(){return JSON.stringify({ok:true,text:'',blocks:[]});},
+    scanFrameQR:function(b64,cbId){_deliver(cbId,{ok:true,results:[]});},
+    scanFrameText:function(b64,cbId){_deliver(cbId,{ok:true,text:'',blocks:[]});}
   };
 
   var location={
@@ -294,7 +361,13 @@ class _PreviewScreenState extends State<PreviewScreen> {
       console.warn('[Preview] location not available in preview');
       try{eval(errFn+"('Location not available in preview')");}catch(e){}
     },
-    stopWatching:function(){}
+    stopWatching:function(){},
+    startTracking:function(fn){console.warn('[Preview] location.startTracking not available');},
+    startTrackingWithOptions:function(fn,opts){console.warn('[Preview] location tracking not available');},
+    stopTracking:function(){},
+    addGeofence:function(id,lat,lon,radius,fn){console.warn('[Preview] Geofencing not available');},
+    removeGeofence:function(id){},
+    removeAllGeofences:function(){}
   };
 
   var contacts={
@@ -322,6 +395,131 @@ class _PreviewScreenState extends State<PreviewScreen> {
     writeUri:function(uri,cbId){_unsupported('nfc.writeUri',cbId);}
   };
 
+  // ── Networking bridges (stubs — not available in preview) ──
+  var ble={
+    isEnabled:function(){return false;},
+    startScan:function(fn){_unsupported('ble.startScan');},
+    stopScan:function(){},
+    connect:function(addr,cbId){_unsupported('ble.connect',cbId);},
+    disconnect:function(){},
+    read:function(a,s,c,cbId){_unsupported('ble.read',cbId);},
+    write:function(a,s,c,d,cbId){_unsupported('ble.write',cbId);},
+    subscribe:function(){console.warn('[Preview] BLE not available');},
+    unsubscribe:function(){},
+    getConnectedDevices:function(){return '[]';}
+  };
+
+  var ssh={
+    connect:function(opts,cbId){_unsupported('ssh.connect',cbId);},
+    exec:function(cmd,cbId){_unsupported('ssh.exec',cbId);},
+    shell:function(cbId){_unsupported('ssh.shell',cbId);},
+    send:function(){},resize:function(){},
+    onData:function(){},onClose:function(){},
+    disconnect:function(){},
+    isConnected:function(){return false;},
+    upload:function(l,r,cbId){_unsupported('ssh.upload',cbId);},
+    download:function(r,l,cbId){_unsupported('ssh.download',cbId);},
+    listDir:function(p,cbId){_unsupported('ssh.listDir',cbId);},
+    forwardLocal:function(lp,rh,rp,cbId){_unsupported('ssh.forwardLocal',cbId);},
+    forwardRemote:function(rp,lh,lp,cbId){_unsupported('ssh.forwardRemote',cbId);},
+    removeForward:function(){},removeRemoteForward:function(){}
+  };
+
+  var smb={
+    connect:function(opts,cbId){_unsupported('smb.connect',cbId);},
+    listDir:function(p,cbId){_unsupported('smb.listDir',cbId);},
+    download:function(r,l,cbId){_unsupported('smb.download',cbId);},
+    upload:function(l,r,cbId){_unsupported('smb.upload',cbId);},
+    delete:function(p,cbId){_unsupported('smb.delete',cbId);},
+    mkdir:function(p,cbId){_unsupported('smb.mkdir',cbId);},
+    copy:function(s,d,cbId){_unsupported('smb.copy',cbId);},
+    rename:function(o,n,cbId){_unsupported('smb.rename',cbId);},
+    getFileInfo:function(p,cbId){_unsupported('smb.getFileInfo',cbId);},
+    exists:function(p,cbId){_unsupported('smb.exists',cbId);},
+    disconnect:function(){},
+    isConnected:function(){return false;},
+    listShares:function(h,o,cbId){_unsupported('smb.listShares',cbId);}
+  };
+
+  var httpServer={
+    start:function(p,tls,cbId){_unsupported('httpServer.start',cbId);},
+    stop:function(){},
+    onRequest:function(){},
+    respond:function(){},respondFile:function(){},
+    getCertificatePem:function(){return '';},
+    getCertificateFingerprint:function(){return '';},
+    getLocalIpAddress:function(){return '127.0.0.1';}
+  };
+
+  var httpClient={
+    request:function(opts,cbId){_unsupported('httpClient.request',cbId);},
+    requestFile:function(opts,dest,cbId){_unsupported('httpClient.requestFile',cbId);},
+    uploadFile:function(opts,fp,cbId){_unsupported('httpClient.uploadFile',cbId);},
+    uploadMultipart:function(opts,parts,cbId){_unsupported('httpClient.uploadMultipart',cbId);},
+    getCookies:function(){return '[]';},
+    setCookie:function(){},clearCookies:function(){}
+  };
+
+  var tcp={
+    open:function(h,p,tls,cbId){_unsupported('tcp.open',cbId);},
+    openTrustPin:function(h,p,fp,cbId){_unsupported('tcp.openTrustPin',cbId);},
+    send:function(){},sendHex:function(){},sendFile:function(){},
+    onData:function(){},onClose:function(){},
+    close:function(){},
+    isConnected:function(){return false;}
+  };
+
+  var udp={
+    open:function(p,cbId){_unsupported('udp.open',cbId);},
+    close:function(){},
+    send:function(){},sendHex:function(){},
+    onReceive:function(){},
+    joinMulticast:function(){},leaveMulticast:function(){}
+  };
+
+  var nsd={
+    register:function(t,n,p,txt,cbId){_unsupported('nsd.register',cbId);},
+    unregister:function(){},
+    startDiscovery:function(t,fn){console.warn('[Preview] NSD not available');},
+    stopDiscovery:function(){},
+    resolve:function(t,n,cbId){_unsupported('nsd.resolve',cbId);}
+  };
+
+  var wifiDirect={
+    createGroup:function(cbId){_unsupported('wifiDirect.createGroup',cbId);},
+    removeGroup:function(){},
+    discoverPeers:function(fn){console.warn('[Preview] WiFi Direct not available');},
+    stopDiscovery:function(){},
+    connect:function(addr,cbId){_unsupported('wifiDirect.connect',cbId);},
+    disconnect:function(){},
+    getConnectionInfo:function(cbId){_unsupported('wifiDirect.getConnectionInfo',cbId);},
+    onConnectionChanged:function(){}
+  };
+
+  var push={
+    isAvailable:function(){return false;},
+    getToken:function(cbId){_unsupported('push.getToken',cbId);},
+    onMessage:function(){console.warn('[Preview] Push not available');},
+    onTokenRefresh:function(){}
+  };
+
+  var download={
+    enqueue:function(url,name,fn){console.warn('[Preview] Download not available in preview');},
+    cancel:function(){}
+  };
+
+  var media={
+    getImages:function(cbId){_deliver(cbId,{ok:true,images:[]});},
+    loadThumbnail:function(cbId){_unsupported('media.loadThumbnail',cbId);},
+    loadImage:function(cbId){_unsupported('media.loadImage',cbId);},
+    getVideos:function(cbId){_deliver(cbId,{ok:true,videos:[]});},
+    getAudio:function(cbId){_deliver(cbId,{ok:true,audio:[]});},
+    playAudio:function(){console.warn('[Preview] media.playAudio not available');},
+    saveToGallery:function(cbId){_unsupported('media.saveToGallery',cbId);},
+    getMetadata:function(cbId){_unsupported('media.getMetadata',cbId);},
+    pickImage:function(cbId){_unsupported('media.pickImage',cbId);}
+  };
+
   // ── Assemble the iappyx object (same structure as ShellActivity wrapper) ──
   window.iappyx={
     storage:storage, device:device, camera:camera,
@@ -330,8 +528,12 @@ class _PreviewScreenState extends State<PreviewScreen> {
     sensor:sensor, tts:tts,
     alarm:alarm, audio:audio, screen:screen,
     contacts:contacts, sms:sms, calendar:calendar,
-    biometric:biometric,
-    nfc:nfc, sqlite:sqlite,
+    biometric:biometric, nfc:nfc, sqlite:sqlite,
+    ble:ble, ssh:ssh, smb:smb,
+    httpServer:httpServer, httpClient:httpClient,
+    tcp:tcp, udp:udp, nsd:nsd,
+    wifiDirect:wifiDirect, push:push,
+    download:download, media:media,
     // Top-level convenience methods (same as ShellActivity)
     save:function(k,v){storage.save(k,v);},
     load:function(k){return storage.load(k);},
@@ -340,7 +542,8 @@ class _PreviewScreenState extends State<PreviewScreen> {
     getAppName:function(){return device.getAppName();},
     sharePhoto:sharePhoto,
     shareText:shareText,
-    capabilities:capabilities
+    capabilities:capabilities,
+    onTextSelected:function(fn){console.log('[Preview] onTextSelected registered');}
   };
 
   console.log('[Preview] iappyx bridge loaded (preview mode — some features simulated)');
@@ -361,9 +564,15 @@ class _PreviewScreenState extends State<PreviewScreen> {
   void _onConsoleMessage(JavaScriptMessage msg) {
     try {
       final data = jsonDecode(msg.message);
-      setState(() => _console.add(_ConsoleLine(data['type'] ?? 'log', data['msg'] ?? '')));
+      setState(() {
+        _console.add(_ConsoleLine(data['type'] ?? 'log', data['msg'] ?? ''));
+        if (_console.length > 200) _console.removeRange(0, _console.length - 200);
+      });
     } catch (_) {
-      setState(() => _console.add(_ConsoleLine('log', msg.message)));
+      setState(() {
+        _console.add(_ConsoleLine('log', msg.message));
+        if (_console.length > 200) _console.removeRange(0, _console.length - 200);
+      });
     }
   }
 
@@ -483,14 +692,17 @@ class _PreviewScreenState extends State<PreviewScreen> {
   void _handleShare(String method, Map<String, dynamic> args) {
     switch (method) {
       case 'shareText':
-        _channel.invokeMethod('shareText', {
-          'content': args['text'] ?? '',
-          'filename': 'shared.txt',
-        });
+        try {
+          _channel.invokeMethod('shareText', {
+            'content': args['text'] ?? '',
+            'filename': 'shared.txt',
+          });
+        } catch (_) {
+          debugPrint('[Preview] shareText not available');
+        }
         break;
       case 'sharePhoto':
-        // Base64 photo sharing through platform
-        _channel.invokeMethod('sharePhoto', args['base64'] ?? '');
+        debugPrint('[Preview] sharePhoto not available in preview');
         break;
     }
   }
@@ -524,6 +736,14 @@ class _PreviewScreenState extends State<PreviewScreen> {
       case 'info': return '[INF]';
       default: return '[LOG]';
     }
+  }
+
+  @override
+  void dispose() {
+    // Stop any audio/TTS started during preview
+    try { _channel.invokeMethod('audioStop'); } catch (_) {}
+    try { _channel.invokeMethod('ttsStop'); } catch (_) {}
+    super.dispose();
   }
 
   @override

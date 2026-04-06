@@ -158,6 +158,16 @@ class Settings {
     return prefs.containsKey('custom_prompt');
   }
 
+  static Future<String> getLastSeenPromptHash() async {
+    final prefs = await getPrefs();
+    return prefs.getString('last_seen_prompt_hash') ?? '';
+  }
+
+  static Future<void> setLastSeenPromptHash(String hash) async {
+    final prefs = await getPrefs();
+    await prefs.setString('last_seen_prompt_hash', hash);
+  }
+
   // ── Package prefix ──
   static const int maxPrefixLength = 20;
 

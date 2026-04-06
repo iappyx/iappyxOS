@@ -48,11 +48,13 @@ public class PushService extends FirebaseMessagingService {
         dataJson.append("}");
 
         // If app is in foreground and callback is set, deliver to JS
-        if (activeActivity != null && foregroundCallbackFn != null) {
+        ShellActivity activity = activeActivity;
+        String fn = foregroundCallbackFn;
+        if (activity != null && fn != null) {
             String json = "{\"title\":\"" + title.replace("\"", "\\\"") +
                 "\",\"body\":\"" + body.replace("\"", "\\\"") +
                 "\",\"data\":" + dataJson + "}";
-            activeActivity.fireEvent(foregroundCallbackFn, json);
+            activity.fireEvent(fn, json);
         } else {
             // Background — show notification
             showNotification(title.isEmpty() ? "New message" : title, body, dataJson.toString());
@@ -62,8 +64,10 @@ public class PushService extends FirebaseMessagingService {
     @Override
     public void onNewToken(String token) {
         Log.i(TAG, "FCM token refreshed");
-        if (activeActivity != null && tokenRefreshFn != null) {
-            activeActivity.fireEvent(tokenRefreshFn, "{\"token\":\"" + token + "\"}");
+        ShellActivity activity = activeActivity;
+        String fn = tokenRefreshFn;
+        if (activity != null && fn != null) {
+            activity.fireEvent(fn, "{\"token\":\"" + token + "\"}");
         }
     }
 

@@ -93,6 +93,7 @@ Before using any CDN URL in generated code, verify the URL actually serves JavaS
 Real-time frame scanning (process frames from getUserMedia live camera without opening photo camera):
 `iappyxCamera.scanFrameQRSync(base64)` → JSON string `{ok, results:[{text, format}]}` (sync, call directly, not through iappyx wrapper). Returns all detected barcodes (QR, EAN, UPC, Code128, etc). No camera permission needed.
 `iappyxCamera.scanFrameTextSync(base64)` → JSON string `{ok, text, blocks:[{text, lines:[]}]}` (sync). No camera permission needed.
+Async variants (for non-getUserMedia contexts): `iappyx.camera.scanFrameQR(base64, cbId)` and `iappyx.camera.scanFrameText(base64, cbId)` — same results delivered via callback.
 IMPORTANT: Use the sync variants (`iappyxCamera.scanFrameQRSync`/`scanFrameTextSync`) for live scanning — async callbacks don't fire reliably during getUserMedia streaming.
 For live scanning: `getUserMedia({video:{facingMode:'environment'}})` → `<video>` → canvas.drawImage → canvas.toDataURL('image/jpeg',0.85) → strip `data:...base64,` prefix → `JSON.parse(iappyxCamera.scanFrameQRSync(b64))`. Call in setInterval every 300ms.
 
@@ -123,6 +124,8 @@ Geofencing (virtual boundaries, fires on enter/exit):
 `iappyx.device.isDarkMode()` → bool (system dark theme active)
 `JSON.parse(iappyx.device.getThemeColors())` → `{primary,primaryLight,primaryDark,secondary,tertiary,neutral,neutralLight,neutralDark,background,surface,onPrimary,onSurface,onBackground,isDark,dynamic}` — Android 12+ Material You dynamic colors from wallpaper. `dynamic:true` if real colors, `false` if fallback defaults. `onPrimary`/`onSurface`/`onBackground` are contrast-safe text colors for those surfaces.
 `iappyx.device.setTorch(true/false)` — toggle flashlight
+`iappyx.device.viewPdf(path)` — open PDF in Android's default viewer (accepts file paths and content:// URIs from pickFile)
+`iappyx.device.ping(host, timeoutMs, cbId)` → `{ok, reachable:true/false, ms:12.3, host}` — ICMP ping via system ping command. Timeout in ms (max 10000). Returns round-trip time in ms when reachable.
 `iappyx.device.print()` — opens Android print dialog (prints entire WebView). Use `@media print { .no-print { display:none } }` CSS to hide UI elements during printing.
 `iappyx.device.setShortcuts(json)` — set long-press app icon shortcuts: `JSON.stringify([{id:'scan',label:'Quick Scan',callback:'window.onShortcut'}])`
 `iappyx.device.setShareCallback('window.onShareReceived')` — register to receive shared content from other apps
@@ -168,6 +171,17 @@ If sensor unavailable, callback fires with `{error:"sensor not available"}`.
 Main track (one at a time, full control):
 `iappyx.audio.play(url)` | `.pause()` | `.resume()` | `.stop()` | `.seekTo(ms)` | `.setVolume(0-1)` | `.setLooping(bool)`
 `iappyx.audio.isPlaying()` → bool | `.getDuration()` → ms | `.getCurrentPosition()` → ms
+`iappyx.audio.setSpeed("1.5")` — playback speed (0.5 = half, 1.0 = normal, 2.0 = double). Works for podcasts, audiobooks.
+Playlist/queue:
+`iappyx.audio.addToQueue(url)` — add track to end of queue
+`iappyx.audio.clearQueue()` — remove all queued tracks
+`iappyx.audio.skipToNext()` | `.skipToPrevious()` — navigate playlist
+Equalizer:
+`JSON.parse(iappyx.audio.getEqualizerBands())` → `{bands, minLevel, maxLevel, bandInfo:[{band, centerFreq, level}]}` (sync)
+`JSON.parse(iappyx.audio.getEqualizerPresets())` → `["Normal","Pop","Rock",...]` (sync)
+`iappyx.audio.setEqualizerPreset(index)` — apply preset by index (as string)
+`iappyx.audio.setEqualizerBand(band, level)` — set individual band level (both as strings, level between minLevel and maxLevel)
+`iappyx.audio.disableEqualizer()`
 `iappyx.audio.setSystemVolume(0-1)` — device alarm stream volume
 `iappyx.audio.setStreamVolume(stream, 0-1)` — set volume per stream: "music", "alarm", "ring", "notification", "system", "voice"
 `iappyx.audio.requestFocus('window.onFocus')` — request audio focus (pauses/ducks other apps). Callback: `{type:"gain"|"loss"|"duck"|"lossTransient"}`
@@ -177,6 +191,12 @@ Main track (one at a time, full control):
   Listen for external controls: `window.onMediaButton = function(e) { /* e.action = play|pause|stop|next|previous */ }`
   Update metadata anytime (e.g. new song title) by calling `setMediaSession()` again.
 `iappyx.audio.onComplete('window.onDone')` → `{done:true}`
+`iappyx.audio.onMetadata('window.onMeta')` — fires when stream metadata changes (e.g. new song on radio): `{title, artist, album, station, genre}`. For ICY/Shoutcast streams: fires on every song change. For files: fires once on playback start.
+Audio visualizer (requires RECORD_AUDIO permission — auto-requested):
+`iappyx.audio.startVisualizer('window.onViz')` — fires ~10fps: `{waveform:[0-255,...], fft:[0-255,...]}` (128 values each).
+  Waveform: each value 0-255, centered at 128. For a wave line: `y = (waveform[i] - 128) / 128` gives -1 to 1.
+  FFT: interleaved real/imaginary pairs, 128 values = 64 complex bins. Values are signed bytes transmitted as unsigned (0-255). Convert before use: `var s = v > 127 ? v - 256 : v`. Then: `var re = signed(fft[i*2]), im = signed(fft[i*2+1]); magnitude = Math.sqrt(re*re + im*im)` for i=1..63 (skip i=0 DC offset). Lower i = bass, higher i = treble.
+`iappyx.audio.stopVisualizer()`
 Sound effects (multiple simultaneous, fire-and-forget, overlay on main):
 `iappyx.audio.playSound(url)` | `.stopSounds()`
 
@@ -284,7 +304,7 @@ IMPORTANT: LAN apps that use self-signed TLS require `https://` URLs (not `http:
   `trustAllCerts: true` — accept any self-signed cert
   `pinFingerprint: "AB:CD:..."` — only accept certs matching this SHA-256 fingerprint
 `iappyx.httpClient.requestFile(optionsJson, destPath, cbId)` → `{ok, status, headers, filePath, size}` — download to file
-`iappyx.httpClient.uploadFile(optionsJson, filePath, cbId)` → `{ok, status, headers, body}` — stream file as request body
+`iappyx.httpClient.uploadFile(optionsJson, filePath, cbId)` → `{ok, status, headers, body}` — stream file as request body. Fires `window.onTransferProgress({transferred, total})` during upload.
   filePath: absolute path, `"downloads:filename"`, or plain filename for app-private files, or `content://` URI from pickFile
 `iappyx.httpClient.uploadMultipart(optionsJson, partsJson, cbId)` → `{ok, status, headers, body}` — multipart form upload
   partsJson: `JSON.stringify([{name:"file",filePath:"content://...",filename:"photo.jpg",contentType:"image/jpeg"},{name:"title",value:"My Photo"}])`
@@ -311,7 +331,7 @@ Cookies (auto-managed per host, persist in memory):
 `iappyx.ssh.disconnect()` — close connection
 `iappyx.ssh.isConnected()` → bool
 SFTP (file transfer over SSH):
-`iappyx.ssh.upload(localPath, remotePath, cbId)` → `{ok}` — upload file (supports content:// URIs from pickFile)
+`iappyx.ssh.upload(localPath, remotePath, cbId)` → `{ok}` — upload file (supports content:// URIs). Fires `window.onTransferProgress({transferred, total})` during transfer.
 `iappyx.ssh.download(remotePath, localPath, cbId)` → `{ok, filePath, size}` — download file
 `iappyx.ssh.listDir(remotePath, cbId)` → `{ok, files:[{name, size, isDir, modified, permissions}]}`
 
@@ -320,7 +340,8 @@ SFTP (file transfer over SSH):
   optionsJson: `JSON.stringify({host, share, user:"guest", password:"", domain:""})`
 `iappyx.smb.listDir(remotePath, cbId)` → `{ok, files:[{name, size, isDir, modified}]}`
 `iappyx.smb.download(remotePath, localPath, cbId)` → `{ok, filePath, size}`
-`iappyx.smb.upload(localPath, remotePath, cbId)` → `{ok}` — supports content:// URIs from pickFile
+`iappyx.smb.upload(localPath, remotePath, cbId)` → `{ok}` — supports content:// URIs. Fires `window.onTransferProgress({transferred, total})` during transfer.
+`iappyx.smb.download(remotePath, localPath, cbId)` — also fires `window.onTransferProgress`.
 `iappyx.smb.delete(remotePath, cbId)` → `{ok}`
 `iappyx.smb.mkdir(remotePath, cbId)` → `{ok}`
 `iappyx.smb.copy(srcPath, destPath, cbId)` → `{ok}` �� server-side copy (no download/upload roundtrip)
@@ -397,6 +418,7 @@ Never shadow window globals: `history`, `location`, `name`, `status`, `event`, `
 4. Clean up timers (clearInterval) — no orphaned intervals
 5. Save data immediately on every mutation — no save buttons
 6. Give feedback on every tap (visual change within 100ms)
+7. Use `-webkit-tap-highlight-color: transparent` on interactive elements (buttons, cards, sliders, toggles) to avoid the default WebView tap highlight
 
 ## Starter template
 ```html

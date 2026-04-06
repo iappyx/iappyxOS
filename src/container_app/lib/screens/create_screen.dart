@@ -52,6 +52,7 @@ class CreateScreenState extends State<CreateScreen> {
   // AI generation
   String _genMethod = ''; // 'api', 'manual'
   AiProvider? _activeProvider;
+  bool _loadingProvider = false;
   List<ChatMessage> _conversation = [];
   bool _aiGenerating = false;
   DateTime? _genStartTime;
@@ -134,6 +135,7 @@ class CreateScreenState extends State<CreateScreen> {
       _generatedPrompt = '';
       _editingId = null;
       _existingPackageName = null;
+      _firebaseConfig = '';
       _selectedDemoId = null;
       _iconConfig = IconConfig();
       _descExpanded = true;
@@ -178,7 +180,9 @@ class CreateScreenState extends State<CreateScreen> {
   }
 
   Future<void> _loadActiveProvider() async {
+    _loadingProvider = true;
     _activeProvider = await Settings.getActiveProvider();
+    _loadingProvider = false;
     if (mounted) setState(() {});
   }
 
@@ -321,7 +325,9 @@ class CreateScreenState extends State<CreateScreen> {
     if (label.isEmpty || url.isEmpty) { _snack('Please fill in name and URL.'); return; }
     if (label.length > 37 || label.codeUnits.length > 37) { _snack('Name too long (max 37 characters).'); return; }
     if (!url.startsWith('http://') && !url.startsWith('https://')) { _snack('URL must start with http:// or https://'); return; }
-    final html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>$label</title><style>*{margin:0;padding:0}body{background:#0d0d1a;display:flex;align-items:center;justify-content:center;height:100vh;font-family:-apple-system,sans-serif}.loader{color:#4FC3F7;font-size:14px}.spinner{width:24px;height:24px;border:3px solid #1a1a2e;border-top-color:#4FC3F7;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}@keyframes spin{to{transform:rotate(360deg)}}</style></head><body><div class="loader"><div class="spinner"></div>Loading...</div><script>window.location.href="$url";</script></body></html>';
+    final safeLabel = label.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+    final safeUrl = url.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('<', '\\x3c');
+    final html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>$safeLabel</title><style>*{margin:0;padding:0}body{background:#0d0d1a;display:flex;align-items:center;justify-content:center;height:100vh;font-family:-apple-system,sans-serif}.loader{color:#4FC3F7;font-size:14px}.spinner{width:24px;height:24px;border:3px solid #1a1a2e;border-top-color:#4FC3F7;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}@keyframes spin{to{transform:rotate(360deg)}}</style></head><body><div class="loader"><div class="spinner"></div>Loading...</div><script>window.location.href="$safeUrl";</script></body></html>';
     await _doBuild(label, html, 'web', description: 'Web app: $url');
   }
 
@@ -593,7 +599,7 @@ class CreateScreenState extends State<CreateScreen> {
 
   // ── AI ──
   Widget _aiFields() {
-    if (_activeProvider == null) _loadActiveProvider();
+    if (_activeProvider == null && !_loadingProvider) _loadActiveProvider();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       // Section 1: Describe
       _section('Describe your app', _descExpanded, () => setState(() => _descExpanded = !_descExpanded),

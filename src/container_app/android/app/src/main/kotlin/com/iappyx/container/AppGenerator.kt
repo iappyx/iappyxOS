@@ -218,8 +218,8 @@ class AppGenerator(private val context: Context) {
         // Ensure segment starts with a letter (Android package name requirement)
         val safe = if (filtered.first().isDigit()) "a$filtered".take(6) else filtered
         val base = "$prefix.$safe${System.currentTimeMillis() % 100_000_000L}"
-        // Max 43 chars — DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION placeholder is 84 chars total
-        return if (base.length > 43) base.take(43) else base
+        // Max 42 chars — must not exceed TEMPLATE_PACKAGE placeholder length (42 chars)
+        return if (base.length > 42) base.take(42) else base
     }
 
     private fun getValidPrefix(): String {

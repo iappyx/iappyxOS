@@ -54,6 +54,26 @@ public class AudioService extends Service {
                 stateIsPlaying = isPlaying;
                 updateNotification();
             }
+
+            @Override
+            public void onMediaMetadataChanged(androidx.media3.common.MediaMetadata metadata) {
+                if (metadata.title != null) currentTitle = metadata.title.toString();
+                updateNotification();
+                // Forward to ShellActivity for JS callback
+                Intent intent = new Intent("com.iappyx.MEDIA_METADATA");
+                intent.setPackage(getPackageName());
+                String title = metadata.title != null ? metadata.title.toString() : "";
+                String artist = metadata.artist != null ? metadata.artist.toString() : "";
+                String station = metadata.station != null ? metadata.station.toString() : "";
+                String genre = metadata.genre != null ? metadata.genre.toString() : "";
+                String album = metadata.albumTitle != null ? metadata.albumTitle.toString() : "";
+                intent.putExtra("title", title);
+                intent.putExtra("artist", artist);
+                intent.putExtra("album", album);
+                intent.putExtra("station", station);
+                intent.putExtra("genre", genre);
+                sendBroadcast(intent);
+            }
         });
         mediaSession = new MediaSession.Builder(this, player).build();
     }
@@ -74,7 +94,7 @@ public class AudioService extends Service {
             player.stop();
             player.clearMediaItems();
             stateIsPlaying = false;
-            updateNotification();
+            stopForeground(true);
             return START_NOT_STICKY;
         }
 

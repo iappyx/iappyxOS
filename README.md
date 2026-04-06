@@ -58,7 +58,7 @@ Every generated app is a real signed APK that appears in your Android launcher. 
 ## Features
 
 - **AI generation** — automatic via API (Anthropic, OpenRouter) or manual copy-paste to any AI
-- **32 native bridge classes (115+ methods)** — camera, location, sensors, audio, notifications, push notifications (FCM), NFC, Bluetooth LE, SSH/SFTP, SMB network shares, HTTP server/client, TCP/UDP sockets, WiFi Direct, mDNS, biometric, SQLite, contacts, SMS, calendar, clipboard, TTS, screen, vibration, alarms, media gallery, download manager, and more
+- **32 native bridge classes (120+ methods)** — camera, location, sensors, audio, notifications, push notifications (FCM), NFC, Bluetooth LE, SSH/SFTP, SMB network shares, HTTP server/client, TCP/UDP sockets, WiFi Direct, mDNS, biometric, SQLite, contacts, SMS, calendar, clipboard, TTS, screen, vibration, alarms, media gallery, download manager, and more
 - **Icon editor** — emoji, text, images, custom colors, gradients, shadows, filters, rotation, multiple layers
 - **App management** — launch, rebuild, edit, share (APK, HTML, QR code, WiFi Direct), uninstall
 - **QR code transfer** — share apps between devices via animated QR codes (no internet needed)
@@ -99,7 +99,7 @@ Generated apps access device hardware through a JavaScript bridge (`window.iappy
 | Camera | Photo, video, QR/barcode scan, OCR, ML image classification, background removal, EXIF metadata, real-time frame scanning |
 | Location | GPS single shot, continuous tracking, foreground service, geofencing |
 | Sensors | Accelerometer, gyroscope, magnetometer, compass heading, proximity, light, pressure, step counter |
-| Audio | Play/pause/seek/loop, record, speech-to-text, media session (lock screen controls), sound effects, audio focus |
+| Audio | Play/pause/seek/loop, record, speech-to-text, media session (lock screen controls), sound effects, audio focus, audio visualizer (waveform + FFT) |
 | Notifications | Send with actions, schedule, repeating, badge count, cancel |
 | NFC | Read tags, write NDEF text/URI |
 | Bluetooth LE | Scan, connect, read/write characteristics, subscribe to notifications |

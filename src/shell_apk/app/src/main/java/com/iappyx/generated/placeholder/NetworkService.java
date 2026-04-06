@@ -93,8 +93,8 @@ public class NetworkService extends Service {
     @Override
     public void onDestroy() {
         super.onDestroy();
-        synchronized (lock) {
-            refCount = 0;
-        }
+        // Don't reset refCount — callers manage their own start/stop balance.
+        // If system kills the service, callers will call requestStop() when
+        // connections close, which safely clamps to 0.
     }
 }

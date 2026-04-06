@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
@@ -130,6 +131,16 @@ class AppStorage {
     return _file!;
   }
 
+  static Future<void>? _writeLock;
+
+  /// Serialize write operations to prevent read-modify-write races.
+  static Future<void> _serialized(Future<void> Function() fn) async {
+    while (_writeLock != null) await _writeLock;
+    final c = Completer<void>();
+    _writeLock = c.future;
+    try { await fn(); } finally { _writeLock = null; c.complete(); }
+  }
+
   static Future<List<AppData>> loadAll() async {
     final file = await _getFile();
     if (!file.existsSync()) return [];
@@ -142,7 +153,7 @@ class AppStorage {
     }
   }
 
-  static Future<void> save(AppData app) async {
+  static Future<void> save(AppData app) => _serialized(() async {
     final apps = await loadAll();
     final idx = apps.indexWhere((a) => a.id == app.id);
     if (idx >= 0) {
@@ -151,9 +162,9 @@ class AppStorage {
       apps.insert(0, app);
     }
     await _write(apps);
-  }
+  });
 
-  static Future<void> importBatch(List<AppData> newApps) async {
+  static Future<void> importBatch(List<AppData> newApps) => _serialized(() async {
     final existing = await loadAll();
     final ids = existing.map((a) => a.id).toSet();
     for (final app in newApps) {
@@ -165,13 +176,13 @@ class AppStorage {
       }
     }
     await _write(existing);
-  }
+  });
 
-  static Future<void> delete(String id) async {
+  static Future<void> delete(String id) => _serialized(() async {
     final apps = await loadAll();
     apps.removeWhere((a) => a.id == id);
     await _write(apps);
-  }
+  });
 
   static Future<void> _write(List<AppData> apps) async {
     final file = await _getFile();

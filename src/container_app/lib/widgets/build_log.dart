@@ -20,18 +20,24 @@ class BuildLog extends StatelessWidget {
             color: const Color(0xFF0A0A14),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: log.map((msg) => Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Text(msg, style: TextStyle(
-                fontSize: 13,
-                fontFamily: 'monospace',
-                color: msg.startsWith('\u274C') ? const Color(0xFFFF6B6B)
-                     : msg.startsWith('\u2705') ? const Color(0xFF69F0AE)
-                     : Colors.white70,
-              )),
-            )).toList(),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 300),
+            child: SingleChildScrollView(
+              reverse: true,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: log.map((msg) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(msg, style: TextStyle(
+                    fontSize: 13,
+                    fontFamily: 'monospace',
+                    color: msg.startsWith('\u274C') ? const Color(0xFFFF6B6B)
+                         : msg.startsWith('\u2705') ? const Color(0xFF69F0AE)
+                         : Colors.white70,
+                  )),
+                )).toList(),
+              ),
+            ),
           ),
         ),
       ],

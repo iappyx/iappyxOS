@@ -40,6 +40,7 @@ class MyAppsScreenState extends State<MyAppsScreen> {
   void _addLog(String msg) { if (mounted) setState(() => _log.add(msg)); }
 
   Future<void> _rebuild(AppData app) async {
+    if (_rebuildingId != null) return; // already rebuilding
     if (app.packageName.isNotEmpty) {
       final ok = await Generator.handleSignatureConflict(packageName: app.packageName, context: context);
       if (!ok) return;
@@ -62,6 +63,8 @@ class MyAppsScreenState extends State<MyAppsScreen> {
           htmlContent: app.html,
           packageName: app.packageName,
           iconConfig: ic,
+          firebaseConfig: app.firebaseConfig.isNotEmpty ? app.firebaseConfig : null,
+          webOnly: app.appType == 'web' || app.description.startsWith('Web app: '),
           onProgress: _addLog,
         );
       }

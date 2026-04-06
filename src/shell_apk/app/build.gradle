@@ -3,11 +3,11 @@ plugins {
 }
 android {
     namespace 'com.iappyx.generated.placeholder'
-    compileSdk 34
+    compileSdk 35
     defaultConfig {
         applicationId "com.iappyx.generated.placeholderx.xxxxxxxx"
         minSdk 26
-        targetSdk 34
+        targetSdk 35
         versionCode 1
         versionName "1.0"
         // Only include 64-bit ARM — x86 is emulator-only, 32-bit ARM is obsolete (no phones sold since ~2018)

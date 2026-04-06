@@ -50,9 +50,9 @@ Use Preview to check for errors. The console shows JavaScript errors, warnings, 
 Yes. Each generated app is a real signed Android APK. It gets its own launcher icon, runs independently from iappyxOS, and can be shared with other people. You can uninstall iappyxOS and your generated apps keep working. Generated apps pass Google Play Protect scanning.
 
 ### What can generated apps do?
-Generated apps run inside a WebView with access to 32 native bridge classes (115+ methods):
+Generated apps run inside a WebView with access to 32 native bridge classes (120+ methods):
 
-Camera (photo, video, QR scan, OCR, ML classification, background removal, EXIF, real-time scanning), GPS (tracking, geofencing), sensors (accelerometer, gyroscope, magnetometer, compass, proximity, light, pressure, step counter), audio (playback, recording, speech-to-text, media session with lock screen controls, sound effects, audio focus), notifications (with actions, scheduled, repeating, badge), NFC read/write, Bluetooth LE (scan, connect, read/write characteristics, notifications), SQLite database, biometric authentication, text-to-speech, contacts, SMS, calendar, clipboard (read/write/monitor), screen control, vibration, alarms (exact and repeating), media gallery (browse photos/videos/music, save to gallery, metadata), download manager, HTTP server/client with TLS, SSH/SFTP, SMB network shares, TCP/UDP sockets, mDNS service discovery, WiFi Direct, wallpaper, torch, print, DND, app shortcuts, share target, Material You theme colors, push notifications (FCM), and persistent storage.
+Camera (photo, video, QR scan, OCR, ML classification, background removal, EXIF, real-time scanning), GPS (tracking, geofencing), sensors (accelerometer, gyroscope, magnetometer, compass, proximity, light, pressure, step counter), audio (playback, recording, speech-to-text, media session with lock screen controls, sound effects, audio focus, audio visualizer), notifications (with actions, scheduled, repeating, badge), NFC read/write, Bluetooth LE (scan, connect, read/write characteristics, notifications), SQLite database, biometric authentication, text-to-speech, contacts, SMS, calendar, clipboard (read/write/monitor), screen control, vibration, alarms (exact and repeating), media gallery (browse photos/videos/music, save to gallery, metadata), download manager, HTTP server/client with TLS, SSH/SFTP, SMB network shares, TCP/UDP sockets, mDNS service discovery, WiFi Direct, wallpaper, torch, print, DND, app shortcuts, share target, Material You theme colors, push notifications (FCM), and persistent storage.
 
 The AI knows about all of these and will use them when appropriate for your app description.
 
@@ -127,7 +127,7 @@ The HTML/JavaScript has an error. Edit the app in iappyxOS, open Preview, and ch
 ## Technical
 
 ### How does it work under the hood?
-iappyxOS contains two pre-built WebView shell APK templates — a full shell (~26MB, with all native bridges, ML Kit, and protocol libraries) and a lightweight web-only shell (~1MB, sandboxed, no bridges). When you build an app:
+iappyxOS contains two pre-built WebView shell APK templates — a full shell (~29MB, with all native bridges, ML Kit, and protocol libraries) and a lightweight web-only shell (~1MB, sandboxed, no bridges). When you build an app:
 1. Your HTML/JavaScript is injected into the appropriate template as an asset
 2. The Android binary manifest is patched with a unique package name and your app label
 3. Unused ML Kit libraries are automatically stripped if the app doesn't use camera/ML features
@@ -158,7 +158,7 @@ No. iappyxOS was built with heavy use of AI — primarily Claude — for code ge
 An independent maker from the Netherlands with a non-developer day job, who likes to build useful tools and open-sourcing them. Previously built [Instrumenta](https://github.com/iappyx/Instrumenta), a free consulting-style PowerPoint toolbar that started as a COVID side project.
 
 ### Isn't this just a WebView wrapper?
-Yes — and that's the point. A WebView wrapper that patches its own binary manifest, signs itself with a hardware-backed key, generates multi-density icons, injects 55+ native bridges, and installs itself through the system package manager. All on a phone. The "just a wrapper" does a lot of heavy lifting.
+Yes — and that's the point. A WebView wrapper that patches its own binary manifest, signs itself with a hardware-backed key, generates multi-density icons, injects 32 bridge classes (120+ methods), and installs itself through the system package manager. All on a phone. The "just a wrapper" does a lot of heavy lifting.
 
 More seriously: the value isn't the WebView. It's that you go from "I want an app that does X" to a real installed app in your launcher in under a minute, without touching a computer. With 32 bridge classes giving access to Bluetooth, SSH, network shares, push notifications, HTTP servers, ML Kit, and more — the "wrapper" is a full native development platform. The WebView is an implementation detail. The experience is the product.
 

@@ -87,9 +87,11 @@ public class ShellActivity extends Activity {
     private SensorManager sensorManager;
     private final java.util.Map<Integer, SensorEventListener> activeSensors = new java.util.HashMap<>();
     private androidx.media3.exoplayer.ExoPlayer exoPlayer;
+    private android.media.audiofx.Visualizer audioVisualizer;
     private PowerManager.WakeLock wakeLock;
     private NfcAdapter nfcAdapter;
     private String pendingNfcCallbackFn;
+    private String pendingNfcReadCallbackFn;
     private String pendingStepCallbackFn;
     private String pendingNfcWriteText;
     private String pendingNfcWriteUri;
@@ -178,15 +180,19 @@ public class ShellActivity extends Activity {
     private String pendingMediaCbId;
     private BroadcastReceiver locationUpdateReceiver;
     private BroadcastReceiver mediaButtonReceiver;
+    private BroadcastReceiver mediaMetadataReceiver;
     private PermissionRequest pendingWebPermission;
     private android.media.MediaRecorder mediaRecorder;
     private File recordingFile;
     private String recordingCallbackId;
     private String audioCompleteCallbackFn;
+    private String audioMetadataCallbackFn;
     private String lastAudioUrl;
     private final java.util.List<androidx.media3.exoplayer.ExoPlayer> soundPlayers = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
     private LocationListener sharedGeofenceListener;
     private boolean mediaSessionActive = false;
+    private String pendingSessionTitle, pendingSessionArtist, pendingSessionAlbum;
+    private ClipboardManager.OnPrimaryClipChangedListener activeClipListener;
     private String watchPositionErrorFn; // for location error callback
     private ValueCallback<Uri[]> pendingFileCallback;
 
@@ -202,9 +208,10 @@ public class ShellActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // Dark status bar matching app theme
+        // Status/nav bar styling
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             getWindow().setStatusBarColor(0xFF0D0D1A);
+            getWindow().setNavigationBarColor(0xFF0D0D1A);
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             // Light status bar icons (white icons on dark background)
@@ -243,6 +250,7 @@ public class ShellActivity extends Activity {
         offlineBanner.setOnClickListener(v -> { offlineBanner.setVisibility(android.view.View.GONE); webView.reload(); });
 
         android.widget.FrameLayout root = new android.widget.FrameLayout(this);
+        root.setFitsSystemWindows(true);
         root.addView(webView, new android.widget.FrameLayout.LayoutParams(
             android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
             android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
@@ -502,6 +510,27 @@ public class ShellActivity extends Activity {
             new android.content.IntentFilter("com.iappyx.MEDIA_BUTTON"),
             Context.RECEIVER_NOT_EXPORTED);
 
+        // Register receiver for stream metadata from AudioService
+        mediaMetadataReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (!activityAlive || audioMetadataCallbackFn == null) return;
+                String title = intent.getStringExtra("title");
+                String artist = intent.getStringExtra("artist");
+                String album = intent.getStringExtra("album");
+                String station = intent.getStringExtra("station");
+                String genre = intent.getStringExtra("genre");
+                fireEvent(audioMetadataCallbackFn, "{\"title\":\"" + escapeJson(title) +
+                    "\",\"artist\":\"" + escapeJson(artist) +
+                    "\",\"album\":\"" + escapeJson(album) +
+                    "\",\"station\":\"" + escapeJson(station) +
+                    "\",\"genre\":\"" + escapeJson(genre) + "\"}");
+            }
+        };
+        registerReceiver(mediaMetadataReceiver,
+            new android.content.IntentFilter("com.iappyx.MEDIA_METADATA"),
+            Context.RECEIVER_NOT_EXPORTED);
+
         // Bug #6: track TTS init status
         tts = new TextToSpeech(this, status -> {
             ttsReady = (status == TextToSpeech.SUCCESS);
@@ -535,7 +564,23 @@ public class ShellActivity extends Activity {
 
     static String escapeJson(String s) {
         if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t").replace("\b", "\\b").replace("\f", "\\f");
+        StringBuilder sb = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '\\': sb.append("\\\\"); break;
+                case '"': sb.append("\\\""); break;
+                case '\n': sb.append("\\n"); break;
+                case '\r': sb.append("\\r"); break;
+                case '\t': sb.append("\\t"); break;
+                case '\b': sb.append("\\b"); break;
+                case '\f': sb.append("\\f"); break;
+                default:
+                    if (c < 0x20) sb.append(String.format("\\u%04x", (int) c));
+                    else sb.append(c);
+            }
+        }
+        return sb.toString();
     }
 
     void deliverResult(String cbId, String json) {
@@ -564,6 +609,8 @@ public class ShellActivity extends Activity {
         activityAlive = false;
         if (tts != null) { tts.stop(); tts.shutdown(); }
         if (exoPlayer != null) { exoPlayer.release(); exoPlayer = null; }
+        if (audioVisualizer != null) { try { audioVisualizer.setEnabled(false); audioVisualizer.release(); } catch (Exception ignored) {} audioVisualizer = null; }
+        // Note: equalizer is inside AudioBridge inner class — released when activity dies
         // Stop any audio playing in WebView (HTML <audio> tags, Web Audio API)
         if (webView != null) {
             webView.loadUrl("about:blank");
@@ -597,6 +644,7 @@ public class ShellActivity extends Activity {
         // Unregister broadcast receivers
         try { if (locationUpdateReceiver != null) unregisterReceiver(locationUpdateReceiver); } catch (Exception ignored) {}
         try { if (mediaButtonReceiver != null) unregisterReceiver(mediaButtonReceiver); } catch (Exception ignored) {}
+        try { if (mediaMetadataReceiver != null) unregisterReceiver(mediaMetadataReceiver); } catch (Exception ignored) {}
         // Close SQLite database
         if (sqliteDb != null && sqliteDb.isOpen()) {
             try { sqliteDb.close(); } catch (Exception ignored) {}
@@ -718,6 +766,11 @@ public class ShellActivity extends Activity {
                 pendingNfcWriteText = null;
                 pendingNfcWriteUri = null;
                 pendingNfcWriteCbId = null;
+                // Restore read callback if it was active
+                if (pendingNfcReadCallbackFn != null) {
+                    pendingNfcCallbackFn = pendingNfcReadCallbackFn;
+                    pendingNfcReadCallbackFn = null;
+                }
                 return;
             }
             if (tag != null && pendingNfcCallbackFn != null) {
@@ -1394,10 +1447,17 @@ public class ShellActivity extends Activity {
                 deliverResult(cbId, "{\"ok\":false,\"error\":\"permission denied\"}");
             }
         }
-        // getUserMedia permissions
+        // getUserMedia permissions — grant only the resources whose permissions were actually granted
         if (req == REQ_MEDIA_STREAM && pendingWebPermission != null) {
-            if (ok) {
-                pendingWebPermission.grant(pendingWebPermission.getResources());
+            java.util.List<String> granted = new java.util.ArrayList<>();
+            for (int i = 0; i < perms.length; i++) {
+                if (grants[i] == PackageManager.PERMISSION_GRANTED) {
+                    if (Manifest.permission.CAMERA.equals(perms[i])) granted.add("android.webkit.resource.VIDEO_CAPTURE");
+                    if (Manifest.permission.RECORD_AUDIO.equals(perms[i])) granted.add("android.webkit.resource.AUDIO_CAPTURE");
+                }
+            }
+            if (!granted.isEmpty()) {
+                pendingWebPermission.grant(granted.toArray(new String[0]));
             } else {
                 pendingWebPermission.deny();
             }
@@ -1799,6 +1859,28 @@ public class ShellActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void viewPdf(String path) {
+            try {
+                File f;
+                if (isContentUri(path)) {
+                    // Content URI — open directly
+                    Intent intent = new Intent(Intent.ACTION_VIEW);
+                    intent.setDataAndType(Uri.parse(path), "application/pdf");
+                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    startActivity(intent);
+                    return;
+                }
+                f = new File(resolveFilePath(path));
+                if (!f.exists()) return;
+                Uri uri = FileProvider.getUriForFile(ShellActivity.this, getPackageName() + ".provider", f);
+                Intent intent = new Intent(Intent.ACTION_VIEW);
+                intent.setDataAndType(uri, "application/pdf");
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                startActivity(intent);
+            } catch (Exception e) { Log.e("iappyxOS", "viewPdf: " + e.getMessage()); }
+        }
+
+        @JavascriptInterface
         public void print() {
             runOnUiThread(() -> {
                 try {
@@ -1810,6 +1892,44 @@ public class ShellActivity extends Activity {
                     pm.print(getAppName() != null ? getAppName() : "Print", adapter,
                         new android.print.PrintAttributes.Builder().build());
                 } catch (Exception e) { Log.e("iappyxOS", "print: " + e.getMessage()); }
+            });
+        }
+
+        @JavascriptInterface
+        public void ping(String host, String timeoutMs, String cbId) {
+            httpClientPool.submit(() -> {
+                try {
+                    int timeout = Math.max(1, Math.min(Integer.parseInt(timeoutMs), 10000));
+                    long start = System.currentTimeMillis();
+                    Process p = Runtime.getRuntime().exec(new String[]{
+                        "/system/bin/ping", "-c", "1", "-W", String.valueOf(timeout / 1000 + 1), host});
+                    boolean finished = p.waitFor(timeout + 2000, java.util.concurrent.TimeUnit.MILLISECONDS);
+                    long elapsed = System.currentTimeMillis() - start;
+                    if (!finished) { p.destroyForcibly(); deliverResult(cbId, "{\"ok\":true,\"reachable\":false,\"ms\":" + elapsed + ",\"host\":\"" + escapeJson(host) + "\",\"error\":\"timeout\"}"); return; }
+                    int exit = p.exitValue();
+                    boolean reachable = (exit == 0);
+                    // Parse ms from output if reachable
+                    double rtt = -1;
+                    if (reachable) {
+                        try (java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()))) {
+                            String line;
+                            while ((line = br.readLine()) != null) {
+                                // "time=12.3 ms"
+                                int idx = line.indexOf("time=");
+                                if (idx >= 0) {
+                                    String val = line.substring(idx + 5).split(" ")[0];
+                                    rtt = Double.parseDouble(val);
+                                    break;
+                                }
+                            }
+                        } catch (Exception ignored) {}
+                    }
+                    deliverResult(cbId, "{\"ok\":true,\"reachable\":" + reachable +
+                        (rtt >= 0 ? ",\"ms\":" + rtt : ",\"ms\":" + elapsed) +
+                        ",\"host\":\"" + escapeJson(host) + "\"}");
+                } catch (Exception e) {
+                    deliverResult(cbId, "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+                }
             });
         }
 
@@ -1888,7 +2008,9 @@ public class ShellActivity extends Activity {
             runOnUiThread(() -> {
                 ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
                 if (cm == null) return;
-                cm.addPrimaryClipChangedListener(() -> {
+                // Remove previous listener to prevent accumulation
+                if (activeClipListener != null) cm.removePrimaryClipChangedListener(activeClipListener);
+                activeClipListener = () -> {
                     if (!activityAlive) return;
                     try {
                         ClipData clip = cm.getPrimaryClip();
@@ -1899,7 +2021,8 @@ public class ShellActivity extends Activity {
                             }
                         }
                     } catch (Exception ignored) {}
-                });
+                };
+                cm.addPrimaryClipChangedListener(activeClipListener);
             });
         }
 
@@ -2237,7 +2360,7 @@ public class ShellActivity extends Activity {
 
         @JavascriptInterface
         public void scanFrameQR(String base64, String cbId) {
-            deliverResult(cbId, scanFrameQRSync(base64));
+            httpClientPool.submit(() -> deliverResult(cbId, scanFrameQRSync(base64)));
         }
 
         @JavascriptInterface
@@ -2272,7 +2395,7 @@ public class ShellActivity extends Activity {
 
         @JavascriptInterface
         public void scanFrameText(String base64, String cbId) {
-            deliverResult(cbId, scanFrameTextSync(base64));
+            httpClientPool.submit(() -> deliverResult(cbId, scanFrameTextSync(base64)));
         }
     }
 
@@ -3213,18 +3336,35 @@ public class ShellActivity extends Activity {
                 Intent intent = new Intent(ShellActivity.this, AudioService.class);
                 intent.setAction(AudioService.ACTION_PLAY);
                 intent.putExtra("url", resolved);
+                if (pendingSessionTitle != null) intent.putExtra("title", pendingSessionTitle);
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent);
                 else startService(intent);
                 return;
             }
             runOnUiThread(() -> {
                 try {
+                    // Release visualizer/equalizer before destroying player — they hold the audio session ID
+                    if (audioVisualizer != null) { try { audioVisualizer.setEnabled(false); audioVisualizer.release(); } catch (Exception ignored) {} audioVisualizer = null; }
+                    if (equalizer != null) { try { equalizer.setEnabled(false); equalizer.release(); } catch (Exception ignored) {} equalizer = null; }
                     if (exoPlayer != null) { try { exoPlayer.pause(); exoPlayer.stop(); exoPlayer.release(); } catch (Exception ignored) {} }
                     exoPlayer = new androidx.media3.exoplayer.ExoPlayer.Builder(ShellActivity.this).build();
                     exoPlayer.addListener(new androidx.media3.common.Player.Listener() {
                         @Override public void onPlaybackStateChanged(int state) {
                             if (state == androidx.media3.common.Player.STATE_ENDED && activityAlive && audioCompleteCallbackFn != null)
                                 fireEvent(audioCompleteCallbackFn, "{\"done\":true}");
+                        }
+                        @Override public void onMediaMetadataChanged(androidx.media3.common.MediaMetadata metadata) {
+                            if (!activityAlive || audioMetadataCallbackFn == null) return;
+                            String title = metadata.title != null ? metadata.title.toString() : "";
+                            String artist = metadata.artist != null ? metadata.artist.toString() : "";
+                            String album = metadata.albumTitle != null ? metadata.albumTitle.toString() : "";
+                            String station = metadata.station != null ? metadata.station.toString() : "";
+                            String genre = metadata.genre != null ? metadata.genre.toString() : "";
+                            fireEvent(audioMetadataCallbackFn, "{\"title\":\"" + escapeJson(title) +
+                                "\",\"artist\":\"" + escapeJson(artist) +
+                                "\",\"album\":\"" + escapeJson(album) +
+                                "\",\"station\":\"" + escapeJson(station) +
+                                "\",\"genre\":\"" + escapeJson(genre) + "\"}");
                         }
                         @Override public void onPlayerError(androidx.media3.common.PlaybackException e) {
                             Log.e("iappyxOS", "ExoPlayer error: " + e.getMessage());
@@ -3243,6 +3383,10 @@ public class ShellActivity extends Activity {
         public void stop() {
             lastAudioUrl = null;
             if (mediaSessionActive) {
+                mediaSessionActive = false;
+                pendingSessionTitle = null;
+                pendingSessionArtist = null;
+                pendingSessionAlbum = null;
                 try {
                     Intent intent = new Intent(ShellActivity.this, AudioService.class);
                     intent.setAction(AudioService.ACTION_STOP);
@@ -3280,9 +3424,156 @@ public class ShellActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void setSpeed(final String speedStr) {
+            runOnUiThread(() -> {
+                try {
+                    float speed = Float.parseFloat(speedStr);
+                    androidx.media3.exoplayer.ExoPlayer p = activePlayer();
+                    if (p != null) p.setPlaybackSpeed(speed);
+                } catch (Exception ignored) {}
+            });
+        }
+
+        @JavascriptInterface
+        public void addToQueue(final String url) {
+            final String resolved = resolveDataUrl(url);
+            runOnUiThread(() -> {
+                try {
+                    androidx.media3.exoplayer.ExoPlayer p = activePlayer();
+                    if (p != null) p.addMediaItem(androidx.media3.common.MediaItem.fromUri(resolved));
+                } catch (Exception ignored) {}
+            });
+        }
+
+        @JavascriptInterface
+        public void clearQueue() {
+            runOnUiThread(() -> {
+                try {
+                    androidx.media3.exoplayer.ExoPlayer p = activePlayer();
+                    if (p != null) { p.clearMediaItems(); }
+                } catch (Exception ignored) {}
+            });
+        }
+
+        @JavascriptInterface
+        public void skipToNext() {
+            runOnUiThread(() -> {
+                try {
+                    androidx.media3.exoplayer.ExoPlayer p = activePlayer();
+                    if (p != null && p.hasNextMediaItem()) p.seekToNextMediaItem();
+                } catch (Exception ignored) {}
+            });
+        }
+
+        @JavascriptInterface
+        public void skipToPrevious() {
+            runOnUiThread(() -> {
+                try {
+                    androidx.media3.exoplayer.ExoPlayer p = activePlayer();
+                    if (p != null && p.hasPreviousMediaItem()) p.seekToPreviousMediaItem();
+                } catch (Exception ignored) {}
+            });
+        }
+
+        // ── Equalizer ──
+        private android.media.audiofx.Equalizer equalizer;
+
+        @JavascriptInterface
+        public String getEqualizerPresets() {
+            try {
+                java.util.concurrent.FutureTask<String> task = new java.util.concurrent.FutureTask<>(() -> {
+                    try {
+                        androidx.media3.exoplayer.ExoPlayer p = activePlayer();
+                        if (p == null) return "[]";
+                        if (equalizer == null) equalizer = new android.media.audiofx.Equalizer(0, p.getAudioSessionId());
+                        JSONArray arr = new JSONArray();
+                        for (short i = 0; i < equalizer.getNumberOfPresets(); i++) {
+                            arr.put(equalizer.getPresetName(i));
+                        }
+                        return arr.toString();
+                    } catch (Exception e) { return "[]"; }
+                });
+                runOnUiThread(task);
+                return task.get(2, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (Exception e) { return "[]"; }
+        }
+
+        @JavascriptInterface
+        public void setEqualizerPreset(String indexStr) {
+            runOnUiThread(() -> {
+                try {
+                    short idx = Short.parseShort(indexStr);
+                    androidx.media3.exoplayer.ExoPlayer p = activePlayer();
+                    if (p == null) return;
+                    if (equalizer == null) equalizer = new android.media.audiofx.Equalizer(0, p.getAudioSessionId());
+                    equalizer.setEnabled(true);
+                    equalizer.usePreset(idx);
+                } catch (Exception ignored) {}
+            });
+        }
+
+        @JavascriptInterface
+        public void setEqualizerBand(String bandStr, String levelStr) {
+            runOnUiThread(() -> {
+                try {
+                    short band = Short.parseShort(bandStr);
+                    short level = Short.parseShort(levelStr);
+                    androidx.media3.exoplayer.ExoPlayer p = activePlayer();
+                    if (p == null) return;
+                    if (equalizer == null) equalizer = new android.media.audiofx.Equalizer(0, p.getAudioSessionId());
+                    equalizer.setEnabled(true);
+                    equalizer.setBandLevel(band, level);
+                } catch (Exception ignored) {}
+            });
+        }
+
+        @JavascriptInterface
+        public String getEqualizerBands() {
+            try {
+                java.util.concurrent.FutureTask<String> task = new java.util.concurrent.FutureTask<>(() -> {
+                    try {
+                        androidx.media3.exoplayer.ExoPlayer p = activePlayer();
+                        if (p == null) return "{}";
+                        if (equalizer == null) equalizer = new android.media.audiofx.Equalizer(0, p.getAudioSessionId());
+                        JSONObject r = new JSONObject();
+                        short bands = equalizer.getNumberOfBands();
+                        r.put("bands", bands);
+                        r.put("minLevel", equalizer.getBandLevelRange()[0]);
+                        r.put("maxLevel", equalizer.getBandLevelRange()[1]);
+                        JSONArray arr = new JSONArray();
+                        for (short i = 0; i < bands; i++) {
+                            JSONObject b = new JSONObject();
+                            b.put("band", i);
+                            b.put("centerFreq", equalizer.getCenterFreq(i) / 1000); // Hz
+                            b.put("level", equalizer.getBandLevel(i));
+                            arr.put(b);
+                        }
+                        r.put("bandInfo", arr);
+                        return r.toString();
+                    } catch (Exception e) { return "{}"; }
+                });
+                runOnUiThread(task);
+                return task.get(2, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (Exception e) { return "{}"; }
+        }
+
+        @JavascriptInterface
+        public void disableEqualizer() {
+            runOnUiThread(() -> {
+                if (equalizer != null) { try { equalizer.setEnabled(false); equalizer.release(); } catch (Exception ignored) {} equalizer = null; }
+            });
+        }
+
+        @JavascriptInterface
         public boolean isPlaying() {
-            try { androidx.media3.exoplayer.ExoPlayer p = activePlayer(); return p != null && p.isPlaying(); }
-            catch (Exception e) { return false; }
+            try {
+                java.util.concurrent.FutureTask<Boolean> task = new java.util.concurrent.FutureTask<>(() -> {
+                    androidx.media3.exoplayer.ExoPlayer p = activePlayer();
+                    return p != null && p.isPlaying();
+                });
+                runOnUiThread(task);
+                return task.get(1, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (Exception e) { return false; }
         }
 
         @JavascriptInterface
@@ -3315,7 +3606,15 @@ public class ShellActivity extends Activity {
                 String artist = info.optString("artist", null);
                 String album = info.optString("album", null);
 
+                // Store metadata for when play() is called later
+                pendingSessionTitle = title;
+                pendingSessionArtist = artist;
+                pendingSessionAlbum = album;
+
                 // Kill local player — AudioService takes over
+                // Release equalizer and visualizer bound to old audio session
+                if (equalizer != null) { try { equalizer.setEnabled(false); equalizer.release(); } catch (Exception ignored) {} equalizer = null; }
+                if (audioVisualizer != null) { runOnUiThread(() -> { try { audioVisualizer.setEnabled(false); audioVisualizer.release(); } catch (Exception ignored) {} audioVisualizer = null; }); }
                 if (exoPlayer != null) {
                     final androidx.media3.exoplayer.ExoPlayer old = exoPlayer;
                     exoPlayer = null;
@@ -3382,19 +3681,36 @@ public class ShellActivity extends Activity {
 
         @JavascriptInterface
         public double getDuration() {
-            try { androidx.media3.exoplayer.ExoPlayer p = activePlayer(); return p != null ? p.getDuration() : 0; }
-            catch (Exception e) { return 0; }
+            try {
+                java.util.concurrent.FutureTask<Long> task = new java.util.concurrent.FutureTask<>(() -> {
+                    androidx.media3.exoplayer.ExoPlayer p = activePlayer();
+                    return p != null ? p.getDuration() : 0L;
+                });
+                runOnUiThread(task);
+                return task.get(1, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (Exception e) { return 0; }
         }
 
         @JavascriptInterface
         public double getCurrentPosition() {
-            try { androidx.media3.exoplayer.ExoPlayer p = activePlayer(); return p != null ? p.getCurrentPosition() : 0; }
-            catch (Exception e) { return 0; }
+            try {
+                java.util.concurrent.FutureTask<Long> task = new java.util.concurrent.FutureTask<>(() -> {
+                    androidx.media3.exoplayer.ExoPlayer p = activePlayer();
+                    return p != null ? p.getCurrentPosition() : 0L;
+                });
+                runOnUiThread(task);
+                return task.get(1, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (Exception e) { return 0; }
         }
 
         @JavascriptInterface
         public void onComplete(String callbackFn) {
             audioCompleteCallbackFn = callbackFn;
+        }
+
+        @JavascriptInterface
+        public void onMetadata(String callbackFn) {
+            audioMetadataCallbackFn = callbackFn;
         }
 
         // ── Audio Focus ──
@@ -3439,6 +3755,62 @@ public class ShellActivity extends Activity {
                     AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
                     if (am != null) am.abandonAudioFocusRequest(audioFocusRequest);
                     audioFocusRequest = null;
+                }
+            });
+        }
+
+        // ── Visualizer ──
+        @JavascriptInterface
+        public void startVisualizer(String callbackFn) {
+            if (ContextCompat.checkSelfPermission(ShellActivity.this, Manifest.permission.RECORD_AUDIO)
+                    != PackageManager.PERMISSION_GRANTED) {
+                pendingCallbacks.put(REQ_AUDIO_RECORD, null);
+                ActivityCompat.requestPermissions(ShellActivity.this,
+                    new String[]{Manifest.permission.RECORD_AUDIO}, REQ_AUDIO_RECORD);
+                return;
+            }
+            runOnUiThread(() -> {
+                try {
+                    if (audioVisualizer != null) { try { audioVisualizer.release(); } catch (Exception ignored) {} }
+                    androidx.media3.exoplayer.ExoPlayer p = activePlayer();
+                    int sessionId = p != null ? p.getAudioSessionId() : 0;
+                    audioVisualizer = new android.media.audiofx.Visualizer(sessionId);
+                    audioVisualizer.setCaptureSize(128); // small size = less overhead
+                    audioVisualizer.setDataCaptureListener(new android.media.audiofx.Visualizer.OnDataCaptureListener() {
+                        @Override
+                        public void onWaveFormDataCapture(android.media.audiofx.Visualizer v, byte[] waveform, int samplingRate) {
+                            if (!activityAlive) return;
+                            // Also grab FFT in the same callback to avoid double events
+                            byte[] fft = new byte[128];
+                            try { v.getFft(fft); } catch (Exception ignored) {}
+                            StringBuilder wf = new StringBuilder("[");
+                            StringBuilder ff = new StringBuilder("[");
+                            for (int i = 0; i < waveform.length; i++) {
+                                if (i > 0) { wf.append(','); ff.append(','); }
+                                wf.append(waveform[i] & 0xFF);
+                                ff.append(i < fft.length ? (fft[i] & 0xFF) : 0);
+                            }
+                            wf.append(']'); ff.append(']');
+                            fireEvent(callbackFn, "{\"waveform\":" + wf + ",\"fft\":" + ff + "}");
+                        }
+                        @Override
+                        public void onFftDataCapture(android.media.audiofx.Visualizer v, byte[] fft, int samplingRate) {
+                            // Handled in waveform callback above
+                        }
+                    }, android.media.audiofx.Visualizer.getMaxCaptureRate() / 4, true, false); // lower rate, waveform only
+                    audioVisualizer.setEnabled(true);
+                } catch (Exception e) {
+                    Log.e("iappyxOS", "startVisualizer: " + e.getMessage());
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void stopVisualizer() {
+            runOnUiThread(() -> {
+                if (audioVisualizer != null) {
+                    try { audioVisualizer.setEnabled(false); audioVisualizer.release(); } catch (Exception ignored) {}
+                    audioVisualizer = null;
                 }
             });
         }
@@ -3662,7 +4034,7 @@ public class ShellActivity extends Activity {
                     }
                     Cursor c = getContentResolver().query(uri,
                         new String[]{"_id", "title", "dtstart", "dtend", "description", "allDay"},
-                        sel, selArgs, "dtstart ASC LIMIT 50");
+                        sel, selArgs, "dtstart ASC");
                     if (c != null) {
                         try {
                             while (c.moveToNext()) {
@@ -3790,6 +4162,7 @@ public class ShellActivity extends Activity {
                 deliverResult(cbId, "{\"ok\":false,\"error\":\"NFC not available on this device\"}");
                 return;
             }
+            pendingNfcReadCallbackFn = pendingNfcCallbackFn; // save read callback
             pendingNfcCallbackFn = "window._iappyxNfcWriteCb_" + cbId;
             runOnUiThread(() -> {
                 pendingNfcWriteText = text;
@@ -3797,6 +4170,8 @@ public class ShellActivity extends Activity {
                 try { nfcAdapter.enableForegroundDispatch(ShellActivity.this, makeNfcPendingIntent(), null, null); }
                 catch (Exception e) {
                     pendingNfcWriteText = null; pendingNfcWriteCbId = null;
+                    // Restore read callback on failure
+                    if (pendingNfcReadCallbackFn != null) { pendingNfcCallbackFn = pendingNfcReadCallbackFn; pendingNfcReadCallbackFn = null; }
                     deliverResult(cbId, "{\"ok\":false,\"error\":\"NFC dispatch failed\"}");
                 }
             });
@@ -3808,6 +4183,7 @@ public class ShellActivity extends Activity {
                 deliverResult(cbId, "{\"ok\":false,\"error\":\"NFC not available on this device\"}");
                 return;
             }
+            pendingNfcReadCallbackFn = pendingNfcCallbackFn; // save read callback
             pendingNfcCallbackFn = "window._iappyxNfcWriteCb_" + cbId;
             runOnUiThread(() -> {
                 pendingNfcWriteUri = uri;
@@ -3815,6 +4191,7 @@ public class ShellActivity extends Activity {
                 try { nfcAdapter.enableForegroundDispatch(ShellActivity.this, makeNfcPendingIntent(), null, null); }
                 catch (Exception e) {
                     pendingNfcWriteUri = null; pendingNfcWriteCbId = null;
+                    if (pendingNfcReadCallbackFn != null) { pendingNfcCallbackFn = pendingNfcReadCallbackFn; pendingNfcReadCallbackFn = null; }
                     deliverResult(cbId, "{\"ok\":false,\"error\":\"NFC dispatch failed\"}");
                 }
             });
@@ -4293,9 +4670,21 @@ public class ShellActivity extends Activity {
             long audioId = (long) idD;
             Uri uri = android.content.ContentUris.withAppendedId(
                 MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, audioId);
+            String uriStr = uri.toString();
+            if (mediaSessionActive) {
+                // Delegate to AudioService
+                Intent intent = new Intent(ShellActivity.this, AudioService.class);
+                intent.setAction(AudioService.ACTION_PLAY);
+                intent.putExtra("url", uriStr);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent);
+                else startService(intent);
+                return;
+            }
             runOnUiThread(() -> {
                 try {
-                    if (exoPlayer != null) { exoPlayer.release(); }
+                    // Release visualizer bound to old audio session (equalizer is on AudioBridge, released via its own methods)
+                    if (audioVisualizer != null) { try { audioVisualizer.setEnabled(false); audioVisualizer.release(); } catch (Exception ignored) {} audioVisualizer = null; }
+                    if (exoPlayer != null) { try { exoPlayer.pause(); exoPlayer.stop(); exoPlayer.release(); } catch (Exception ignored) {} }
                     exoPlayer = new androidx.media3.exoplayer.ExoPlayer.Builder(ShellActivity.this).build();
                     exoPlayer.setMediaItem(androidx.media3.common.MediaItem.fromUri(uri));
                     exoPlayer.prepare();
@@ -4604,19 +4993,36 @@ public class ShellActivity extends Activity {
         private okhttp3.OkHttpClient defaultClient;
         private okhttp3.OkHttpClient trustAllClient;
         private final java.util.concurrent.ConcurrentHashMap<String, java.util.List<okhttp3.Cookie>> cookieStore = new java.util.concurrent.ConcurrentHashMap<>();
+        private final Object cookieLock = new Object();
         private final okhttp3.CookieJar cookieJar = new okhttp3.CookieJar() {
             @Override public void saveFromResponse(okhttp3.HttpUrl url, java.util.List<okhttp3.Cookie> cookies) {
-                // Merge: update existing by name, add new ones
-                java.util.List<okhttp3.Cookie> existing = cookieStore.get(url.host());
-                if (existing == null) { cookieStore.put(url.host(), new java.util.ArrayList<>(cookies)); return; }
-                java.util.Map<String, okhttp3.Cookie> merged = new java.util.LinkedHashMap<>();
-                for (okhttp3.Cookie c : existing) merged.put(c.name(), c);
-                for (okhttp3.Cookie c : cookies) merged.put(c.name(), c);
-                cookieStore.put(url.host(), new java.util.ArrayList<>(merged.values()));
+                synchronized (cookieLock) {
+                    for (okhttp3.Cookie c : cookies) {
+                        String domain = c.domain();
+                        java.util.List<okhttp3.Cookie> existing = cookieStore.get(domain);
+                        if (existing == null) { existing = new java.util.ArrayList<>(); cookieStore.put(domain, existing); }
+                        existing.removeIf(e -> e.name().equals(c.name()) && e.path().equals(c.path()));
+                        existing.add(c);
+                    }
+                }
             }
             @Override public java.util.List<okhttp3.Cookie> loadForRequest(okhttp3.HttpUrl url) {
-                java.util.List<okhttp3.Cookie> cookies = cookieStore.get(url.host());
-                return cookies != null ? cookies : java.util.Collections.emptyList();
+                synchronized (cookieLock) {
+                    java.util.List<okhttp3.Cookie> result = new java.util.ArrayList<>();
+                    long now = System.currentTimeMillis();
+                    for (java.util.Map.Entry<String, java.util.List<okhttp3.Cookie>> entry : cookieStore.entrySet()) {
+                        String domain = entry.getKey();
+                        if (!url.host().equals(domain) && !url.host().endsWith("." + domain)) continue;
+                        java.util.Iterator<okhttp3.Cookie> it = entry.getValue().iterator();
+                        while (it.hasNext()) {
+                            okhttp3.Cookie c = it.next();
+                            if (c.expiresAt() < now) { it.remove(); continue; }
+                            if (!url.encodedPath().startsWith(c.path())) continue;
+                            result.add(c);
+                        }
+                    }
+                    return result;
+                }
             }
         };
 
@@ -4716,9 +5122,16 @@ public class ShellActivity extends Activity {
                     try (okhttp3.Response resp = client.newCall(rb.build()).execute()) {
                         String respBody = "";
                         if (resp.body() != null) {
-                            byte[] bytes = resp.body().bytes();
-                            if (bytes.length > 16 * 1024 * 1024) throw new Exception("Response too large (>16MB), use requestFile instead");
-                            respBody = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+                            long cl = resp.body().contentLength();
+                            if (cl > 16 * 1024 * 1024) throw new Exception("Response too large (>16MB), use requestFile instead");
+                            okio.BufferedSource src = resp.body().source();
+                            if (!src.request(16 * 1024 * 1024 + 1)) {
+                                // fits in 16MB
+                                respBody = resp.body().string();
+                            } else {
+                                resp.body().close();
+                                throw new Exception("Response too large (>16MB), use requestFile instead");
+                            }
                         }
                         JSONObject result = new JSONObject();
                         result.put("ok", true);
@@ -4788,14 +5201,33 @@ public class ShellActivity extends Activity {
                             @Override public void writeTo(okio.BufferedSink sink) throws java.io.IOException {
                                 try (java.io.InputStream is = openInput(fp)) {
                                     if (is == null) return;
-                                    byte[] buf = new byte[65536];
-                                    int r;
-                                    while ((r = is.read(buf)) != -1) sink.write(buf, 0, r);
+                                    byte[] buf = new byte[65536]; int r; long transferred = 0; long lastProgress = 0;
+                                    while ((r = is.read(buf)) != -1) {
+                                        sink.write(buf, 0, r); transferred += r;
+                                        if (transferred - lastProgress >= 131072 || transferred == fileSize) {
+                                            fireEvent("window.onTransferProgress", "{\"transferred\":" + transferred + ",\"total\":" + fileSize + "}");
+                                            lastProgress = transferred;
+                                        }
+                                    }
                                 } catch (Exception e) { throw new java.io.IOException(e); }
                             }
                         };
                     } else {
-                        fileBody = okhttp3.RequestBody.create(new File(resolveFilePath(filePath)), mediaType);
+                        final File file = new File(resolveFilePath(filePath));
+                        final long fSize = file.length();
+                        fileBody = new okhttp3.RequestBody() {
+                            @Override public okhttp3.MediaType contentType() { return mediaType; }
+                            @Override public long contentLength() { return fSize; }
+                            @Override public void writeTo(okio.BufferedSink sink) throws java.io.IOException {
+                                try (java.io.InputStream is = new java.io.FileInputStream(file)) {
+                                    byte[] buf = new byte[65536]; int r; long transferred = 0;
+                                    while ((r = is.read(buf)) != -1) {
+                                        sink.write(buf, 0, r); transferred += r;
+                                        fireEvent("window.onTransferProgress", "{\"transferred\":" + transferred + ",\"total\":" + fSize + "}");
+                                    }
+                                }
+                            }
+                        };
                     }
                     rb.method(opts.optString("method", "POST"), fileBody);
                     try (okhttp3.Response resp = client.newCall(rb.build()).execute()) {
@@ -4883,18 +5315,20 @@ public class ShellActivity extends Activity {
             try {
                 okhttp3.HttpUrl httpUrl = okhttp3.HttpUrl.parse(url);
                 if (httpUrl == null) return "[]";
-                java.util.List<okhttp3.Cookie> cookies = cookieStore.get(httpUrl.host());
-                if (cookies == null) return "[]";
-                JSONArray arr = new JSONArray();
-                for (okhttp3.Cookie c : cookies) {
-                    JSONObject o = new JSONObject();
-                    o.put("name", c.name());
-                    o.put("value", c.value());
-                    o.put("domain", c.domain());
-                    o.put("path", c.path());
-                    arr.put(o);
+                synchronized (cookieLock) {
+                    java.util.List<okhttp3.Cookie> cookies = cookieStore.get(httpUrl.host());
+                    if (cookies == null) return "[]";
+                    JSONArray arr = new JSONArray();
+                    for (okhttp3.Cookie c : cookies) {
+                        JSONObject o = new JSONObject();
+                        o.put("name", c.name());
+                        o.put("value", c.value());
+                        o.put("domain", c.domain());
+                        o.put("path", c.path());
+                        arr.put(o);
+                    }
+                    return arr.toString();
                 }
-                return arr.toString();
             } catch (Exception e) { return "[]"; }
         }
 
@@ -5141,7 +5575,17 @@ public class ShellActivity extends Activity {
                     sftp.connect(15000);
                     try (java.io.InputStream is = openInput(localPath)) {
                         if (is == null) { deliverResult(cbId, "{\"ok\":false,\"error\":\"file not found\"}"); sftp.disconnect(); return; }
-                        sftp.put(is, remotePath);
+                        long fileSize = getContentSize(localPath);
+                        sftp.put(is, remotePath, new com.jcraft.jsch.SftpProgressMonitor() {
+                            long transferred = 0;
+                            @Override public void init(int op, String src, String dest, long max) {}
+                            @Override public boolean count(long count) {
+                                transferred += count;
+                                fireEvent("window.onTransferProgress", "{\"transferred\":" + transferred + ",\"total\":" + fileSize + "}");
+                                return true;
+                            }
+                            @Override public void end() {}
+                        });
                     }
                     sftp.disconnect();
                     deliverResult(cbId, "{\"ok\":true}");
@@ -5163,7 +5607,16 @@ public class ShellActivity extends Activity {
                     sftp.connect(15000);
                     String resolved = resolveFilePath(localPath);
                     try (FileOutputStream fos = new FileOutputStream(resolved)) {
-                        sftp.get(remotePath, fos);
+                        sftp.get(remotePath, fos, new com.jcraft.jsch.SftpProgressMonitor() {
+                            long transferred = 0;
+                            @Override public void init(int op, String src, String dest, long max) {}
+                            @Override public boolean count(long count) {
+                                transferred += count;
+                                fireEvent("window.onTransferProgress", "{\"transferred\":" + transferred + ",\"total\":-1}");
+                                return true;
+                            }
+                            @Override public void end() {}
+                        });
                     }
                     sftp.disconnect();
                     JSONObject result = new JSONObject();
@@ -5310,12 +5763,19 @@ public class ShellActivity extends Activity {
                 try {
                     jcifs.smb.SmbFile remote = resolveSmbPath(remotePath);
                     String resolved = resolveFilePath(localPath);
-                    long size = 0;
+                    long total = remote.length();
+                    long size = 0; long lastProgress = 0;
                     try (java.io.InputStream is = remote.getInputStream();
                          FileOutputStream fos = new FileOutputStream(resolved)) {
                         byte[] buf = new byte[65536];
                         int r;
-                        while ((r = is.read(buf)) != -1) { fos.write(buf, 0, r); size += r; }
+                        while ((r = is.read(buf)) != -1) {
+                            fos.write(buf, 0, r); size += r;
+                            if (size - lastProgress >= 131072 || size == total) { // every 128KB or at end
+                                fireEvent("window.onTransferProgress", "{\"transferred\":" + size + ",\"total\":" + total + "}");
+                                lastProgress = size;
+                            }
+                        }
                     }
                     JSONObject result = new JSONObject();
                     result.put("ok", true);
@@ -5333,12 +5793,20 @@ public class ShellActivity extends Activity {
             httpClientPool.submit(() -> {
                 try {
                     jcifs.smb.SmbFile remote = resolveSmbPath(remotePath);
+                    long total = getContentSize(localPath);
+                    long transferred = 0; long lastProgress = 0;
                     try (java.io.InputStream is = openInput(localPath);
                          java.io.OutputStream os = remote.getOutputStream()) {
                         if (is == null) { deliverResult(cbId, "{\"ok\":false,\"error\":\"file not found\"}"); return; }
                         byte[] buf = new byte[65536];
                         int r;
-                        while ((r = is.read(buf)) != -1) os.write(buf, 0, r);
+                        while ((r = is.read(buf)) != -1) {
+                            os.write(buf, 0, r); transferred += r;
+                            if (transferred - lastProgress >= 131072 || transferred == total) {
+                                fireEvent("window.onTransferProgress", "{\"transferred\":" + transferred + ",\"total\":" + total + "}");
+                                lastProgress = transferred;
+                            }
+                        }
                     }
                     deliverResult(cbId, "{\"ok\":true}");
                 } catch (Exception e) {
@@ -5714,6 +6182,9 @@ public class ShellActivity extends Activity {
             android.bluetooth.BluetoothGatt gatt = bleDevices.remove(address);
             if (gatt != null) {
                 try { gatt.disconnect(); gatt.close(); } catch (Exception ignored) {}
+                // Clean up subscriptions for this device
+                java.util.Iterator<String> it = bleSubscriptions.keySet().iterator();
+                while (it.hasNext()) { if (it.next().startsWith(address + "|")) it.remove(); }
                 if (bleDevices.isEmpty()) NetworkService.requestStop(ShellActivity.this);
             }
         }
@@ -5870,7 +6341,7 @@ public class ShellActivity extends Activity {
         if (firebaseInitialized) return;
         try {
             // Read firebase config from assets (injected during APK build)
-            java.io.InputStream is = getAssets().open("firebase_config.json");
+            java.io.InputStream is = getAssets().open("app/firebase_config.json");
             byte[] buf = new byte[is.available()];
             is.read(buf);
             is.close();
@@ -5956,11 +6427,15 @@ public class ShellActivity extends Activity {
     private String tcpDataCallbackFn;
     private String tcpCloseCallbackFn;
     private volatile boolean tcpRunning = false;
+    private final Object tcpLock = new Object();
 
     class TcpBridge {
         @JavascriptInterface
         public void open(String host, String portStr, String useTlsStr, String cbId) {
-            if (tcpRunning) { deliverResult(cbId, "{\"ok\":false,\"error\":\"already open\"}"); return; }
+            synchronized (tcpLock) {
+                if (tcpRunning) { deliverResult(cbId, "{\"ok\":false,\"error\":\"already open\"}"); return; }
+                tcpRunning = true; // claim early inside lock to prevent TOCTOU
+            }
             httpClientPool.submit(() -> {
                 try {
                     int port = Integer.parseInt(portStr);
@@ -6012,7 +6487,7 @@ public class ShellActivity extends Activity {
                     int localPort = tcpSocket.getLocalPort();
                     deliverResult(cbId, "{\"ok\":true,\"localAddress\":\"" + escapeJson(localAddr) + "\",\"localPort\":" + localPort + "}");
                 } catch (Exception e) {
-                    if (tcpRunning) { tcpRunning = false; NetworkService.requestStop(ShellActivity.this); }
+                    tcpRunning = false;
                     deliverResult(cbId, "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
                 }
             });
@@ -6020,7 +6495,10 @@ public class ShellActivity extends Activity {
 
         @JavascriptInterface
         public void openTrustPin(String host, String portStr, String fingerprint, String cbId) {
-            if (tcpRunning) { deliverResult(cbId, "{\"ok\":false,\"error\":\"already open\"}"); return; }
+            synchronized (tcpLock) {
+                if (tcpRunning) { deliverResult(cbId, "{\"ok\":false,\"error\":\"already open\"}"); return; }
+                tcpRunning = true;
+            }
             httpClientPool.submit(() -> {
                 try {
                     int port = Integer.parseInt(portStr);
@@ -6071,7 +6549,7 @@ public class ShellActivity extends Activity {
 
                     deliverResult(cbId, "{\"ok\":true}");
                 } catch (Exception e) {
-                    if (tcpRunning) { tcpRunning = false; NetworkService.requestStop(ShellActivity.this); }
+                    tcpRunning = false;
                     deliverResult(cbId, "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
                 }
             });
@@ -6083,7 +6561,11 @@ public class ShellActivity extends Activity {
             if (os == null || !tcpRunning) return;
             httpClientPool.submit(() -> {
                 try { os.write(data.getBytes(java.nio.charset.StandardCharsets.UTF_8)); os.flush(); }
-                catch (Exception e) { Log.e("iappyxOS", "TCP send: " + e.getMessage()); }
+                catch (Exception e) {
+                    Log.e("iappyxOS", "TCP send: " + e.getMessage());
+                    if (tcpRunning) { tcpRunning = false; NetworkService.requestStop(ShellActivity.this); }
+                    if (tcpCloseCallbackFn != null) fireEvent(tcpCloseCallbackFn, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+                }
             });
         }
 
@@ -6124,8 +6606,11 @@ public class ShellActivity extends Activity {
 
         @JavascriptInterface
         public void close() {
-            boolean wasRunning = tcpRunning;
-            tcpRunning = false;
+            boolean wasRunning;
+            synchronized (tcpLock) {
+                wasRunning = tcpRunning;
+                tcpRunning = false;
+            }
             try { if (tcpSocket != null && !tcpSocket.isClosed()) tcpSocket.close(); } catch (Exception ignored) {}
             tcpSocket = null;
             tcpOut = null;
@@ -6194,6 +6679,7 @@ public class ShellActivity extends Activity {
                 try { udpSocket.close(); } catch (Exception ignored) {}
             }
             udpSocket = null;
+            releaseMulticastLock();
         }
 
         @JavascriptInterface
@@ -6247,6 +6733,7 @@ public class ShellActivity extends Activity {
             if (udpSocket == null) return;
             try {
                 udpSocket.leaveGroup(java.net.InetAddress.getByName(group));
+                releaseMulticastLock();
             } catch (Exception e) { Log.e("iappyxOS", "UDP leaveMulticast: " + e.getMessage()); }
         }
     }
@@ -6680,6 +7167,11 @@ public class ShellActivity extends Activity {
 
             if (httpRequestCallbackFn != null) {
                 fireEvent(httpRequestCallbackFn, event.toString());
+            } else {
+                // No handler registered yet — respond immediately
+                writeHttpResponse(out, 503, "{}", "No request handler registered");
+                httpPendingRequests.remove(requestId);
+                return;
             }
 
             // Wait for JS to call respond() or timeout
@@ -6794,6 +7286,7 @@ public class ShellActivity extends Activity {
 
     private String resolveFilePath(String filePath) {
         if (filePath == null) return null;
+        if (filePath.startsWith("file://")) return Uri.parse(filePath).getPath();
         if (filePath.startsWith("/")) return filePath;
         if (filePath.startsWith("downloads:")) {
             return new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
@@ -6862,6 +7355,7 @@ public class ShellActivity extends Activity {
                 bridges.put("ssh", true);
                 bridges.put("smb", true);
                 bridges.put("ble", true);
+                initFirebaseIfNeeded();
                 bridges.put("push", firebaseInitialized);
                 bridges.put("tcp", true);
                 bridges.put("nsd", true);

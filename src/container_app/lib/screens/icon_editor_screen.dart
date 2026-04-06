@@ -228,7 +228,7 @@ class _IconEditorScreenState extends State<IconEditorScreen> {
         final el = _config.elements[i];
         final selected = i == _selectedIndex;
         return Container(
-          key: ValueKey('layer_$i\_${el.content.hashCode}'),
+          key: ValueKey('layer_${el.isImage ? "img" : el.isText ? "txt" : "emo"}_${el.content.hashCode}_${el.color.hashCode}'),
           margin: const EdgeInsets.only(bottom: 4),
           decoration: BoxDecoration(
             color: selected ? const Color(0xFF0F3460) : const Color(0xFF1A1A2E),
@@ -646,10 +646,11 @@ class _IconEditorScreenState extends State<IconEditorScreen> {
 
 /// Reusable widget to render an IconConfig preview at any size
 // Cache decoded image bytes to avoid re-decoding base64 on every frame
-final Map<int, Uint8List> _imageCache = {};
+final Map<String, Uint8List> _imageCache = {};
 final Uint8List _emptyPixel = Uint8List.fromList([0]); // fallback for corrupt data
 Uint8List _cachedDecode(String b64) {
-  final key = b64.hashCode;
+  final key = b64.length > 64 ? b64.substring(0, 32) + b64.substring(b64.length - 32) : b64;
+  if (_imageCache.length > 20) _imageCache.clear(); // prevent unbounded growth
   return _imageCache.putIfAbsent(key, () {
     try { return base64Decode(b64); }
     catch (_) { return _emptyPixel; }

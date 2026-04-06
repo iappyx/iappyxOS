@@ -189,6 +189,10 @@ class _QRReceiveScreenState extends State<QRReceiveScreen> {
 
       if (_totalChunks == 0) {
         setState(() => _totalChunks = total);
+      } else if (_totalChunks != total) {
+        // Different transfer — reset and start fresh
+        _received.clear();
+        setState(() => _totalChunks = total);
       }
 
       if (!_received.containsKey(seq)) {
@@ -310,6 +314,11 @@ class _QRReceiveScreenState extends State<QRReceiveScreen> {
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Text(_error!, style: const TextStyle(fontSize: 12, color: Color(0xFFFF6B6B))),
+            ),
+          if (_totalChunks > 0)
+            TextButton(
+              onPressed: () => setState(() { _received.clear(); _totalChunks = 0; _error = null; }),
+              child: const Text('Reset', style: TextStyle(fontSize: 12, color: Colors.white38)),
             ),
           const SizedBox(height: 16),
         ]),
