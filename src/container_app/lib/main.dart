@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'screens/create_screen.dart';
 import 'screens/my_apps_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/onboarding_screen.dart';
 import 'services/app_storage.dart';
+import 'services/settings_service.dart';
 
 void main() => runApp(const IappyxOSApp());
 
@@ -35,8 +37,42 @@ class IappyxOSApp extends StatelessWidget {
           hintStyle: const TextStyle(color: Colors.white24),
         ),
       ),
-      home: const AppShell(),
+      home: const AppRoot(),
     );
+  }
+}
+
+class AppRoot extends StatefulWidget {
+  const AppRoot({super.key});
+  @override
+  State<AppRoot> createState() => _AppRootState();
+}
+
+class _AppRootState extends State<AppRoot> {
+  bool _loading = true;
+  bool _showOnboarding = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkOnboarding();
+  }
+
+  Future<void> _checkOnboarding() async {
+    final done = await Settings.hasCompletedOnboarding();
+    if (mounted) setState(() { _showOnboarding = !done; _loading = false; });
+  }
+
+  void _finishOnboarding() async {
+    await Settings.setOnboardingDone();
+    if (mounted) setState(() => _showOnboarding = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const Scaffold(backgroundColor: Color(0xFF0D0D1A));
+    if (_showOnboarding) return OnboardingScreen(onDone: _finishOnboarding);
+    return const AppShell();
   }
 }
 

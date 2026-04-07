@@ -394,7 +394,7 @@ public class ShellActivity extends Activity {
                     "<div style='font-size:48px;margin-bottom:16px'>\uD83D\uDCF6</div>" +
                     "<h2 style='margin:0 0 8px;font-size:18px'>Can't reach this page</h2>" +
                     "<p style='color:rgba(255,255,255,0.4);font-size:13px;margin:0 0 24px'>" + safeDesc + "</p>" +
-                    "<button onclick='window.location.href=\"" + failingUrl + "\"' " +
+                    "<button onclick='window.location.href=\"" + escapeJson(failingUrl).replace("'", "\\'") + "\"' " +
                     "style='background:#0f3460;color:#fff;border:none;padding:14px 32px;border-radius:50px;font-size:15px;margin:0 6px;cursor:pointer;min-height:44px'>Retry</button>" +
                     "<button onclick='history.back()' " +
                     "style='background:#1a1a2e;color:#fff;border:none;padding:14px 24px;border-radius:50px;font-size:15px;margin:0 6px;cursor:pointer;min-height:44px'>Back</button>" +
@@ -707,8 +707,10 @@ public class ShellActivity extends Activity {
             String title = intent.getStringExtra("push_title");
             String body = intent.getStringExtra("push_body");
             String data = intent.getStringExtra("push_data");
+            String safeData = "{}";
+            if (data != null) { try { new JSONObject(data); safeData = data; } catch (Exception e) { safeData = "\"" + escapeJson(data) + "\""; } }
             fireEvent(PushService.foregroundCallbackFn, "{\"title\":\"" + escapeJson(title) +
-                "\",\"body\":\"" + escapeJson(body) + "\",\"data\":" + data + "}");
+                "\",\"body\":\"" + escapeJson(body) + "\",\"data\":" + safeData + "}");
             intent.removeExtra("push_data");
         }
         String action = intent.getAction() != null ? intent.getAction() : "";
@@ -5339,11 +5341,13 @@ public class ShellActivity extends Activity {
                 if (httpUrl == null) return;
                 okhttp3.Cookie cookie = new okhttp3.Cookie.Builder()
                     .name(name).value(value).domain(httpUrl.host()).path("/").build();
-                java.util.List<okhttp3.Cookie> list = cookieStore.get(httpUrl.host());
-                java.util.Map<String, okhttp3.Cookie> merged = new java.util.LinkedHashMap<>();
-                if (list != null) for (okhttp3.Cookie c : list) merged.put(c.name(), c);
-                merged.put(name, cookie);
-                cookieStore.put(httpUrl.host(), new java.util.ArrayList<>(merged.values()));
+                synchronized (cookieLock) {
+                    java.util.List<okhttp3.Cookie> list = cookieStore.get(httpUrl.host());
+                    java.util.Map<String, okhttp3.Cookie> merged = new java.util.LinkedHashMap<>();
+                    if (list != null) for (okhttp3.Cookie c : list) merged.put(c.name(), c);
+                    merged.put(name, cookie);
+                    cookieStore.put(httpUrl.host(), new java.util.ArrayList<>(merged.values()));
+                }
             } catch (Exception ignored) {}
         }
 

@@ -39,6 +39,16 @@ iappyx.someMethod(cbId);
 ```
 Always set a 30s timeout to clean up if callback never fires.
 
+## File paths
+All file bridges accept these path formats interchangeably:
+- **Plain filename** (`notes.json`) — app-private storage, survives app restarts
+- **`content://` URI** — returned by `pickFile`, pass directly to upload/read/copy methods
+- **`downloads:filename`** — reads from the device Downloads folder
+- **Absolute path** (`/storage/...`) — rarely needed, use the above instead
+- **`file://` URI** — also supported, converted automatically
+
+When `pickFile` returns a `content://` URI, pass it directly to other bridges (`ssh.upload`, `smb.upload`, `httpClient.uploadFile`, `tcp.sendFile`, `storage.readFileBase64`, `storage.copyFileToDownloads`, etc.) — no conversion needed.
+
 ## Bridge reference
 
 ### Storage (sync)

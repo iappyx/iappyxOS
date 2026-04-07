@@ -15,6 +15,7 @@ import 'preview_screen.dart';
 import 'icon_editor_screen.dart';
 import '../services/error_helper.dart';
 import 'flows/create_helpers.dart' as h;
+import 'showcase_screen.dart';
 
 class CreateScreen extends StatefulWidget {
   final VoidCallback? onAppSaved;
@@ -367,7 +368,16 @@ class CreateScreenState extends State<CreateScreen> {
       _existingPackageName = result.packageName;
       _addLog('\u2705 Build complete! App saved.');
       widget.onAppSaved?.call();
-    } on PlatformException catch (e) { final err = friendlyError(e.message); _addLog('\u274C ${err.message}'); if (err.hint != null) _addLog('   ${err.hint}'); }
+    } on PlatformException catch (e) {
+      if (e.message != null && e.message!.contains('SIGNATURE_CONFLICT:')) {
+        final pkg = e.message!.split('SIGNATURE_CONFLICT:').last;
+        _addLog('\u26A0 App signed by another device. Uninstall the old version first.');
+        final ok = await Generator.handleSignatureConflict(packageName: pkg, context: context);
+        if (ok) _addLog('Old version removed. Tap Build again to install.');
+      } else {
+        final err = friendlyError(e.message); _addLog('\u274C ${err.message}'); if (err.hint != null) _addLog('   ${err.hint}');
+      }
+    }
     finally { setState(() => _isBuilding = false); }
   }
 
@@ -392,7 +402,16 @@ class CreateScreenState extends State<CreateScreen> {
       _existingPackageName = result.packageName;
       _addLog('\u2705 Build complete! App saved.');
       widget.onAppSaved?.call();
-    } on PlatformException catch (e) { final err = friendlyError(e.message); _addLog('\u274C ${err.message}'); if (err.hint != null) _addLog('   ${err.hint}'); }
+    } on PlatformException catch (e) {
+      if (e.message != null && e.message!.contains('SIGNATURE_CONFLICT:')) {
+        final pkg = e.message!.split('SIGNATURE_CONFLICT:').last;
+        _addLog('\u26A0 App signed by another device. Uninstall the old version first.');
+        final ok = await Generator.handleSignatureConflict(packageName: pkg, context: context);
+        if (ok) _addLog('Old version removed. Tap Build again to install.');
+      } else {
+        final err = friendlyError(e.message); _addLog('\u274C ${err.message}'); if (err.hint != null) _addLog('   ${err.hint}');
+      }
+    }
     finally { setState(() => _isBuilding = false); }
   }
 
@@ -413,7 +432,7 @@ class CreateScreenState extends State<CreateScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: _showBuildLog ? _buildingView() : _mode == null ? _modeSelection() : _formView(),
+        child: _showBuildLog ? _buildingView() : _mode == null ? _modeSelection() : _mode == 'showcase' ? _showcaseView() : _formView(),
       ),
     );
   }
@@ -503,8 +522,22 @@ class CreateScreenState extends State<CreateScreen> {
       const SizedBox(height: 12),
       h.buildModeCard(icon: Icons.language, title: 'Website as App', subtitle: 'Turn any website into a standalone app', onTap: () => setState(() => _mode = 'web')),
       const SizedBox(height: 12),
+      h.buildModeCard(icon: Icons.storefront_outlined, title: 'Showcase', subtitle: 'Community apps — ready to build', onTap: () => setState(() => _mode = 'showcase')),
+      const SizedBox(height: 12),
       h.buildModeCard(icon: Icons.science_outlined, title: 'Demo App', subtitle: 'Pre-built apps to test bridge features', onTap: () => setState(() => _mode = 'demo')),
     ]),
+  );
+
+  Widget _showcaseView() => Padding(
+    padding: const EdgeInsets.fromLTRB(24, 32, 24, 0),
+    child: ShowcaseScreen(onBack: () => setState(() => _mode = null), onLoadApp: (name, html) {
+      _nameController.text = name;
+      _htmlController.text = html;
+      _genMethod = 'manual';
+      _htmlExpanded = true;
+      _descExpanded = false;
+      setState(() => _mode = 'ai');
+    }),
   );
 
   Widget _formView() {

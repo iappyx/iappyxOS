@@ -69,6 +69,11 @@ class AppGenerator(private val context: Context) {
             outputApk
         }
 
+        val sigStatus = KeyManager.checkSignatureMatch(context, packageName)
+        if (sigStatus == "mismatch") {
+            throw Exception("SIGNATURE_CONFLICT:$packageName")
+        }
+
         withContext(Dispatchers.Main) {
             onProgress("\uD83D\uDCF2 Launching installer...")
             installer.install(outputApk)
@@ -123,6 +128,12 @@ class AppGenerator(private val context: Context) {
                 icons = icons,
             )
             outputApk
+        }
+
+        // Check for signature conflict before installing
+        val sigStatus = KeyManager.checkSignatureMatch(context, packageName)
+        if (sigStatus == "mismatch") {
+            throw Exception("SIGNATURE_CONFLICT:$packageName")
         }
 
         withContext(Dispatchers.Main) {

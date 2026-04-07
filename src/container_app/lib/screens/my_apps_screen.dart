@@ -10,6 +10,8 @@ import '../models/icon_config.dart';
 import 'icon_editor_screen.dart';
 import 'qr_transfer_screen.dart';
 import '../services/error_helper.dart';
+import '../services/github_service.dart';
+import '../services/settings_service.dart';
 
 class MyAppsScreen extends StatefulWidget {
   final void Function(AppData app)? onEditApp;
@@ -76,7 +78,13 @@ class MyAppsScreenState extends State<MyAppsScreen> {
       ));
       refresh();
     } on PlatformException catch (e) {
-      final err = friendlyError(e.message); _addLog('\u274C ${err.message}'); if (err.hint != null) _addLog('   ${err.hint}');
+      if (e.message != null && e.message!.contains('SIGNATURE_CONFLICT:')) {
+        final pkg = e.message!.split('SIGNATURE_CONFLICT:').last;
+        _addLog('\u26A0 App signed by another device. Uninstall the old version first.');
+        await Generator.handleSignatureConflict(packageName: pkg, context: context);
+      } else {
+        final err = friendlyError(e.message); _addLog('\u274C ${err.message}'); if (err.hint != null) _addLog('   ${err.hint}');
+      }
     } finally {
       if (mounted) setState(() => _rebuildingId = null);
     }
@@ -250,12 +258,133 @@ class MyAppsScreenState extends State<MyAppsScreen> {
                     );
                 },
               ),
+              if (app.html.isNotEmpty && !app.description.startsWith('Web app: ') && app.templateId.isEmpty)
+                ListTile(
+                  leading: const Icon(Icons.publish, color: Color(0xFF4FC3F7)),
+                  title: const Text('Submit to Showcase'),
+                  subtitle: const Text('Share with the community via GitHub PR', style: TextStyle(fontSize: 12, color: Colors.white38)),
+                  onTap: () { Navigator.pop(ctx); _submitToShowcase(app); },
+                ),
               ],
             ],
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _submitToShowcase(AppData app) async {
+    final token = await Settings.getGithubToken();
+    if (token.isEmpty) {
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A2E),
+          title: const Text('GitHub Token Required'),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('To submit apps to the Showcase, add your GitHub token in Settings.',
+              style: TextStyle(fontSize: 14, color: Colors.white70)),
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: () => Generator.openUrl('https://github.com/settings/tokens'),
+              child: const Text('github.com/settings/tokens',
+                style: TextStyle(fontSize: 14, color: Color(0xFF4FC3F7), decoration: TextDecoration.underline)),
+            ),
+            const SizedBox(height: 8),
+            const Text('Create a token with public_repo scope.',
+              style: TextStyle(fontSize: 12, color: Colors.white38)),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+          ],
+        ),
+      );
+      return;
+    }
+
+    // Auto-detect bridges
+    final bridgeMatches = RegExp(r'iappyx\.(\w+)\.\w+').allMatches(app.html);
+    final bridges = bridgeMatches.map((m) => m.group(1)!).toSet();
+    if (app.html.contains('iappyx.save(') || app.html.contains('iappyx.load(') || app.html.contains('iappyx.remove(')) bridges.add('storage');
+    final bridgeList = bridges.toList()..sort();
+
+    final nameController = TextEditingController(text: app.name);
+    final descController = TextEditingController(text: app.description);
+
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A2E),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(24, 20, 24, MediaQuery.of(ctx).viewInsets.bottom + 32),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)))),
+          const SizedBox(height: 20),
+          const Text('Submit to Showcase', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 16),
+          TextField(controller: nameController, style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(labelText: 'App name', filled: true, fillColor: Color(0xFF0D0D1A),
+              border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8)), borderSide: BorderSide.none))),
+          const SizedBox(height: 12),
+          TextField(controller: descController, style: const TextStyle(color: Colors.white), maxLines: 2,
+            decoration: const InputDecoration(labelText: 'Short description', filled: true, fillColor: Color(0xFF0D0D1A),
+              border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8)), borderSide: BorderSide.none))),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 6, runSpacing: 6,
+            children: bridgeList.map((b) => Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(color: const Color(0xFF0D0D1A), borderRadius: BorderRadius.circular(12)),
+              child: Text(b, style: const TextStyle(fontSize: 11, color: Color(0xFF4FC3F7))),
+            )).toList(),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF4FC3F7), foregroundColor: const Color(0xFF0D0D1A),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              child: const Text('Submit', style: TextStyle(fontWeight: FontWeight.w600)),
+            ),
+          ),
+        ]),
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    // Show loading
+    showDialog(context: context, barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator(color: Color(0xFF4FC3F7))));
+
+    try {
+      final slug = nameController.text.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '-').replaceAll(RegExp(r'-+'), '-').replaceAll(RegExp(r'^-|-$'), '');
+      final github = GithubService(token);
+      final prUrl = await github.submitApp(
+        slug: slug,
+        appHtml: AppStorage.tagHtml(app.html),
+        name: nameController.text.trim(),
+        description: descController.text.trim(),
+        author: (await github.getUsername()),
+        bridges: bridgeList,
+      );
+      if (mounted) {
+        Navigator.pop(context); // dismiss loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('PR created! $prUrl'), backgroundColor: const Color(0xFF1A1A2E), duration: const Duration(seconds: 6)));
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // dismiss loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed: $e'), backgroundColor: const Color(0xFF1A1A2E)));
+      }
+    }
   }
 
   @override

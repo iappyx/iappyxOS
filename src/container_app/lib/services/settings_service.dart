@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/ai_provider.dart';
 
 class Settings {
+  static const showcaseBaseUrl = 'https://raw.githubusercontent.com/iappyx/iappyxOS-showcase/main';
+
   static SharedPreferences? _prefs;
   static const _secure = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -128,6 +130,15 @@ class Settings {
     await prefs.setString('api_key', key);
   }
 
+  static Future<String> getGithubToken() async {
+    try { return await _secure.read(key: 'github_token') ?? ''; }
+    catch (_) { return ''; }
+  }
+
+  static Future<void> setGithubToken(String token) async {
+    await _secure.write(key: 'github_token', value: token);
+  }
+
   static Future<String> getModel() async {
     final prefs = await getPrefs();
     return prefs.getString('ai_model') ?? 'claude-sonnet-4-20250514';
@@ -151,6 +162,16 @@ class Settings {
     } else {
       await prefs.setString('custom_prompt', prompt);
     }
+  }
+
+  static Future<bool> hasCompletedOnboarding() async {
+    final prefs = await getPrefs();
+    return prefs.getBool('onboarding_done') ?? false;
+  }
+
+  static Future<void> setOnboardingDone() async {
+    final prefs = await getPrefs();
+    await prefs.setBool('onboarding_done', true);
   }
 
   static Future<bool> hasCustomPrompt() async {

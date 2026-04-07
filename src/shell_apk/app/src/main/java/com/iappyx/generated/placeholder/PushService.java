@@ -41,8 +41,8 @@ public class PushService extends FirebaseMessagingService {
         boolean first = true;
         for (java.util.Map.Entry<String, String> e : msg.getData().entrySet()) {
             if (!first) dataJson.append(",");
-            dataJson.append("\"").append(e.getKey().replace("\"", "\\\"")).append("\":\"")
-                .append(e.getValue().replace("\"", "\\\"")).append("\"");
+            dataJson.append("\"").append(ShellActivity.escapeJson(e.getKey())).append("\":\"")
+                .append(ShellActivity.escapeJson(e.getValue())).append("\"");
             first = false;
         }
         dataJson.append("}");
@@ -51,8 +51,8 @@ public class PushService extends FirebaseMessagingService {
         ShellActivity activity = activeActivity;
         String fn = foregroundCallbackFn;
         if (activity != null && fn != null) {
-            String json = "{\"title\":\"" + title.replace("\"", "\\\"") +
-                "\",\"body\":\"" + body.replace("\"", "\\\"") +
+            String json = "{\"title\":\"" + ShellActivity.escapeJson(title) +
+                "\",\"body\":\"" + ShellActivity.escapeJson(body) +
                 "\",\"data\":" + dataJson + "}";
             activity.fireEvent(fn, json);
         } else {

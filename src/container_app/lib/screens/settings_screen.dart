@@ -407,6 +407,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
               const SizedBox(height: 24),
 
+              // Showcase
+              _sectionTitle('Showcase'),
+              _card(children: [
+                _actionRow('GitHub Token', Icons.key, () async {
+                  final current = await Settings.getGithubToken();
+                  final controller = TextEditingController(text: current);
+                  final result = await showDialog<String>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      backgroundColor: const Color(0xFF1A1A2E),
+                      title: const Text('GitHub Token'),
+                      content: Column(mainAxisSize: MainAxisSize.min, children: [
+                        const Text('Needed for Showcase submissions. Create at github.com/settings/tokens with public_repo scope.',
+                          style: TextStyle(fontSize: 12, color: Colors.white54)),
+                        const SizedBox(height: 12),
+                        TextField(controller: controller, style: const TextStyle(color: Colors.white, fontSize: 13),
+                          obscureText: true,
+                          decoration: const InputDecoration(hintText: 'ghp_...', filled: true, fillColor: Color(0xFF0D0D1A),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8)), borderSide: BorderSide.none))),
+                      ]),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+                        TextButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text('Save')),
+                      ],
+                    ),
+                  );
+                  if (result != null) {
+                    await Settings.setGithubToken(result);
+                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(result.isEmpty ? 'GitHub token removed' : 'GitHub token saved')));
+                  }
+                }),
+              ]),
+
+              const SizedBox(height: 24),
+
               // About
               _sectionTitle('About'),
               _card(children: [
