@@ -363,7 +363,8 @@ class MyAppsScreenState extends State<MyAppsScreen> {
       builder: (_) => const Center(child: CircularProgressIndicator(color: Color(0xFF4FC3F7))));
 
     try {
-      final slug = nameController.text.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '-').replaceAll(RegExp(r'-+'), '-').replaceAll(RegExp(r'^-|-$'), '');
+      var slug = nameController.text.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '-').replaceAll(RegExp(r'-+'), '-').replaceAll(RegExp(r'^-|-$'), '');
+      if (slug.isEmpty) slug = 'app-${DateTime.now().millisecondsSinceEpoch}';
       final github = GithubService(token);
       final prUrl = await github.submitApp(
         slug: slug,
