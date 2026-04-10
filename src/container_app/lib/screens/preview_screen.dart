@@ -114,7 +114,6 @@ class _PreviewScreenState extends State<PreviewScreen> {
     onClipboardChange:function(fn){console.log('[Preview] onClipboardChange registered');},
     readFromDownloads:function(){return null;},
     setWallpaper:function(){console.warn('[Preview] setWallpaper not available');},
-    onBatteryChange:function(fn){console.log('[Preview] onBatteryChange registered');}
   };
 
   // ── Vibration (sends to Dart for haptic feedback) ──
@@ -766,7 +765,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
           ),
           Stack(children: [
             IconButton(
-              icon: Icon(_consoleExpanded ? Icons.expand_more : Icons.expand_less, size: 20,
+              icon: Icon(_consoleExpanded ? Icons.expand_less : Icons.expand_more, size: 20,
                 color: _consoleExpanded ? const Color(0xFF4FC3F7) : Colors.white54),
               onPressed: () => setState(() => _consoleExpanded = !_consoleExpanded),
             ),

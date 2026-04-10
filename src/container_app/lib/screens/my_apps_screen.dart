@@ -85,6 +85,8 @@ class MyAppsScreenState extends State<MyAppsScreen> {
       } else {
         final err = friendlyError(e.message); _addLog('\u274C ${err.message}'); if (err.hint != null) _addLog('   ${err.hint}');
       }
+    } catch (e) {
+      _addLog('\u274C Unexpected error: $e');
     } finally {
       if (mounted) setState(() => _rebuildingId = null);
     }
@@ -265,6 +267,13 @@ class MyAppsScreenState extends State<MyAppsScreen> {
                   subtitle: const Text('Share with the community via GitHub PR', style: TextStyle(fontSize: 12, color: Colors.white38)),
                   onTap: () { Navigator.pop(ctx); _submitToShowcase(app); },
                 ),
+              if (app.html.isNotEmpty && app.templateId.isEmpty)
+                ListTile(
+                  leading: const Icon(Icons.history, color: Colors.white54),
+                  title: const Text('Version History'),
+                  subtitle: const Text('View and restore previous versions', style: TextStyle(fontSize: 12, color: Colors.white38)),
+                  onTap: () { Navigator.pop(ctx); _showVersionHistory(app); },
+                ),
               ],
             ],
           ),
@@ -386,6 +395,37 @@ class MyAppsScreenState extends State<MyAppsScreen> {
           SnackBar(content: Text('Failed: $e'), backgroundColor: const Color(0xFF1A1A2E)));
       }
     }
+  }
+
+  Future<void> _showVersionHistory(AppData app) async {
+    final versions = await AppStorage.getVersions(app.id);
+    if (versions.isEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No version history yet. History is saved when you rebuild with changes.'), backgroundColor: Color(0xFF1A1A2E)));
+      return;
+    }
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A2E),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => _VersionHistorySheet(
+        appName: app.name,
+        appId: app.id,
+        versions: versions,
+        onRestore: (html) {
+          Navigator.pop(ctx);
+          widget.onEditApp?.call(AppData(
+            id: app.id, name: app.name, description: app.description, prompt: app.prompt,
+            html: html, appType: app.appType, templateId: app.templateId,
+            packageName: app.packageName, apkPath: app.apkPath, iconConfig: app.iconConfig,
+            firebaseConfig: app.firebaseConfig,
+            createdAt: app.createdAt, updatedAt: app.updatedAt,
+          ));
+        },
+      ),
+    );
   }
 
   @override
@@ -1083,6 +1123,115 @@ class _ReceiveNearbySheetState extends State<_ReceiveNearbySheet> {
             ),
             child: Text(_status == 'done' ? 'Done' : 'Cancel', style: const TextStyle(color: Colors.white)),
           )),
+        ]),
+      ),
+    );
+  }
+}
+
+class _VersionHistorySheet extends StatefulWidget {
+  final String appName;
+  final String appId;
+  final List<Map<String, dynamic>> versions;
+  final void Function(String html) onRestore;
+  const _VersionHistorySheet({required this.appName, required this.appId, required this.versions, required this.onRestore});
+  @override
+  State<_VersionHistorySheet> createState() => _VersionHistorySheetState();
+}
+
+class _VersionHistorySheetState extends State<_VersionHistorySheet> {
+  late List<Map<String, dynamic>> _versions;
+
+  @override
+  void initState() {
+    super.initState();
+    _versions = List.from(widget.versions);
+  }
+
+  String _formatDate(String iso) {
+    try {
+      final dt = DateTime.parse(iso);
+      return '${dt.day}/${dt.month}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    } catch (_) { return iso; }
+  }
+
+  String _formatSize(String html) {
+    final kb = (html.length / 1024).toStringAsFixed(1);
+    return '${kb}KB';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.5,
+      maxChildSize: 0.85,
+      minChildSize: 0.3,
+      expand: false,
+      builder: (_, scrollController) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)))),
+          const SizedBox(height: 16),
+          Text('Version History — ${widget.appName}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Text('${_versions.length} version${_versions.length == 1 ? '' : 's'}', style: const TextStyle(fontSize: 12, color: Colors.white38)),
+          const SizedBox(height: 16),
+          Expanded(
+            child: ListView.separated(
+              controller: scrollController,
+              itemCount: _versions.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (_, i) {
+                final v = _versions[_versions.length - 1 - i]; // newest first
+                final html = v['html'] as String? ?? '';
+                return Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0D0D1A),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(children: [
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('v${v['version']}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 2),
+                      Text('${_formatDate(v['timestamp'] as String? ?? '')}  •  ${_formatSize(html)}',
+                        style: const TextStyle(fontSize: 11, color: Colors.white38)),
+                    ])),
+                    TextButton(
+                      onPressed: () => widget.onRestore(html),
+                      child: const Text('Restore', style: TextStyle(color: Color(0xFF4FC3F7), fontSize: 13)),
+                    ),
+                  ]),
+                );
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Center(
+              child: TextButton(
+                onPressed: () async {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      backgroundColor: const Color(0xFF1A1A2E),
+                      title: const Text('Clear History'),
+                      content: const Text('Delete all saved versions? This cannot be undone.', style: TextStyle(color: Colors.white70)),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                        TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Clear', style: TextStyle(color: Color(0xFFFF6B6B)))),
+                      ],
+                    ),
+                  );
+                  if (confirm == true) {
+                    await AppStorage.clearVersions(widget.appId);
+                    if (mounted) { Navigator.pop(context); }
+                  }
+                },
+                child: const Text('Clear History', style: TextStyle(color: Colors.white38, fontSize: 12)),
+              ),
+            ),
+          ),
         ]),
       ),
     );

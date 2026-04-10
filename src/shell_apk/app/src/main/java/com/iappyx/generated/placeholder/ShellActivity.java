@@ -168,6 +168,7 @@ public class ShellActivity extends Activity {
     private String pendingPickFileCbId;
 
     private final Map<Integer, String> pendingCallbacks = new HashMap<>();
+    private Runnable pendingCameraAction;
     private String pendingPhotoCallbackId;
     private Uri pendingPhotoUri;
     private String pendingVideoCallbackId;
@@ -437,7 +438,7 @@ public class ShellActivity extends Activity {
                 Intent launchIntent = getIntent();
                 if (launchIntent != null && launchIntent.getBooleanExtra("alarm_fired", false)) {
                     String cbFn = launchIntent.getStringExtra("callbackFn");
-                    if (cbFn != null) {
+                    if (cbFn != null && isSafeCallbackName(cbFn)) {
                         // Retry up to 3 times in case JS isn't ready yet
                         final String fn = cbFn;
                         final int[] attempt = {0};
@@ -560,6 +561,12 @@ public class ShellActivity extends Activity {
             if (rotated != bmp) bmp.recycle();
             return rotated;
         } catch (Exception e) { return bmp; }
+    }
+
+    /** Validates that a callback function name is safe to inject into evaluateJavascript. */
+    static boolean isSafeCallbackName(String fn) {
+        if (fn == null || fn.isEmpty()) return false;
+        return fn.matches("[a-zA-Z_$][a-zA-Z0-9_$.]*");
     }
 
     static String escapeJson(String s) {
@@ -859,7 +866,7 @@ public class ShellActivity extends Activity {
         // Handle alarm callback
         if (intent.getBooleanExtra("alarm_fired", false)) {
             String callbackFn = intent.getStringExtra("callbackFn");
-            if (callbackFn != null) {
+            if (callbackFn != null && isSafeCallbackName(callbackFn)) {
                 webView.postDelayed(() -> fireEvent(callbackFn, "{}"), 500);
             }
         }
@@ -867,8 +874,9 @@ public class ShellActivity extends Activity {
         // Handle app shortcut
         if (intent.hasExtra("shortcut_id")) {
             String shortcutId = intent.getStringExtra("shortcut_id");
-            String callbackFn = getSharedPreferences("iappyx_shortcuts", MODE_PRIVATE)
+            String rawFn = getSharedPreferences("iappyx_shortcuts", MODE_PRIVATE)
                 .getString("callback_" + shortcutId, "window.onShortcut");
+            String callbackFn = isSafeCallbackName(rawFn) ? rawFn : "window.onShortcut";
             webView.postDelayed(() -> {
                 if (activityAlive) fireEvent(callbackFn, "{\"shortcutId\":\"" + escapeJson(shortcutId) + "\"}");
             }, 500);
@@ -1099,6 +1107,7 @@ public class ShellActivity extends Activity {
                     if (bmp == null && data != null && data.getExtras() != null)
                         bmp = (Bitmap) data.getExtras().get("data");
                     if (bmp != null) {
+                        bmp = fixOrientation(bmp, pendingPhotoUri);
                         final Bitmap qrBmp = bmp;
                         com.google.mlkit.vision.barcode.BarcodeScanning.getClient()
                             .process(com.google.mlkit.vision.common.InputImage.fromBitmap(qrBmp, 0))
@@ -1144,6 +1153,7 @@ public class ShellActivity extends Activity {
                     if (bmp == null && data != null && data.getExtras() != null)
                         bmp = (Bitmap) data.getExtras().get("data");
                     if (bmp != null) {
+                        bmp = fixOrientation(bmp, pendingPhotoUri);
                         final Bitmap ocrBmp = bmp;
                         com.google.mlkit.vision.text.TextRecognition.getClient(
                             com.google.mlkit.vision.text.latin.TextRecognizerOptions.DEFAULT_OPTIONS)
@@ -1222,6 +1232,7 @@ public class ShellActivity extends Activity {
                     if (bmp == null && data != null && data.getExtras() != null)
                         bmp = (Bitmap) data.getExtras().get("data");
                     if (bmp != null) {
+                        bmp = fixOrientation(bmp, pendingPhotoUri);
                         final Bitmap clsBmp = bmp;
                         com.google.mlkit.vision.label.ImageLabeling.getClient(
                             com.google.mlkit.vision.label.defaults.ImageLabelerOptions.DEFAULT_OPTIONS)
@@ -1270,6 +1281,7 @@ public class ShellActivity extends Activity {
                     if (bmp == null && data != null && data.getExtras() != null)
                         bmp = (Bitmap) data.getExtras().get("data");
                     if (bmp != null) {
+                        bmp = fixOrientation(bmp, pendingPhotoUri);
                         // Resize for performance
                         int w = bmp.getWidth(), h = bmp.getHeight();
                         if (w > 1024) { h = h * 1024 / w; w = 1024; }
@@ -1381,7 +1393,7 @@ public class ShellActivity extends Activity {
         String cbId = pendingCallbacks.remove(req);
         boolean ok = grants.length > 0 && grants[0] == PackageManager.PERMISSION_GRANTED;
         if (ok) {
-            if (req == REQ_CAMERA) new CameraBridge().takePhoto(cbId);
+            if (req == REQ_CAMERA) { if (pendingCameraAction != null) { Runnable a = pendingCameraAction; pendingCameraAction = null; a.run(); } }
             else if (req == REQ_LOCATION) new LocationBridge().getLocation(cbId);
             else if (req == REQ_CONTACTS) new ContactsBridge().getContacts(cbId);
             else if (req == REQ_CALENDAR_READ) {
@@ -2105,11 +2117,19 @@ public class ShellActivity extends Activity {
 
     // ── Camera + Share ──
     class CameraBridge {
+        private com.google.mlkit.vision.barcode.BarcodeScanner cachedBarcodeScanner;
+        private com.google.mlkit.vision.barcode.BarcodeScanner getBarcodeScanner() {
+            if (cachedBarcodeScanner == null) cachedBarcodeScanner = com.google.mlkit.vision.barcode.BarcodeScanning.getClient();
+            return cachedBarcodeScanner;
+        }
+
         @JavascriptInterface
         public void takePhoto(String cbId) {
             if (ContextCompat.checkSelfPermission(ShellActivity.this, Manifest.permission.CAMERA)
                     != PackageManager.PERMISSION_GRANTED) {
                 pendingCallbacks.put(REQ_CAMERA, cbId);
+                final String cb = cbId;
+                pendingCameraAction = () -> new CameraBridge().takePhoto(cb);
                 ActivityCompat.requestPermissions(ShellActivity.this,
                     new String[]{Manifest.permission.CAMERA}, REQ_CAMERA);
                 return;
@@ -2169,6 +2189,8 @@ public class ShellActivity extends Activity {
             if (ContextCompat.checkSelfPermission(ShellActivity.this, Manifest.permission.CAMERA)
                     != PackageManager.PERMISSION_GRANTED) {
                 pendingCallbacks.put(REQ_CAMERA, cbId);
+                final String cb = cbId;
+                pendingCameraAction = () -> new CameraBridge().takeVideo(cb);
                 ActivityCompat.requestPermissions(ShellActivity.this,
                     new String[]{Manifest.permission.CAMERA}, REQ_CAMERA);
                 return;
@@ -2196,6 +2218,8 @@ public class ShellActivity extends Activity {
             if (ContextCompat.checkSelfPermission(ShellActivity.this, Manifest.permission.CAMERA)
                     != PackageManager.PERMISSION_GRANTED) {
                 pendingCallbacks.put(REQ_CAMERA, cbId);
+                final String cb = cbId;
+                pendingCameraAction = () -> new CameraBridge().scanQR(cb);
                 ActivityCompat.requestPermissions(ShellActivity.this,
                     new String[]{Manifest.permission.CAMERA}, REQ_CAMERA);
                 return;
@@ -2221,6 +2245,8 @@ public class ShellActivity extends Activity {
             if (ContextCompat.checkSelfPermission(ShellActivity.this, Manifest.permission.CAMERA)
                     != PackageManager.PERMISSION_GRANTED) {
                 pendingCallbacks.put(REQ_CAMERA, cbId);
+                final String cb = cbId;
+                pendingCameraAction = () -> new CameraBridge().scanText(cb);
                 ActivityCompat.requestPermissions(ShellActivity.this,
                     new String[]{Manifest.permission.CAMERA}, REQ_CAMERA);
                 return;
@@ -2245,6 +2271,8 @@ public class ShellActivity extends Activity {
             if (ContextCompat.checkSelfPermission(ShellActivity.this, Manifest.permission.CAMERA)
                     != PackageManager.PERMISSION_GRANTED) {
                 pendingCallbacks.put(REQ_CAMERA, cbId);
+                final String cb = cbId;
+                pendingCameraAction = () -> new CameraBridge().classify(cb);
                 ActivityCompat.requestPermissions(ShellActivity.this,
                     new String[]{Manifest.permission.CAMERA}, REQ_CAMERA);
                 return;
@@ -2269,6 +2297,8 @@ public class ShellActivity extends Activity {
             if (ContextCompat.checkSelfPermission(ShellActivity.this, Manifest.permission.CAMERA)
                     != PackageManager.PERMISSION_GRANTED) {
                 pendingCallbacks.put(REQ_CAMERA, cbId);
+                final String cb = cbId;
+                pendingCameraAction = () -> new CameraBridge().removeBackground(cb);
                 ActivityCompat.requestPermissions(ShellActivity.this,
                     new String[]{Manifest.permission.CAMERA}, REQ_CAMERA);
                 return;
@@ -2345,7 +2375,7 @@ public class ShellActivity extends Activity {
                 com.google.mlkit.vision.common.InputImage img = com.google.mlkit.vision.common.InputImage.fromBitmap(bmp, 0);
                 java.util.List<com.google.mlkit.vision.barcode.common.Barcode> barcodes =
                     com.google.android.gms.tasks.Tasks.await(
-                        com.google.mlkit.vision.barcode.BarcodeScanning.getClient().process(img));
+                        getBarcodeScanner().process(img));
                 JSONArray arr = new JSONArray();
                 for (com.google.mlkit.vision.barcode.common.Barcode b : barcodes) {
                     JSONObject o = new JSONObject();
@@ -2431,12 +2461,18 @@ public class ShellActivity extends Activity {
                 deliverResult(cbId, locationJson(last));
             } else {
                 try {
-                    lm.requestSingleUpdate(LocationManager.NETWORK_PROVIDER, new LocationListener() {
-                        @Override public void onLocationChanged(Location l) { deliverResult(cbId, locationJson(l)); }
+                    final boolean[] delivered = {false};
+                    LocationListener listener = new LocationListener() {
+                        @Override public void onLocationChanged(Location l) { if (!delivered[0]) { delivered[0] = true; deliverResult(cbId, locationJson(l)); } }
                         @Override public void onStatusChanged(String p, int s, Bundle e) {}
                         @Override public void onProviderEnabled(String p) {}
-                        @Override public void onProviderDisabled(String p) {}
-                    }, null);
+                        @Override public void onProviderDisabled(String p) { if (!delivered[0]) { delivered[0] = true; deliverResult(cbId, "{\"ok\":false,\"error\":\"location provider disabled\"}"); } }
+                    };
+                    lm.requestSingleUpdate(LocationManager.NETWORK_PROVIDER, listener, null);
+                    // Timeout after 15 seconds
+                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                        if (!delivered[0]) { delivered[0] = true; lm.removeUpdates(listener); deliverResult(cbId, "{\"ok\":false,\"error\":\"location timeout\"}"); }
+                    }, 15000);
                 } catch (Exception e) {
                     deliverResult(cbId, "{\"ok\":false,\"error\":\"location unavailable\"}");
                 }
@@ -2639,10 +2675,12 @@ public class ShellActivity extends Activity {
             NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm == null) return;
             int id = (int) (System.currentTimeMillis() % Integer.MAX_VALUE);
-            nm.notify(id,
-                new NotificationCompat.Builder(ShellActivity.this, CH)
-                    .setSmallIcon(android.R.drawable.ic_dialog_info)
-                    .setContentTitle(title).setContentText(body).setAutoCancel(true).build());
+            try {
+                nm.notify(id,
+                    new NotificationCompat.Builder(ShellActivity.this, CH)
+                        .setSmallIcon(android.R.drawable.ic_dialog_info)
+                        .setContentTitle(title).setContentText(body).setAutoCancel(true).build());
+            } catch (Exception ignored) {}
         }
 
         @JavascriptInterface
@@ -2658,10 +2696,12 @@ public class ShellActivity extends Activity {
             if (nm == null) return;
             int id;
             try { id = Integer.parseInt(idStr); } catch (Exception e) { id = idStr.hashCode(); }
-            nm.notify(id,
-                new NotificationCompat.Builder(ShellActivity.this, CH)
-                    .setSmallIcon(android.R.drawable.ic_dialog_info)
-                    .setContentTitle(title).setContentText(body).setAutoCancel(true).build());
+            try {
+                nm.notify(id,
+                    new NotificationCompat.Builder(ShellActivity.this, CH)
+                        .setSmallIcon(android.R.drawable.ic_dialog_info)
+                        .setContentTitle(title).setContentText(body).setAutoCancel(true).build());
+            } catch (Exception ignored) {}
         }
 
         @JavascriptInterface
@@ -3370,6 +3410,7 @@ public class ShellActivity extends Activity {
                         }
                         @Override public void onPlayerError(androidx.media3.common.PlaybackException e) {
                             Log.e("iappyxOS", "ExoPlayer error: " + e.getMessage());
+                            if (audioCompleteCallbackFn != null) fireEvent(audioCompleteCallbackFn, "{\"done\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
                         }
                     });
                     exoPlayer.setMediaItem(androidx.media3.common.MediaItem.fromUri(resolved));
@@ -3510,7 +3551,7 @@ public class ShellActivity extends Activity {
                     if (equalizer == null) equalizer = new android.media.audiofx.Equalizer(0, p.getAudioSessionId());
                     equalizer.setEnabled(true);
                     equalizer.usePreset(idx);
-                } catch (Exception ignored) {}
+                } catch (Exception e) { Log.e("iappyxOS", "setEqualizerPreset: " + e.getMessage()); }
             });
         }
 
@@ -4202,6 +4243,9 @@ public class ShellActivity extends Activity {
 
     // ── SQLite ──
     class SqliteBridge {
+        private final java.util.concurrent.locks.ReentrantLock txLock = new java.util.concurrent.locks.ReentrantLock();
+        private volatile Thread txOwner;
+
         private synchronized android.database.sqlite.SQLiteDatabase getDb() {
             if (sqliteDb == null || !sqliteDb.isOpen()) {
                 sqliteDb = ShellActivity.this.openOrCreateDatabase("iappyx_app.db",
@@ -4249,7 +4293,10 @@ public class ShellActivity extends Activity {
                 c = d.rawQuery(sql, params);
                 JSONArray rows = new JSONArray();
                 String[] cols = c.getColumnNames();
+                int count = 0;
+                boolean truncated = false;
                 while (c.moveToNext()) {
+                    if (count >= 5000) { truncated = true; break; }
                     JSONObject row = new JSONObject();
                     for (int i = 0; i < cols.length; i++) {
                         int type = c.getType(i);
@@ -4259,10 +4306,12 @@ public class ShellActivity extends Activity {
                         else row.put(cols[i], c.getString(i));
                     }
                     rows.put(row);
+                    count++;
                 }
                 JSONObject result = new JSONObject();
                 result.put("ok", true);
                 result.put("rows", rows);
+                if (truncated) result.put("truncated", true);
                 return result.toString();
             } catch (Exception e) {
                 try {
@@ -4276,28 +4325,32 @@ public class ShellActivity extends Activity {
             }
         }
         @JavascriptInterface
-        public synchronized String beginTransaction() {
+        public String beginTransaction() {
+            txLock.lock();
+            txOwner = Thread.currentThread();
             try {
                 getDb().beginTransaction();
                 return "{\"ok\":true}";
-            } catch (Exception e) { return "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}"; }
+            } catch (Exception e) { txOwner = null; txLock.unlock(); return "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}"; }
         }
 
         @JavascriptInterface
-        public synchronized String commit() {
+        public String commit() {
             try {
                 getDb().setTransactionSuccessful();
                 getDb().endTransaction();
                 return "{\"ok\":true}";
             } catch (Exception e) { return "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}"; }
+            finally { txOwner = null; if (txLock.isHeldByCurrentThread()) txLock.unlock(); }
         }
 
         @JavascriptInterface
-        public synchronized String rollback() {
+        public String rollback() {
             try {
                 getDb().endTransaction();
                 return "{\"ok\":true}";
             } catch (Exception e) { return "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}"; }
+            finally { txOwner = null; if (txLock.isHeldByCurrentThread()) txLock.unlock(); }
         }
     }
 
@@ -5671,7 +5724,12 @@ public class ShellActivity extends Activity {
             java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
             byte[] buf = new byte[8192];
             int r;
-            while ((r = is.read(buf)) != -1) baos.write(buf, 0, r);
+            long total = 0;
+            while ((r = is.read(buf)) != -1) {
+                total += r;
+                if (total > 16 * 1024 * 1024) throw new Exception("Output too large (>16MB), use shell() for streaming");
+                baos.write(buf, 0, r);
+            }
             return baos.toString("UTF-8");
         }
     }
@@ -6067,6 +6125,10 @@ public class ShellActivity extends Activity {
                     final JSONObject[] resultHolder = {null};
                     final android.bluetooth.BluetoothGatt[] gattHolder = {null};
 
+                    // Close existing GATT for this address to prevent leaks
+                    android.bluetooth.BluetoothGatt existing = bleDevices.remove(address);
+                    if (existing != null) { try { existing.close(); } catch (Exception ignored) {} }
+
                     runOnUiThread(() -> {
                         try {
                             gattHolder[0] = device.connectGatt(ShellActivity.this, false, new android.bluetooth.BluetoothGattCallback() {
@@ -6077,6 +6139,10 @@ public class ShellActivity extends Activity {
                                     } else if (newState == android.bluetooth.BluetoothProfile.STATE_DISCONNECTED) {
                                         boolean wasTracked = bleDevices.remove(address) != null;
                                         if (wasTracked && bleDevices.isEmpty()) NetworkService.requestStop(ShellActivity.this);
+                                        // Notify JS of unexpected disconnect
+                                        if (wasTracked && bleScanCallbackFn != null) {
+                                            fireEvent(bleScanCallbackFn, "{\"event\":\"disconnected\",\"address\":\"" + escapeJson(address) + "\"}");
+                                        }
                                         if (resultHolder[0] == null) {
                                             try {
                                                 resultHolder[0] = new JSONObject();
@@ -6431,21 +6497,23 @@ public class ShellActivity extends Activity {
     private String tcpDataCallbackFn;
     private String tcpCloseCallbackFn;
     private volatile boolean tcpRunning = false;
+    private volatile int tcpConnectionId = 0;
     private final Object tcpLock = new Object();
 
     class TcpBridge {
         @JavascriptInterface
         public void open(String host, String portStr, String useTlsStr, String cbId) {
+            final int myId;
             synchronized (tcpLock) {
                 if (tcpRunning) { deliverResult(cbId, "{\"ok\":false,\"error\":\"already open\"}"); return; }
-                tcpRunning = true; // claim early inside lock to prevent TOCTOU
+                tcpRunning = true;
+                myId = ++tcpConnectionId;
             }
             httpClientPool.submit(() -> {
                 try {
                     int port = Integer.parseInt(portStr);
                     boolean useTls = "true".equalsIgnoreCase(useTlsStr);
                     if (useTls) {
-                        // Trust all certs for LAN/cast use
                         javax.net.ssl.TrustManager[] tm = {new javax.net.ssl.X509TrustManager() {
                             public void checkClientTrusted(java.security.cert.X509Certificate[] c, String t) {}
                             public void checkServerTrusted(java.security.cert.X509Certificate[] c, String t) {}
@@ -6453,9 +6521,11 @@ public class ShellActivity extends Activity {
                         }};
                         javax.net.ssl.SSLContext ctx = javax.net.ssl.SSLContext.getInstance("TLS");
                         ctx.init(null, tm, new java.security.SecureRandom());
-                        tcpSocket = ctx.getSocketFactory().createSocket(host, port);
+                        tcpSocket = ctx.getSocketFactory().createSocket();
+                        tcpSocket.connect(new java.net.InetSocketAddress(host, port), 5000);
                     } else {
-                        tcpSocket = new java.net.Socket(host, port);
+                        tcpSocket = new java.net.Socket();
+                        tcpSocket.connect(new java.net.InetSocketAddress(host, port), 5000);
                     }
                     tcpSocket.setKeepAlive(true);
                     tcpOut = tcpSocket.getOutputStream();
@@ -6491,7 +6561,7 @@ public class ShellActivity extends Activity {
                     int localPort = tcpSocket.getLocalPort();
                     deliverResult(cbId, "{\"ok\":true,\"localAddress\":\"" + escapeJson(localAddr) + "\",\"localPort\":" + localPort + "}");
                 } catch (Exception e) {
-                    tcpRunning = false;
+                    if (myId == tcpConnectionId) tcpRunning = false;
                     deliverResult(cbId, "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
                 }
             });
@@ -6499,9 +6569,11 @@ public class ShellActivity extends Activity {
 
         @JavascriptInterface
         public void openTrustPin(String host, String portStr, String fingerprint, String cbId) {
+            final int myId;
             synchronized (tcpLock) {
                 if (tcpRunning) { deliverResult(cbId, "{\"ok\":false,\"error\":\"already open\"}"); return; }
                 tcpRunning = true;
+                myId = ++tcpConnectionId;
             }
             httpClientPool.submit(() -> {
                 try {
@@ -6522,7 +6594,8 @@ public class ShellActivity extends Activity {
                     }};
                     javax.net.ssl.SSLContext ctx = javax.net.ssl.SSLContext.getInstance("TLS");
                     ctx.init(null, tm, new java.security.SecureRandom());
-                    tcpSocket = ctx.getSocketFactory().createSocket(host, port);
+                    tcpSocket = ctx.getSocketFactory().createSocket();
+                    tcpSocket.connect(new java.net.InetSocketAddress(host, port), 5000);
                     tcpSocket.setKeepAlive(true);
                     tcpOut = tcpSocket.getOutputStream();
                     tcpRunning = true;
@@ -6553,7 +6626,7 @@ public class ShellActivity extends Activity {
 
                     deliverResult(cbId, "{\"ok\":true}");
                 } catch (Exception e) {
-                    tcpRunning = false;
+                    if (myId == tcpConnectionId) tcpRunning = false;
                     deliverResult(cbId, "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
                 }
             });
@@ -6614,6 +6687,7 @@ public class ShellActivity extends Activity {
             synchronized (tcpLock) {
                 wasRunning = tcpRunning;
                 tcpRunning = false;
+                tcpConnectionId++; // invalidate any in-flight connection attempts
             }
             try { if (tcpSocket != null && !tcpSocket.isClosed()) tcpSocket.close(); } catch (Exception ignored) {}
             tcpSocket = null;
@@ -6639,8 +6713,9 @@ public class ShellActivity extends Activity {
             if (udpRunning) { deliverResult(cbId, "{\"ok\":false,\"error\":\"already open\"}"); return; }
             try {
                 int port = Integer.parseInt(portStr);
-                udpSocket = new java.net.MulticastSocket(port == 0 ? null : port);
+                udpSocket = new java.net.MulticastSocket(null);
                 udpSocket.setReuseAddress(true);
+                if (port != 0) udpSocket.bind(new java.net.InetSocketAddress(port));
                 udpRunning = true;
                 int actualPort = udpSocket.getLocalPort();
                 // Start receive loop

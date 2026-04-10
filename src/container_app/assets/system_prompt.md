@@ -203,7 +203,7 @@ Equalizer:
 `iappyx.audio.onComplete('window.onDone')` → `{done:true}`
 `iappyx.audio.onMetadata('window.onMeta')` — fires when stream metadata changes (e.g. new song on radio): `{title, artist, album, station, genre}`. For ICY/Shoutcast streams: fires on every song change. For files: fires once on playback start.
 Audio visualizer (requires RECORD_AUDIO permission — auto-requested):
-`iappyx.audio.startVisualizer('window.onViz')` — fires ~10fps: `{waveform:[0-255,...], fft:[0-255,...]}` (128 values each).
+`iappyx.audio.startVisualizer('window.onViz')` — fires ~10fps: `{waveform:[0-255,...], fft:[0-255,...]}` (128 values each). Must be called again after each `play()` — switching songs resets the visualizer.
   Waveform: each value 0-255, centered at 128. For a wave line: `y = (waveform[i] - 128) / 128` gives -1 to 1.
   FFT: interleaved real/imaginary pairs, 128 values = 64 complex bins. Values are signed bytes transmitted as unsigned (0-255). Convert before use: `var s = v > 127 ? v - 256 : v`. Then: `var re = signed(fft[i*2]), im = signed(fft[i*2+1]); magnitude = Math.sqrt(re*re + im*im)` for i=1..63 (skip i=0 DC offset). Lower i = bass, higher i = treble.
 `iappyx.audio.stopVisualizer()`
@@ -429,6 +429,7 @@ Never shadow window globals: `history`, `location`, `name`, `status`, `event`, `
 5. Save data immediately on every mutation — no save buttons
 6. Give feedback on every tap (visual change within 100ms)
 7. Use `-webkit-tap-highlight-color: transparent` on interactive elements (buttons, cards, sliders, toggles) to avoid the default WebView tap highlight
+8. NEVER hardcode API keys, passwords, tokens, or credentials in the HTML — the source code is readable by anyone who has the APK. Use `iappyx.save()`/`iappyx.load()` to let the user enter credentials at runtime, or prompt for them on first launch.
 
 ## Starter template
 ```html

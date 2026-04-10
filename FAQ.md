@@ -124,6 +124,19 @@ The HTML/JavaScript has an error. Edit the app in iappyxOS, open Preview, and ch
 
 ---
 
+## Security
+
+### Can someone read the source code of my generated app?
+Yes. The HTML/JavaScript is stored as a plain file inside the APK. Anyone with the APK file can extract and read it. This is true of all Android apps — native apps can be decompiled too, just with more effort. Never hardcode API keys, passwords, or tokens in your app's code. Instead, ask the user to enter credentials at runtime and store them with `iappyx.save()`.
+
+### Are generated apps safe to install?
+Generated apps are signed with a hardware-backed key on your device. They cannot be modified after signing without breaking the signature — Android will refuse to install a tampered APK. However, you should only install generated apps from sources you trust, just like any sideloaded app. A malicious generated app could access your contacts, location, or camera if you grant it permissions.
+
+### Are my credentials safe if my app connects to SSH or SMB?
+Credentials entered at runtime and stored with `iappyx.save()` are in the app's private storage — other apps cannot access them. But if credentials are hardcoded in the HTML source, anyone with the APK can read them. Always prompt for credentials instead of embedding them.
+
+---
+
 ## Technical
 
 ### How does it work under the hood?

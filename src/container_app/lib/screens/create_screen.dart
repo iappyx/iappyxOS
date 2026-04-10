@@ -343,7 +343,8 @@ class CreateScreenState extends State<CreateScreen> {
 
   Future<void> _buildDemo() async {
     if (_selectedDemoId == null) return;
-    final t = h.demoTemplates.firstWhere((t) => t.$1 == _selectedDemoId);
+    final t = h.demoTemplates.where((t) => t.$1 == _selectedDemoId).firstOrNull;
+    if (t == null) { _snack('Demo template not found.'); return; }
     final label = _nameController.text.trim().isNotEmpty ? _nameController.text.trim() : t.$3;
     if (label.length > 37 || label.codeUnits.length > 37) { _snack('Name too long (max 37 characters).'); return; }
     if (_iconConfig.elements.isEmpty) {
@@ -377,6 +378,8 @@ class CreateScreenState extends State<CreateScreen> {
       } else {
         final err = friendlyError(e.message); _addLog('\u274C ${err.message}'); if (err.hint != null) _addLog('   ${err.hint}');
       }
+    } catch (e) {
+      _addLog('\u274C Unexpected error: $e');
     }
     finally { setState(() => _isBuilding = false); }
   }
@@ -388,6 +391,13 @@ class CreateScreenState extends State<CreateScreen> {
     }
     setState(() { _isBuilding = true; _showBuildLog = true; _log.clear(); });
     try {
+      // Save old version before rebuilding
+      if (_editingId != null) {
+        final existing = (await AppStorage.loadAll()).where((a) => a.id == _editingId).toList();
+        if (existing.isNotEmpty && existing.first.html.isNotEmpty && existing.first.html != html) {
+          await AppStorage.saveVersion(_editingId!, existing.first.html);
+        }
+      }
       final ic = _ensureIconConfig(label);
       final result = await Generator.injectHtml(label: label, htmlContent: html, packageName: _existingPackageName, iconConfig: ic.toJsonString(), firebaseConfig: _firebaseConfig.isNotEmpty ? _firebaseConfig : null, onProgress: _addLog, webOnly: appType == 'web');
       final now = DateTime.now();
@@ -411,6 +421,8 @@ class CreateScreenState extends State<CreateScreen> {
       } else {
         final err = friendlyError(e.message); _addLog('\u274C ${err.message}'); if (err.hint != null) _addLog('   ${err.hint}');
       }
+    } catch (e) {
+      _addLog('\u274C Unexpected error: $e');
     }
     finally { setState(() => _isBuilding = false); }
   }
@@ -474,7 +486,7 @@ class CreateScreenState extends State<CreateScreen> {
                     final content = await file.readAsString();
                     if (content.contains('project_id') && content.contains('client')) {
                       setState(() => _firebaseConfig = content);
-                    } else {
+                    } else if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Invalid google-services.json')),
                       );
@@ -1027,7 +1039,7 @@ class CreateScreenState extends State<CreateScreen> {
     if (_selectedDemoId != null) {
       widgets.add(const SizedBox(height: 12));
       widgets.add(h.buildActionButton(
-        label: 'Build ${h.demoTemplates.firstWhere((t) => t.$1 == _selectedDemoId).$3}',
+        label: 'Build ${h.demoTemplates.where((t) => t.$1 == _selectedDemoId).firstOrNull?.$3 ?? 'Demo'}',
         onPressed: _isBuilding ? null : _buildDemo, icon: Icons.rocket_launch));
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: widgets);

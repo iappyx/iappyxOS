@@ -193,6 +193,52 @@ class AppStorage {
     await _write(apps);
   });
 
+  // ── Version History ──
+
+  static const _maxVersions = 10;
+
+  static Future<Directory> _versionsDir() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final vDir = Directory('${dir.path}/versions');
+    if (!vDir.existsSync()) vDir.createSync();
+    return vDir;
+  }
+
+  static Future<void> saveVersion(String appId, String html) async {
+    if (html.isEmpty) return;
+    final dir = await _versionsDir();
+    final file = File('${dir.path}/$appId.json');
+    List<Map<String, dynamic>> versions = [];
+    if (file.existsSync()) {
+      try { versions = (jsonDecode(file.readAsStringSync()) as List).cast<Map<String, dynamic>>(); }
+      catch (_) {}
+    }
+    final nextVersion = versions.isEmpty ? 1 : (versions.last['version'] as int) + 1;
+    versions.add({
+      'version': nextVersion,
+      'html': html,
+      'timestamp': DateTime.now().toIso8601String(),
+    });
+    // Cap at max versions — drop oldest
+    while (versions.length > _maxVersions) { versions.removeAt(0); }
+    file.writeAsStringSync(jsonEncode(versions));
+  }
+
+  static Future<List<Map<String, dynamic>>> getVersions(String appId) async {
+    final dir = await _versionsDir();
+    final file = File('${dir.path}/$appId.json');
+    if (!file.existsSync()) return [];
+    try {
+      return (jsonDecode(file.readAsStringSync()) as List).cast<Map<String, dynamic>>();
+    } catch (_) { return []; }
+  }
+
+  static Future<void> clearVersions(String appId) async {
+    final dir = await _versionsDir();
+    final file = File('${dir.path}/$appId.json');
+    if (file.existsSync()) file.deleteSync();
+  }
+
   static Future<void> _write(List<AppData> apps) async {
     final file = await _getFile();
     final tmp = File('${file.path}.tmp');
