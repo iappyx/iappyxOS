@@ -70,7 +70,7 @@ Every generated app is a real signed APK that appears in your Android launcher. 
 
 ## Quick start
 
-1. [Download the latest Beta](bin/iappyxOS.apk?raw=true)
+1. [Download the latest Beta](https://github.com/iappyx/iappyxOS/raw/main/bin/iappyxOS.apk)
 2. Sideload on Android 10+ (enable "Install unknown apps" for your browser)
 3. Open iappyxOS → Create → pick a mode → build
 
