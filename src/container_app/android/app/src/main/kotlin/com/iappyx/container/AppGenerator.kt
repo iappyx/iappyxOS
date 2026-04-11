@@ -220,7 +220,9 @@ class AppGenerator(private val context: Context) {
             "networkfiles" -> getNetworkFilesApp(label)
             "tcpsocket"    -> getTcpSocketApp(label)
             "udpchat"      -> getUdpChatApp(label)
+            "btserial"     -> getBtSerialApp(label)
             "widgetdemo"   -> getWidgetDemoApp(label)
+            "taskdemo"     -> getTaskDemoApp(label)
             else           -> todoApp(label)
         }
         val cleanHtml = html.replace("<!-- Built with iappyxOS — https://github.com/iappyx/iappyxOS -->\n", "")
@@ -5972,6 +5974,272 @@ function onWidgetAction(e){
   setStatus('Widget action: '+e.action+(e.checked!==undefined?' (checked: '+e.checked+')':''));
   iappyx.vibration.click();
 }
+</script></body></html>""".trimIndent()
+
+    fun getTaskDemoApp(label: String) = """<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>$label</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:#0d0d1a;color:#eaeaea;font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:20px}
+h2{font-size:18px;margin-bottom:16px;text-align:center}
+.section{background:#1a1a2e;border-radius:14px;padding:16px;margin-bottom:16px}
+.section h3{font-size:14px;color:#4FC3F7;margin-bottom:12px}
+.btn{background:#0f3460;color:#fff;border:none;padding:12px 20px;border-radius:10px;font-size:14px;width:100%;margin-bottom:8px;cursor:pointer}
+.btn:active{opacity:0.7}
+.btn.danger{background:#ff6b6b22;color:#FF6B6B}
+.status{color:#4FC3F7;font-size:12px;margin-top:8px;text-align:center}
+.log{background:#0d0d1a;border-radius:8px;padding:12px;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);max-height:200px;overflow-y:auto;font-family:monospace}
+.info{background:#0d0d1a;border-radius:8px;padding:12px;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4)}
+</style></head><body>
+<h2>$label</h2>
+
+<div class="section">
+<h3>Schedule a Background Task</h3>
+<p style="font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:12px">Tasks run every 15+ minutes, even when the app is closed. They can fetch data, update widgets, and send notifications.</p>
+<button class="btn" onclick="scheduleTask()">Schedule Counter Task (15 min)</button>
+<button class="btn" onclick="scheduleWidget()">Schedule Widget Updater (15 min)</button>
+<button class="btn danger" onclick="cancelAll()">Cancel All Tasks</button>
+</div>
+
+<div class="section">
+<h3>Active Tasks</h3>
+<div id="taskList">Loading...</div>
+</div>
+
+<div id="status" class="status"></div>
+<div id="logBox" class="log"></div>
+
+<div class="info">Each task runs in a background WebView with full bridge access. Call <code>window._taskDone()</code> when finished. Max 30 seconds per execution.</div>
+
+<script>
+var logEl;
+function waitBridge(fn){if(typeof iappyx!=='undefined')fn();else setTimeout(function(){waitBridge(fn)},200)}
+
+function log(msg){
+  var d=new Date().toLocaleTimeString();
+  logEl.innerHTML='['+d+'] '+msg+'<br>'+logEl.innerHTML;
+}
+
+function setStatus(msg){document.getElementById('status').textContent=msg}
+
+function refreshList(){
+  var raw=iappyx.tasks.getScheduled();
+  var tasks=JSON.parse(raw);
+  var el=document.getElementById('taskList');
+  if(tasks.length===0){el.innerHTML='<span style="color:rgba(255,255,255,0.3)">No tasks scheduled</span>';return}
+  el.innerHTML=tasks.map(function(t){
+    return '<div style="padding:6px 0;border-bottom:1px solid #0d0d1a">'+t.id+' — every '+(t.intervalMs/60000)+' min</div>';
+  }).join('');
+}
+
+function scheduleTask(){
+  iappyx.tasks.schedule('counter','900000','window.onBackgroundTask');
+  iappyx.vibration.click();
+  log('Scheduled: counter task');
+  setStatus('Counter task scheduled — runs every 15 min');
+  refreshList();
+}
+
+function scheduleWidget(){
+  // Update widget immediately with current time
+  var now=new Date().toLocaleTimeString();
+  iappyx.widget.update(JSON.stringify({
+    layout:'100',
+    background:'#1A1A2E',padding:12,
+    rows:[{cells:[{title:'Last updated',value:now,valueColor:'#69F0AE',titleSize:10,valueSize:16}]}]
+  }));
+  // Schedule recurring update
+  iappyx.tasks.schedule('widgetRefresh','900000','window.onBackgroundTask');
+  iappyx.vibration.click();
+  log('Widget updated now + scheduled every 15 min (add widget to home screen!)');
+  setStatus('Widget updated — scheduled for every 15 min');
+  refreshList();
+}
+
+function cancelAll(){
+  iappyx.tasks.cancelAll();
+  iappyx.vibration.tick();
+  log('All tasks cancelled');
+  setStatus('All tasks cancelled');
+  refreshList();
+}
+
+// This function runs in the background AND in the foreground
+window.onBackgroundTask=function(e){
+  var bg=e&&e.background;
+  var now=new Date().toLocaleTimeString();
+
+  if(e.taskId==='counter'){
+    // Increment a persistent counter
+    var count=parseInt(iappyx.load('task_count')||'0')+1;
+    iappyx.save('task_count',String(count));
+    if(!bg) log('Counter task ran: count='+count);
+  }
+
+  if(e.taskId==='widgetRefresh'){
+    // Update the widget with current time
+    iappyx.widget.update(JSON.stringify({
+      layout:'100',
+      background:'#1A1A2E',padding:12,
+      rows:[{cells:[{title:'Last updated',value:now,valueColor:'#69F0AE',titleSize:10,valueSize:16}]}]
+    }));
+    if(!bg) log('Widget updated at '+now);
+  }
+
+  // Signal completion
+  if(typeof window._taskDone==='function') window._taskDone();
+};
+
+waitBridge(function(){
+  logEl=document.getElementById('logBox');
+  refreshList();
+  log('Ready');
+  setStatus('Schedule a task to get started');
+});
+</script></body></html>""".trimIndent()
+
+    fun getBtSerialApp(label: String) = """<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>$label</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:#0d0d1a;color:#eaeaea;font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:16px;display:flex;flex-direction:column;height:100vh}
+h2{font-size:18px;margin-bottom:12px;text-align:center}
+.btn{background:#0f3460;color:#fff;border:none;padding:10px 16px;border-radius:10px;font-size:13px;cursor:pointer;flex:1}
+.btn:active{opacity:0.7}
+.btn.danger{background:#ff6b6b22;color:#FF6B6B}
+.btn.success{background:#0f6460}
+.row{display:flex;gap:8px;margin-bottom:8px}
+.devices{background:#1a1a2e;border-radius:12px;padding:12px;margin-bottom:8px;max-height:200px;overflow-y:auto}
+.device{padding:10px;border-bottom:1px solid #0d0d1a;cursor:pointer}
+.device:active{background:#0f346040}
+.terminal{background:#0a0a14;border-radius:12px;padding:12px;flex:1;overflow-y:auto;font-family:monospace;font-size:12px;margin-bottom:8px;min-height:0}
+.terminal .rx{color:#69F0AE}
+.terminal .tx{color:#4FC3F7}
+.terminal .sys{color:#666}
+.input-row{display:flex;gap:8px}
+.input-row input{flex:1;background:#1a1a2e;color:#eaeaea;border:none;border-radius:10px;padding:10px 14px;font-size:13px;font-family:monospace}
+.status{color:#4FC3F7;font-size:11px;text-align:center;margin-bottom:8px}
+</style></head><body>
+<h2>$label</h2>
+<div id="status" class="status">Tap Scan to find devices</div>
+
+<div id="scanSection">
+<div class="row">
+<button class="btn" onclick="startScan()">Scan</button>
+<button class="btn danger" onclick="stopScan()">Stop</button>
+</div>
+<div class="devices" id="deviceList"></div>
+</div>
+
+<div id="connSection" style="display:none;flex:1;display:none;flex-direction:column">
+<div class="row">
+<button class="btn danger" onclick="disconnect()">Disconnect</button>
+</div>
+<div class="terminal" id="terminal"></div>
+<div class="input-row">
+<input id="cmdInput" placeholder="Type command..." onkeydown="if(event.key==='Enter')sendCmd()">
+<button class="btn" style="flex:0" onclick="sendCmd()">Send</button>
+</div>
+</div>
+
+<script>
+var devices={},connected=false;
+function waitBridge(fn){if(typeof iappyx!=='undefined')fn();else setTimeout(function(){waitBridge(fn)},200)}
+
+function setStatus(s){document.getElementById('status').textContent=s}
+function addLine(cls,text){
+  var t=document.getElementById('terminal');
+  var d=document.createElement('div');d.className=cls;d.textContent=text;
+  t.appendChild(d);t.scrollTop=t.scrollHeight;
+}
+
+function startScan(){
+  devices={};
+  document.getElementById('deviceList').innerHTML='<div style="color:#666;font-size:12px">Scanning...</div>';
+  setStatus('Scanning for Bluetooth devices...');
+  iappyx.bluetooth.scan('window.onBtDevice');
+}
+
+function stopScan(){iappyx.bluetooth.stopScan();setStatus('Scan stopped')}
+
+window.onBtDevice=function(e){
+  if(e.event==='found'){
+    var key=e.address;
+    if(!devices[key]){
+      devices[key]=e;
+      var el=document.getElementById('deviceList');
+      if(Object.keys(devices).length===1) el.innerHTML='';
+      var d=document.createElement('div');d.className='device';
+      d.innerHTML='<b>'+(e.name||'Unknown')+'</b><br><span style="font-size:11px;color:#666">'+e.address+' (RSSI: '+e.rssi+')</span>';
+      d.onclick=function(){connectTo(key)};
+      el.appendChild(d);
+    }
+  } else if(e.event==='done'){
+    setStatus('Scan complete — '+Object.keys(devices).length+' device(s) found');
+  } else if(e.event==='error'){
+    setStatus('Error: '+e.error);
+  }
+};
+
+function connectTo(addr){
+  var dev=devices[addr];
+  setStatus('Connecting to '+(dev.name||addr)+'...');
+  iappyx.bluetooth.connect(addr,'_btConn');
+  window._iappyxCb=window._iappyxCb||{};
+  window._iappyxCb['_btConn']=function(r){
+    if(r.ok){
+      connected=true;
+      document.getElementById('scanSection').style.display='none';
+      var cs=document.getElementById('connSection');cs.style.display='flex';
+      setStatus('Connected to '+(dev.name||addr));
+      addLine('sys','Connected to '+(dev.name||addr));
+      iappyx.vibration.click();
+    } else {
+      setStatus('Failed: '+r.error);
+    }
+  };
+}
+
+function disconnect(){
+  iappyx.bluetooth.disconnect();
+  connected=false;
+  document.getElementById('scanSection').style.display='block';
+  document.getElementById('connSection').style.display='none';
+  document.getElementById('terminal').innerHTML='';
+  setStatus('Disconnected');
+}
+
+function sendCmd(){
+  var input=document.getElementById('cmdInput');
+  var cmd=input.value;
+  if(!cmd)return;
+  iappyx.bluetooth.send(cmd+'\n');
+  addLine('tx','> '+cmd);
+  input.value='';
+}
+
+waitBridge(function(){
+  iappyx.bluetooth.onData('window.onBtData');
+  iappyx.bluetooth.onClose('window.onBtClose');
+  setStatus('Ready — tap Scan');
+});
+
+window.onBtData=function(e){addLine('rx',e.data)};
+window.onBtClose=function(){
+  if(connected){
+    connected=false;
+    addLine('sys','Connection lost');
+    setStatus('Disconnected');
+    document.getElementById('scanSection').style.display='block';
+    document.getElementById('connSection').style.display='none';
+  }
+};
 </script></body></html>""".trimIndent()
 
 }

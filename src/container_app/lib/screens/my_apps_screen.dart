@@ -125,6 +125,8 @@ class MyAppsScreenState extends State<MyAppsScreen> {
     }
   }
 
+  // Known limitation: uninstall triggers system dialog asynchronously, so the app data
+  // is deleted immediately without waiting for the user to confirm the system uninstall.
   Future<void> _removeCompletely(AppData app) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -142,7 +144,7 @@ class MyAppsScreenState extends State<MyAppsScreen> {
       ),
     );
     if (confirmed == true) {
-      await Generator.uninstallApp(packageName: app.packageName);
+      try { await Generator.uninstallApp(packageName: app.packageName); } catch (_) {}
       await AppStorage.delete(app.id);
       refresh();
       if (mounted) {
@@ -301,7 +303,7 @@ class MyAppsScreenState extends State<MyAppsScreen> {
               style: TextStyle(fontSize: 14, color: Colors.white70)),
             const SizedBox(height: 12),
             GestureDetector(
-              onTap: () => Generator.openUrl('https://github.com/settings/tokens'),
+              onTap: () { try { Generator.openUrl('https://github.com/settings/tokens'); } catch (_) {} },
               child: const Text('github.com/settings/tokens',
                 style: TextStyle(fontSize: 14, color: Color(0xFF4FC3F7), decoration: TextDecoration.underline)),
             ),
@@ -667,21 +669,31 @@ class MyAppsScreenState extends State<MyAppsScreen> {
   }
 
   Widget _buildAppIcon(AppData app, double size) {
-    final config = app.iconConfig.isNotEmpty
-        ? IconConfig.fromJsonString(app.iconConfig)
-        : IconConfig.fromLegacy(
+    IconConfig parsed;
+    if (app.iconConfig.isNotEmpty) {
+      try { parsed = IconConfig.fromJsonString(app.iconConfig); }
+      catch (_) { parsed = IconConfig.defaultFor(app.name); }
+    } else {
+      parsed = IconConfig.fromLegacy(
             emoji: app.emoji, emojiScale: app.emojiScale,
             emojiOffsetX: app.emojiOffsetX, emojiOffsetY: app.emojiOffsetY,
             appName: app.name,
           );
-    return IconPreview(config: config, size: size);
+    }
+    return IconPreview(config: parsed, size: size);
   }
 
   Future<void> _launch(AppData app) async {
-    final launched = await Generator.launchApp(packageName: app.packageName);
-    if (!launched && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('App not installed. Try rebuilding it.'), backgroundColor: Color(0xFF1A1A2E), duration: Duration(seconds: 4)),
+    try {
+      final launched = await Generator.launchApp(packageName: app.packageName);
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('App not installed. Try rebuilding it.'), backgroundColor: Color(0xFF1A1A2E), duration: Duration(seconds: 4)),
+        );
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not launch app: $e'), backgroundColor: const Color(0xFFFF6B6B)),
       );
     }
   }
@@ -698,7 +710,7 @@ class MyAppsScreenState extends State<MyAppsScreen> {
     return null;
   }
 
-  void _uninstall(AppData app) async {
+  Future<void> _uninstall(AppData app) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -711,7 +723,14 @@ class MyAppsScreenState extends State<MyAppsScreen> {
         ],
       ),
     );
-    if (confirm == true) Generator.uninstallApp(packageName: app.packageName);
+    if (confirm == true) {
+      try { await Generator.uninstallApp(packageName: app.packageName); }
+      catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Uninstall failed: $e'), backgroundColor: const Color(0xFFFF6B6B)),
+        );
+      }
+    }
   }
 
   // ── P2P Sharing ──

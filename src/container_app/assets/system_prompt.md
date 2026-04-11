@@ -143,7 +143,7 @@ Geofencing (virtual boundaries, fires on enter/exit):
 `iappyx.device.setDndMode(true/false)` — toggle Do Not Disturb (first call opens permission settings)
 `iappyx.device.isDndActive()` → bool
 `iappyx.device.onClipboardChange('window.onClip')` — fires `{text}` whenever clipboard changes
-`iappyx.device.readFromDownloads(filename)` → string content or null (reads file from Downloads folder)
+`iappyx.device.readFromDownloads(filename)` → string content or null (reads text file from Downloads folder, max 100MB — for large files use `storage.loadFile` instead)
 `iappyx.device.setWallpaper(base64)` — set both home + lock screen wallpaper
 `iappyx.device.setWallpaperTarget(base64, target)` — target: `"home"`, `"lock"`, or `"both"`
 `iappyx.onTextSelected(function(e){ /* e.text */ })` — fires when user selects text in the app
@@ -247,7 +247,7 @@ Recurring: use `setRepeating` for reliable daily/hourly alarms, or reschedule in
 `iappyx.nfc.writeText(text,cbId)` / `.writeUri(uri,cbId)` → `{ok}`
 
 ### SQLite (sync, returns JSON strings)
-`iappyx.sqlite.exec(sql,paramsJson)` → `{ok}` | `iappyx.sqlite.query(sql,paramsJson)` → `{ok,rows:[...]}`
+`iappyx.sqlite.exec(sql,paramsJson)` → `{ok}` | `iappyx.sqlite.query(sql,paramsJson)` → `{ok,rows:[...],truncated?:true}` — max 5000 rows per query; use LIMIT/OFFSET in SQL for pagination if needed
 Params: `JSON.stringify(["val1","val2"])` or null. Transactions: `.beginTransaction()` / `.commit()` / `.rollback()`
 
 ### Media Gallery (async, cbId pattern)
@@ -405,6 +405,24 @@ Push notifications require Firebase setup in the app's Advanced Settings. Do NOT
 
 ### Capabilities (sync)
 `iappyx.capabilities()` → `{version,sdk,bridges:{nfc:bool,biometric:bool,...},permissions:{camera:"granted"|"unasked"}}`
+
+### Bluetooth Classic (serial communication)
+`iappyx.bluetooth.scan('window.onBtDevice')` — discover nearby Bluetooth devices. Fires `{event:'found', name, address, rssi}` per device and `{event:'done'}` when scan completes (~12s). Requires Bluetooth permission.
+`iappyx.bluetooth.stopScan()` — stop discovery
+`iappyx.bluetooth.connect(address, cbId)` → `{ok}` — connect via SPP serial port profile
+`iappyx.bluetooth.send(data)` — send UTF-8 string
+`iappyx.bluetooth.sendHex(hexStr)` — send raw bytes as hex string
+`iappyx.bluetooth.onData('callback')` — fires `{data, hex, length}` on incoming data
+`iappyx.bluetooth.onClose('callback')` — fires `{}` when connection drops
+`iappyx.bluetooth.disconnect()` — close connection
+`iappyx.bluetooth.isConnected()` → boolean
+Use for: Arduino/ESP32 serial, OBD-II car diagnostics, Bluetooth printers, HC-05/HC-06 modules.
+
+### Scheduled Tasks (background execution)
+`iappyx.tasks.schedule(id, intervalMs, 'window.onBackgroundTask')` — run JS on a schedule, even when app is closed. Min interval: 15 minutes. The callback receives `{taskId, background:true}`. Call `window._taskDone()` when finished. Has full bridge access (storage, httpClient, widget, notification) but no DOM. Max execution: 30 seconds.
+`iappyx.tasks.cancel(id)` — cancel a scheduled task
+`iappyx.tasks.cancelAll()` — cancel all tasks
+`iappyx.tasks.getScheduled()` → JSON `[{id, intervalMs}]`
 
 ### Widget (home screen widget)
 `iappyx.widget.update(json)` — configure home screen widget. Layout options: `"100"`, `"50/50"`, `"30/70"`, `"70/30"`, `"33/33/33"`, `"50/25/25"`, `"25/25/50"`, `"25/25/25/25"`. Max 4 rows. Each row has `cells` array. Cell options: `title` (text,titleSize,titleColor), `value` (text,valueSize,valueColor), `icon` (base64), `image` (base64), `progress` (0-1,progressColor), `button` (text,action), `clock` (timezone string e.g. `"America/New_York"` — auto-updating), `timer` ({targetMs,countDown} — auto-ticking), `checkbox` ({label,checked,action}), `toggle` ({label,checked,action}). Widget background: `background` (hex color), `padding` (dp).

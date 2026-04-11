@@ -160,7 +160,11 @@ const demoTemplates = [
   ('networkfiles','\uD83D\uDCC2', 'Network Files', 'Browse Windows/NAS shares (SMB)'),
   ('tcpsocket',  '\uD83D\uDD0C', 'TCP Socket',  'Persistent bidirectional connection'),
   ('udpchat',    '\uD83D\uDCE8', 'UDP Chat',    'Chat via UDP datagrams'),
-  // ── Widget ──
-  ('',           '\u2500', '── Widget',          ''),
+  // ── Bluetooth ──
+  ('',           '\u2500', '── Bluetooth',        ''),
+  ('btserial',   '\uD83D\uDD35', 'BT Serial',     'Bluetooth Classic serial terminal'),
+  // ── Widget & Tasks ──
+  ('',           '\u2500', '── Widget & Tasks',  ''),
   ('widgetdemo', '\uD83D\uDCF2', 'Widget Dashboard', 'Home screen widget with stats'),
+  ('taskdemo',   '\u23F0', 'Background Tasks',   'Scheduled tasks + widget refresh'),
 ];

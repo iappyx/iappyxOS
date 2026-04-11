@@ -131,8 +131,15 @@ class MainActivity : FlutterActivity() {
                         val file = File(dir, filename)
                         file.writeText(content)
                         val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+                        val mime = when {
+                            filename.endsWith(".json") -> "application/json"
+                            filename.endsWith(".txt") -> "text/plain"
+                            filename.endsWith(".csv") -> "text/csv"
+                            filename.endsWith(".xml") -> "application/xml"
+                            else -> "text/html"
+                        }
                         val intent = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/html"
+                            type = mime
                             putExtra(Intent.EXTRA_STREAM, uri)
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
@@ -397,6 +404,10 @@ class MainActivity : FlutterActivity() {
         } else {
             ttsInitializing = true
             ttsPendingActions.add(action)
+            // Shutdown old instance if it exists but isn't ready
+            tts?.shutdown()
+            tts = null
+            ttsReady = false
             tts = TextToSpeech(this) { status ->
                 ttsReady = status == TextToSpeech.SUCCESS
                 ttsInitializing = false

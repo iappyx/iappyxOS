@@ -100,7 +100,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               // Support
               _card(children: [
                 InkWell(
-                  onTap: () => Generator.openUrl('https://ko-fi.com/iappyx'),
+                  onTap: () { try { Generator.openUrl('https://ko-fi.com/iappyx'); } catch (_) {} },
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                     child: Row(
@@ -541,8 +541,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final val = _prefixController.text.trim();
     if (val.isEmpty || !Settings.validatePrefix(val)) return;
     await Settings.setPackagePrefix(val);
+    if (!mounted) return;
     setState(() { _packagePrefix = val; });
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('App ID prefix saved.'), backgroundColor: Color(0xFF1A1A2E), duration: Duration(seconds: 4)),
     );
   }
@@ -584,7 +585,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
     final json = jsonEncode(apps.map((a) => a.toJson()).toList());
-    await Generator.shareText(content: json, filename: 'iappyxos_apps.json');
+    try {
+      await Generator.shareText(content: json, filename: 'iappyxos_apps.json');
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Export failed: $e'), backgroundColor: const Color(0xFFFF6B6B)),
+      );
+    }
   }
 
   Future<void> _importApps() async {
@@ -628,10 +635,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
     if (confirmed == true) {
-      final apps = await AppStorage.loadAll();
-      for (final app in apps) {
-        await AppStorage.delete(app.id);
-      }
+      try {
+        final apps = await AppStorage.loadAll();
+        for (final app in apps) {
+          await AppStorage.delete(app.id);
+        }
+      } catch (_) {}
       widget.onAppsImported?.call();
       _load();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(

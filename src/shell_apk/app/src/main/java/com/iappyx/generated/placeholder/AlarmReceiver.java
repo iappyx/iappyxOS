@@ -20,6 +20,17 @@ public class AlarmReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
+        // On device reboot — re-register saved alarms on background thread to avoid ANR
+        if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
+            final PendingResult pendingResult = goAsync();
+            final Context ctx = context.getApplicationContext();
+            new Thread(() -> {
+                try { reRegisterAlarms(ctx); }
+                finally { pendingResult.finish(); }
+            }).start();
+            return;
+        }
+
         String callbackFn = intent.getStringExtra("callbackFn");
         String alarmId = intent.getStringExtra("alarmId");
         String id = alarmId != null ? alarmId : "default";
@@ -53,9 +64,113 @@ public class AlarmReceiver extends BroadcastReceiver {
                 .build());
         }
 
-        // Clear stored alarm data using the correct key suffix
-        context.getSharedPreferences("iappyx_alarm", Context.MODE_PRIVATE)
-            .edit().remove("callbackFn_" + id).remove("ts_" + id).apply();
+        // Clear stored alarm data — keep callbackFn and interval for repeating alarms
+        android.content.SharedPreferences alarmPrefs = context.getSharedPreferences("iappyx_alarm", Context.MODE_PRIVATE);
+        long interval = alarmPrefs.getLong("interval_" + id, 0);
+        if (interval > 0) {
+            // Repeating alarm — reschedule next occurrence
+            alarmPrefs.edit().remove("ts_" + id).apply();
+            try {
+                android.app.AlarmManager am = (android.app.AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+                if (am != null) {
+                    Intent next = new Intent(context, AlarmReceiver.class);
+                    next.putExtra("callbackFn", callbackFn);
+                    next.putExtra("alarmId", id);
+                    int rc = id.hashCode() & 0x7FFFFFFF;
+                    int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
+                    PendingIntent pi2 = PendingIntent.getBroadcast(context, rc, next, flags);
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + interval, pi2);
+                    } else {
+                        am.setExact(android.app.AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + interval, pi2);
+                    }
+                }
+            } catch (Exception ignored) {}
+        } else {
+            // One-shot alarm — clean up everything
+            alarmPrefs.edit().remove("callbackFn_" + id).remove("ts_" + id).remove("interval_" + id).apply();
+        }
+    }
+
+    private void reRegisterAlarms(Context context) {
+        try {
+            android.content.SharedPreferences prefs = context.getSharedPreferences("iappyx_alarm", Context.MODE_PRIVATE);
+            java.util.Map<String, ?> all = prefs.getAll();
+            android.app.AlarmManager am = (android.app.AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+            if (am == null) return;
+            // Collect alarm IDs from both ts_ and interval_ keys
+            java.util.Set<String> alarmIds = new java.util.HashSet<>();
+            for (String key : all.keySet()) {
+                if (key.startsWith("ts_")) alarmIds.add(key.substring(3));
+                else if (key.startsWith("interval_")) alarmIds.add(key.substring(9));
+            }
+            for (String id : alarmIds) {
+                long ts = prefs.getLong("ts_" + id, 0);
+                String fn = prefs.getString("callbackFn_" + id, null);
+                long interval = prefs.getLong("interval_" + id, 0);
+                if (fn == null) continue;
+                Intent alarmIntent = new Intent(context, AlarmReceiver.class);
+                alarmIntent.putExtra("callbackFn", fn);
+                alarmIntent.putExtra("alarmId", id);
+                int rc = id.hashCode() & 0x7FFFFFFF;
+                int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
+                PendingIntent pi = PendingIntent.getBroadcast(context, rc, alarmIntent, flags);
+                if (interval > 0) {
+                    // Repeating alarm — schedule next occurrence
+                    long next = System.currentTimeMillis() + interval;
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, next, pi);
+                    } else {
+                        am.setExact(android.app.AlarmManager.RTC_WAKEUP, next, pi);
+                    }
+                } else if (ts > System.currentTimeMillis()) {
+                    // Future one-shot alarm
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, ts, pi);
+                    } else {
+                        am.setExact(android.app.AlarmManager.RTC_WAKEUP, ts, pi);
+                    }
+                }
+                // Past one-shot alarms — expired, clean up
+                else {
+                    prefs.edit().remove("ts_" + id).remove("callbackFn_" + id).remove("interval_" + id).apply();
+                }
+            }
+        } catch (Exception e) {
+            android.util.Log.e("iappyxOS", "reRegisterAlarms: " + e.getMessage());
+        }
+        // Also re-register scheduled tasks
+        try {
+            android.app.AlarmManager taskAm = (android.app.AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+            if (taskAm == null) return;
+            android.content.SharedPreferences taskPrefs = context.getSharedPreferences("iappyx_tasks", Context.MODE_PRIVATE);
+            String tasksJson = taskPrefs.getString("tasks", "{}");
+            org.json.JSONObject tasks = new org.json.JSONObject(tasksJson);
+            java.util.Iterator<String> taskKeys = tasks.keys();
+            while (taskKeys.hasNext()) {
+                String taskId = taskKeys.next();
+                org.json.JSONObject task = tasks.getJSONObject(taskId);
+                String fn = task.getString("callbackFn");
+                long intervalMs = task.getLong("intervalMs");
+                Intent taskIntent = new Intent(context, TaskSchedulerReceiver.class);
+                taskIntent.putExtra("taskId", taskId);
+                taskIntent.putExtra("callbackFn", fn);
+                taskIntent.setAction("com.iappyx.TASK_" + taskId);
+                int tFlags = PendingIntent.FLAG_UPDATE_CURRENT;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) tFlags |= PendingIntent.FLAG_IMMUTABLE;
+                PendingIntent tPi = PendingIntent.getBroadcast(context, taskId.hashCode(), taskIntent, tFlags);
+                long next = System.currentTimeMillis() + intervalMs;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    taskAm.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, next, tPi);
+                } else {
+                    taskAm.setExact(android.app.AlarmManager.RTC_WAKEUP, next, tPi);
+                }
+            }
+        } catch (Exception e) {
+            android.util.Log.e("iappyxOS", "reRegisterTasks: " + e.getMessage());
+        }
     }
 
     private void createChannel(Context ctx) {

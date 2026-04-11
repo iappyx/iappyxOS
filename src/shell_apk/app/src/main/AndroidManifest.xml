@@ -28,6 +28,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SHORT_SERVICE" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
     <!-- Batch 2 — Contacts & SMS -->
@@ -154,6 +155,15 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <!-- Scheduled background tasks -->
+        <service
+            android:name="com.iappyx.generated.placeholder.TaskService"
+            android:exported="false"
+            android:foregroundServiceType="shortService" />
+        <receiver
+            android:name="com.iappyx.generated.placeholder.TaskSchedulerReceiver"
+            android:exported="false" />
 
         <!-- Home screen widget — disabled by default, enabled on first widget.update() -->
         <receiver

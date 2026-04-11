@@ -67,7 +67,7 @@ public class PushService extends FirebaseMessagingService {
         ShellActivity activity = activeActivity;
         String fn = tokenRefreshFn;
         if (activity != null && fn != null) {
-            activity.fireEvent(fn, "{\"token\":\"" + token + "\"}");
+            activity.fireEvent(fn, "{\"token\":\"" + ShellActivity.escapeJson(token) + "\"}");
         }
     }
 

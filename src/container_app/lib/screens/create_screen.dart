@@ -96,7 +96,11 @@ class CreateScreenState extends State<CreateScreen> {
     _followUpController.clear();
 
     if (app.iconConfig.isNotEmpty) {
-      _iconConfig = IconConfig.fromJsonString(app.iconConfig);
+      try {
+        _iconConfig = IconConfig.fromJsonString(app.iconConfig);
+      } catch (_) {
+        _iconConfig = IconConfig.defaultFor(app.name);
+      }
     } else {
       _iconConfig = IconConfig.fromLegacy(
         emoji: app.emoji, emojiScale: app.emojiScale,
@@ -182,7 +186,11 @@ class CreateScreenState extends State<CreateScreen> {
 
   Future<void> _loadActiveProvider() async {
     _loadingProvider = true;
-    _activeProvider = await Settings.getActiveProvider();
+    try {
+      _activeProvider = await Settings.getActiveProvider();
+    } catch (_) {
+      _activeProvider = null;
+    }
     _loadingProvider = false;
     if (mounted) setState(() {});
   }
@@ -312,7 +320,7 @@ class CreateScreenState extends State<CreateScreen> {
         ],
       ),
     );
-    if (result == true) onConfirm();
+    if (result == true && mounted) onConfirm();
   }
 
   void _useThisHtml(String html) {
@@ -333,9 +341,12 @@ class CreateScreenState extends State<CreateScreen> {
     });
   }
 
-  void _snack(String msg) => ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(msg, style: const TextStyle(color: Colors.white)),
-      backgroundColor: const Color(0xFF1A1A2E), duration: const Duration(seconds: 4)));
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg, style: const TextStyle(color: Colors.white)),
+        backgroundColor: const Color(0xFF1A1A2E), duration: const Duration(seconds: 4)));
+  }
 
   // ── Builds ──
 
@@ -400,7 +411,7 @@ class CreateScreenState extends State<CreateScreen> {
     } catch (e) {
       _addLog('\u274C Unexpected error: $e');
     }
-    finally { setState(() => _isBuilding = false); }
+    finally { if (mounted) setState(() => _isBuilding = false); }
   }
 
   Future<void> _doBuild(String label, String html, String appType, {String description = '', String prompt = ''}) async {
@@ -443,7 +454,7 @@ class CreateScreenState extends State<CreateScreen> {
     } catch (e) {
       _addLog('\u274C Unexpected error: $e');
     }
-    finally { setState(() => _isBuilding = false); }
+    finally { if (mounted) setState(() => _isBuilding = false); }
   }
 
   Future<void> _generatePrompt() async {
@@ -454,7 +465,7 @@ class CreateScreenState extends State<CreateScreen> {
       final existingHtml = _editingId != null ? _htmlController.text.trim() : null;
       _generatedPrompt = await PromptBuilder.buildPrompt(appName: name, description: desc, existingHtml: existingHtml);
       setState(() { _promptVisible = true; _promptExpanded = true; _descExpanded = false; _htmlExpanded = true; });
-    } catch (e) { _snack('Prompt generation failed.'); }
+    } catch (e) { _snack('Prompt generation failed: $e'); }
   }
 
   // ── UI ──
@@ -565,6 +576,7 @@ class CreateScreenState extends State<CreateScreen> {
       _nameController.text = name;
       _htmlController.text = html;
       _descController.text = 'Showcase app: $name';
+      _selectedHtml = html;
       _genMethod = 'manual';
       _htmlExpanded = true;
       _descExpanded = false;

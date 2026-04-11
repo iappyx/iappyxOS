@@ -159,7 +159,7 @@ public class WidgetProvider extends AppWidgetProvider {
                 try {
                     byte[] bytes = Base64.decode(icon, Base64.DEFAULT);
                     Bitmap bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
-                    if (bmp != null) { views.setImageViewBitmap(iconId, bmp); views.setViewVisibility(iconId, View.VISIBLE); }
+                    if (bmp != null) { views.setImageViewBitmap(iconId, bmp); views.setViewVisibility(iconId, View.VISIBLE); bmp.recycle(); }
                 } catch (Exception ignored) {}
             } else if (iconId != 0) { views.setViewVisibility(iconId, View.GONE); }
 
@@ -170,7 +170,7 @@ public class WidgetProvider extends AppWidgetProvider {
                 try {
                     byte[] bytes = Base64.decode(image, Base64.DEFAULT);
                     Bitmap bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
-                    if (bmp != null) { views.setImageViewBitmap(imageId, bmp); views.setViewVisibility(imageId, View.VISIBLE); }
+                    if (bmp != null) { views.setImageViewBitmap(imageId, bmp); views.setViewVisibility(imageId, View.VISIBLE); bmp.recycle(); }
                 } catch (Exception ignored) {}
             } else if (imageId != 0) { views.setViewVisibility(imageId, View.GONE); }
 

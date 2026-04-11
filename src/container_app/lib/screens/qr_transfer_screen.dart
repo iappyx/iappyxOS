@@ -124,7 +124,7 @@ class _QRSendScreenState extends State<QRSendScreen> {
                 margin: const EdgeInsets.symmetric(horizontal: 2),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: i == _currentFrame ? const Color(0xFF4FC3F7) : const Color(0xFF1A1A2E),
+                  color: i == (_currentFrame % _frames.length.clamp(1, 30)) ? const Color(0xFF4FC3F7) : const Color(0xFF1A1A2E),
                 ),
               )),
             ),
@@ -186,6 +186,7 @@ class _QRReceiveScreenState extends State<QRReceiveScreen> {
       final data = parts.sublist(3).join('|'); // rejoin in case chunk contains |
 
       if (seq == null || total == null || total <= 0) continue;
+      if (seq < 0 || seq >= total) continue;
 
       if (_totalChunks == 0) {
         setState(() => _totalChunks = total);
@@ -299,13 +300,17 @@ class _QRReceiveScreenState extends State<QRReceiveScreen> {
             // Chunk grid
             Wrap(
               spacing: 4, runSpacing: 4,
-              children: List.generate(_totalChunks.clamp(0, 50), (i) => Container(
-                width: 10, height: 10,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(2),
-                  color: _received.containsKey(i) ? const Color(0xFF69F0AE) : const Color(0xFF1A1A2E),
-                ),
-              )),
+              children: [
+                ...List.generate(_totalChunks.clamp(0, 100), (i) => Container(
+                  width: 10, height: 10,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(2),
+                    color: _received.containsKey(i) ? const Color(0xFF69F0AE) : const Color(0xFF1A1A2E),
+                  ),
+                )),
+                if (_totalChunks > 100)
+                  Text('+${_totalChunks - 100}', style: const TextStyle(fontSize: 9, color: Colors.white24)),
+              ],
             ),
           ] else ...[
             const Text('Point camera at the QR code', style: TextStyle(fontSize: 14, color: Colors.white38)),

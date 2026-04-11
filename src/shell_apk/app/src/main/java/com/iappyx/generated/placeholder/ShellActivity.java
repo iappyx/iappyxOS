@@ -195,6 +195,7 @@ public class ShellActivity extends Activity {
     private String pendingSessionTitle, pendingSessionArtist, pendingSessionAlbum;
     private ClipboardManager.OnPrimaryClipChangedListener activeClipListener;
     private String watchPositionErrorFn; // for location error callback
+    private Runnable pendingLocationAction;
     private ValueCallback<Uri[]> pendingFileCallback;
 
     // Bug #15: PendingIntent flags helper
@@ -303,6 +304,8 @@ public class ShellActivity extends Activity {
         webView.addJavascriptInterface(new WifiDirectBridge(),   "iappyxWifiDirect");
         webView.addJavascriptInterface(new NsdBridge(),          "iappyxNsd");
         webView.addJavascriptInterface(new HttpServerBridge(),   "iappyxHttpServer");
+        webView.addJavascriptInterface(new BluetoothClassicBridge(),"iappyxBluetooth");
+        webView.addJavascriptInterface(new TaskBridge(),"iappyxTasks");
         webView.addJavascriptInterface(new WidgetBridge(),"iappyxWidget");
         webView.addJavascriptInterface(new CapabilitiesBridge(),"iappyxCapabilities");
 
@@ -430,6 +433,8 @@ public class ShellActivity extends Activity {
                     "getAppName:function(){return iappyxDevice.getAppName()}," +
                     "sharePhoto:function(b){iappyxCamera.sharePhoto(b)}," +
                     "shareText:function(t,s){iappyxCamera.shareText(t,s||'')}," +
+                    "bluetooth:iappyxBluetooth," +
+                    "tasks:iappyxTasks," +
                     "widget:iappyxWidget," +
                     "capabilities:function(){return JSON.parse(iappyxCapabilities.get())}," +
                     "onTextSelected:function(fn){document.addEventListener('selectionchange',function(){" +
@@ -462,8 +467,9 @@ public class ShellActivity extends Activity {
                 // Check if launched by shortcut (cold start)
                 if (launchIntent != null && launchIntent.hasExtra("shortcut_id")) {
                     String shortcutId = launchIntent.getStringExtra("shortcut_id");
-                    String sCb = getSharedPreferences("iappyx_shortcuts", MODE_PRIVATE)
+                    String rawCb = getSharedPreferences("iappyx_shortcuts", MODE_PRIVATE)
                         .getString("callback_" + shortcutId, "window.onShortcut");
+                    String sCb = isSafeCallbackName(rawCb) ? rawCb : "window.onShortcut";
                     v.postDelayed(() -> {
                         if (activityAlive) fireEvent(sCb, "{\"shortcutId\":\"" + escapeJson(shortcutId) + "\"}");
                     }, 500);
@@ -548,7 +554,8 @@ public class ShellActivity extends Activity {
             new android.content.IntentFilter("com.iappyx.MEDIA_METADATA"),
             Context.RECEIVER_NOT_EXPORTED);
 
-        // Bug #6: track TTS init status
+        // Bug #6: track TTS init status; shutdown old instance first
+        if (tts != null) { try { tts.shutdown(); } catch (Exception ignored) {} tts = null; ttsReady = false; }
         tts = new TextToSpeech(this, status -> {
             ttsReady = (status == TextToSpeech.SUCCESS);
         });
@@ -608,9 +615,10 @@ public class ShellActivity extends Activity {
 
     void deliverResult(String cbId, String json) {
         if (!activityAlive || cbId == null) return;
-        final String js = "if(window._iappyxCb&&window._iappyxCb['" + cbId + "']){" +
-            "window._iappyxCb['" + cbId + "'](" + json + ");" +
-            "delete window._iappyxCb['" + cbId + "'];}";
+        final String safeCb = cbId.replace("\\", "\\\\").replace("'", "\\'");
+        final String js = "if(window._iappyxCb&&window._iappyxCb['" + safeCb + "']){" +
+            "window._iappyxCb['" + safeCb + "'](" + json + ");" +
+            "delete window._iappyxCb['" + safeCb + "'];}";
         runOnUiThread(() -> {
             if (activityAlive) webView.evaluateJavascript(js, null);
         });
@@ -630,13 +638,23 @@ public class ShellActivity extends Activity {
 
     @Override protected void onDestroy() {
         activityAlive = false;
+        // Release media recorder if active
+        if (mediaRecorder != null) {
+            try { mediaRecorder.stop(); } catch (Exception ignored) {}
+            try { mediaRecorder.release(); } catch (Exception ignored) {}
+            mediaRecorder = null;
+        }
         if (tts != null) { tts.stop(); tts.shutdown(); }
         if (exoPlayer != null) { exoPlayer.release(); exoPlayer = null; }
         if (audioVisualizer != null) { try { audioVisualizer.setEnabled(false); audioVisualizer.release(); } catch (Exception ignored) {} audioVisualizer = null; }
         // Note: equalizer is inside AudioBridge inner class — released when activity dies
-        // Stop any audio playing in WebView (HTML <audio> tags, Web Audio API)
+        // Stop any audio playing in WebView and release resources
         if (webView != null) {
             webView.loadUrl("about:blank");
+            webView.stopLoading();
+            if (webView.getParent() != null) ((android.view.ViewGroup) webView.getParent()).removeView(webView);
+            webView.destroy();
+            webView = null;
         }
         // Stop audio service if still running
         if (mediaSessionActive) {
@@ -663,6 +681,22 @@ public class ShellActivity extends Activity {
             LocationManager geoLm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
             if (geoLm != null) try { geoLm.removeUpdates(sharedGeofenceListener); } catch (Exception ignored) {}
             sharedGeofenceListener = null;
+        }
+        // Close Bluetooth Classic
+        synchronized (btLock) {
+            btRunning = false;
+            try { if (btSocket != null) btSocket.close(); } catch (Exception ignored) {}
+            btSocket = null; btOut = null;
+        }
+        unregisterBtDiscovery();
+        // Audio temp files cleaned up lazily in resolveDataUrl — skip here to avoid race with ExoPlayer release
+        // Remove clipboard listener
+        if (activeClipListener != null) {
+            try {
+                ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                if (cm != null) cm.removePrimaryClipChangedListener(activeClipListener);
+            } catch (Exception ignored) {}
+            activeClipListener = null;
         }
         // Unregister broadcast receivers
         try { if (locationUpdateReceiver != null) unregisterReceiver(locationUpdateReceiver); } catch (Exception ignored) {}
@@ -914,7 +948,7 @@ public class ShellActivity extends Activity {
             String actionId = prefs.getString("pending_actionId", null);
             String notifId = prefs.getString("pending_notificationId", "");
             String callbackFn = prefs.getString("pending_callbackFn", null);
-            if (actionId != null && callbackFn != null) {
+            if (actionId != null && callbackFn != null && isSafeCallbackName(callbackFn)) {
                 prefs.edit().clear().apply();
                 webView.postDelayed(() -> {
                     if (activityAlive) fireEvent(callbackFn,
@@ -929,8 +963,10 @@ public class ShellActivity extends Activity {
 
     private void handleShareIntent(Intent intent) {
         if (intent == null || !Intent.ACTION_SEND.equals(intent.getAction())) return;
-        String callbackFn = getSharedPreferences("iappyx_share", MODE_PRIVATE)
+        intent.setAction(null); // prevent duplicate handling on onPageFinished re-fire
+        String rawFn = getSharedPreferences("iappyx_share", MODE_PRIVATE)
             .getString("callbackFn", "window.onShareReceived");
+        final String callbackFn = isSafeCallbackName(rawFn) ? rawFn : "window.onShareReceived";
         String type = intent.getType();
         if (type == null) return;
 
@@ -1420,7 +1456,10 @@ public class ShellActivity extends Activity {
         boolean ok = grants.length > 0 && grants[0] == PackageManager.PERMISSION_GRANTED;
         if (ok) {
             if (req == REQ_CAMERA) { if (pendingCameraAction != null) { Runnable a = pendingCameraAction; pendingCameraAction = null; a.run(); } }
-            else if (req == REQ_LOCATION) new LocationBridge().getLocation(cbId);
+            else if (req == REQ_LOCATION) {
+                if (pendingLocationAction != null) { Runnable a = pendingLocationAction; pendingLocationAction = null; a.run(); }
+                else if (cbId != null) new LocationBridge().getLocation(cbId);
+            }
             else if (req == REQ_CONTACTS) new ContactsBridge().getContacts(cbId);
             else if (req == REQ_CALENDAR_READ) {
                 if (cbId != null) new CalendarBridge().getEvents(cbId, null, null);
@@ -1481,6 +1520,10 @@ public class ShellActivity extends Activity {
                 if (bleScanCallbackFn != null) {
                     fireEvent(bleScanCallbackFn, "{\"event\":\"error\",\"error\":\"permission denied\"}");
                 }
+                if (btScanCallbackFn != null) {
+                    fireEvent(btScanCallbackFn, "{\"event\":\"error\",\"error\":\"permission denied\"}");
+                    btScanCallbackFn = null;
+                }
                 blePendingAction = null;
             }
             if (cbId != null) {
@@ -1523,11 +1566,10 @@ public class ShellActivity extends Activity {
 
     // ── Storage ──
     class StorageBridge {
-        SharedPreferences p = getSharedPreferences("iappyx_store", MODE_PRIVATE);
-        @JavascriptInterface public void save(String k, String v) { p.edit().putString(k,v).apply(); }
-        @JavascriptInterface public String load(String k) { return p.getString(k,null); }
-        @JavascriptInterface public void remove(String k) { p.edit().remove(k).apply(); }
-        @JavascriptInterface public void clear() { p.edit().clear().apply(); }
+        @JavascriptInterface public void save(String k, String v) { BridgeUtils.save(ShellActivity.this, k, v); }
+        @JavascriptInterface public String load(String k) { return BridgeUtils.load(ShellActivity.this, k); }
+        @JavascriptInterface public void remove(String k) { BridgeUtils.remove(ShellActivity.this, k); }
+        @JavascriptInterface public void clear() { getSharedPreferences("iappyx_store", MODE_PRIVATE).edit().clear().apply(); }
 
         private String safeFilename(String filename) {
             // Keep alphanumeric, dots, hyphens, underscores. Replace path separators.
@@ -2016,7 +2058,7 @@ public class ShellActivity extends Activity {
 
         @JavascriptInterface
         public void setShareCallback(String callbackFn) {
-            if (callbackFn == null) return;
+            if (callbackFn == null || !isSafeCallbackName(callbackFn)) return;
             getSharedPreferences("iappyx_share", MODE_PRIVATE).edit()
                 .putString("callbackFn", callbackFn).apply();
         }
@@ -2105,8 +2147,12 @@ public class ShellActivity extends Activity {
         private byte[] readAllBytes(java.io.InputStream is) throws java.io.IOException {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             byte[] buf = new byte[8192];
-            int len;
-            while ((len = is.read(buf)) != -1) baos.write(buf, 0, len);
+            int len; long total = 0;
+            while ((len = is.read(buf)) != -1) {
+                total += len;
+                if (total > 100 * 1024 * 1024) throw new java.io.IOException("File too large (>100MB), use storage.loadFile instead");
+                baos.write(buf, 0, len);
+            }
             return baos.toByteArray();
         }
 
@@ -2512,12 +2558,15 @@ public class ShellActivity extends Activity {
 
         @JavascriptInterface
         public void watchPositionWithError(final String callbackFn, final String errorCallbackFn) {
+            if (!isSafeCallbackName(callbackFn)) return;
             // Stop foreground tracking service to avoid double GPS drain
             stopTracking();
             watchPositionErrorFn = errorCallbackFn;
             if (ContextCompat.checkSelfPermission(ShellActivity.this, Manifest.permission.ACCESS_FINE_LOCATION)
                     != PackageManager.PERMISSION_GRANTED) {
-                if (errorCallbackFn != null) fireEvent(errorCallbackFn, "{\"error\":\"location permission denied\"}");
+                final String fn = callbackFn;
+                final String efn = errorCallbackFn;
+                pendingLocationAction = () -> new LocationBridge().watchPositionWithError(fn, efn);
                 ActivityCompat.requestPermissions(ShellActivity.this,
                     new String[]{Manifest.permission.ACCESS_FINE_LOCATION,
                                  Manifest.permission.ACCESS_COARSE_LOCATION}, REQ_LOCATION);
@@ -2564,7 +2613,7 @@ public class ShellActivity extends Activity {
         @JavascriptInterface
         public void startTrackingWithOptions(final String callbackFn, final double intervalMs,
                 final double minDistanceM, final String notificationTitle) {
-            if (callbackFn == null || callbackFn.isEmpty()) return;
+            if (callbackFn == null || callbackFn.isEmpty() || !isSafeCallbackName(callbackFn)) return;
             // Stop regular watchPosition to avoid double GPS drain
             stopWatching();
             if (ContextCompat.checkSelfPermission(ShellActivity.this, Manifest.permission.ACCESS_FINE_LOCATION)
@@ -2602,7 +2651,7 @@ public class ShellActivity extends Activity {
                 this.id = id; this.lat = lat; this.lon = lon; this.radius = radius; this.callbackFn = callbackFn;
             }
         }
-        private final java.util.Map<String, GeoFence> fences = new java.util.HashMap<>();
+        private final java.util.Map<String, GeoFence> fences = new java.util.concurrent.ConcurrentHashMap<>();
 
         private void startGeofenceListener() {
             if (sharedGeofenceListener != null) return; // already running
@@ -2617,11 +2666,11 @@ public class ShellActivity extends Activity {
                         boolean nowInside = results[0] <= f.radius;
                         if (nowInside && !f.inside) {
                             f.inside = true;
-                            fireEvent(f.callbackFn, "{\"id\":\"" + f.id + "\",\"transition\":\"enter\"" +
+                            fireEvent(f.callbackFn, "{\"id\":\"" + escapeJson(f.id) + "\",\"transition\":\"enter\"" +
                                 ",\"lat\":" + l.getLatitude() + ",\"lon\":" + l.getLongitude() + "}");
                         } else if (!nowInside && f.inside) {
                             f.inside = false;
-                            fireEvent(f.callbackFn, "{\"id\":\"" + f.id + "\",\"transition\":\"exit\"" +
+                            fireEvent(f.callbackFn, "{\"id\":\"" + escapeJson(f.id) + "\",\"transition\":\"exit\"" +
                                 ",\"lat\":" + l.getLatitude() + ",\"lon\":" + l.getLongitude() + "}");
                         }
                     }
@@ -2636,7 +2685,7 @@ public class ShellActivity extends Activity {
                 sharedGeofenceListener = null;
                 // Notify all pending fences that geofencing failed
                 for (GeoFence f : fences.values()) {
-                    fireEvent(f.callbackFn, "{\"id\":\"" + f.id + "\",\"transition\":\"error\",\"error\":\"location permission denied\"}");
+                    fireEvent(f.callbackFn, "{\"id\":\"" + escapeJson(f.id) + "\",\"transition\":\"error\",\"error\":\"location permission denied\"}");
                 }
                 fences.clear();
                 Log.e("iappyxOS", "Geofence listener failed: " + e.getMessage());
@@ -2654,7 +2703,7 @@ public class ShellActivity extends Activity {
         @JavascriptInterface
         public void addGeofence(final String fenceId, final double lat, final double lon,
                 final double radiusM, final String callbackFn) {
-            if (fenceId == null || callbackFn == null) return;
+            if (fenceId == null || callbackFn == null || !isSafeCallbackName(callbackFn)) return;
             if (ContextCompat.checkSelfPermission(ShellActivity.this, Manifest.permission.ACCESS_FINE_LOCATION)
                     != PackageManager.PERMISSION_GRANTED) {
                 fireEvent(callbackFn, "{\"error\":\"location permission denied\"}");
@@ -2926,11 +2975,15 @@ public class ShellActivity extends Activity {
         }
         @JavascriptInterface
         public String read() {
-            ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-            if (cm == null || !cm.hasPrimaryClip()) return null;
             try {
-                ClipData.Item item = cm.getPrimaryClip().getItemAt(0);
-                return item != null && item.getText() != null ? item.getText().toString() : null;
+                java.util.concurrent.FutureTask<String> task = new java.util.concurrent.FutureTask<>(() -> {
+                    ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                    if (cm == null || !cm.hasPrimaryClip()) return null;
+                    ClipData.Item item = cm.getPrimaryClip().getItemAt(0);
+                    return item != null && item.getText() != null ? item.getText().toString() : null;
+                });
+                runOnUiThread(task);
+                return task.get(2, java.util.concurrent.TimeUnit.SECONDS);
             } catch (Exception e) { return null; }
         }
     }
@@ -2938,7 +2991,7 @@ public class ShellActivity extends Activity {
     // ── Sensors ──
     class SensorBridge {
         private void startSensor(int type, String callbackFn) {
-            if (callbackFn == null || callbackFn.isEmpty()) return;
+            if (callbackFn == null || callbackFn.isEmpty() || !isSafeCallbackName(callbackFn)) return;
             runOnUiThread(() -> {
                 Sensor sensor = sensorManager.getDefaultSensor(type);
                 if (sensor == null) { fireEvent(callbackFn, "{\"error\":\"sensor not available\"}"); return; }
@@ -2963,7 +3016,7 @@ public class ShellActivity extends Activity {
 
         @JavascriptInterface
         public void startProximity(String callbackFn) {
-            if (callbackFn == null || callbackFn.isEmpty()) return;
+            if (callbackFn == null || callbackFn.isEmpty() || !isSafeCallbackName(callbackFn)) return;
             runOnUiThread(() -> {
                 Sensor sensor = sensorManager.getDefaultSensor(Sensor.TYPE_PROXIMITY);
                 if (sensor == null) { fireEvent(callbackFn, "{\"error\":\"sensor not available\"}"); return; }
@@ -2985,7 +3038,7 @@ public class ShellActivity extends Activity {
 
         @JavascriptInterface
         public void startLight(String callbackFn) {
-            if (callbackFn == null || callbackFn.isEmpty()) return;
+            if (callbackFn == null || callbackFn.isEmpty() || !isSafeCallbackName(callbackFn)) return;
             runOnUiThread(() -> {
                 Sensor sensor = sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT);
                 if (sensor == null) { fireEvent(callbackFn, "{\"error\":\"sensor not available\"}"); return; }
@@ -3005,7 +3058,7 @@ public class ShellActivity extends Activity {
 
         @JavascriptInterface
         public void startPressure(String callbackFn) {
-            if (callbackFn == null || callbackFn.isEmpty()) return;
+            if (callbackFn == null || callbackFn.isEmpty() || !isSafeCallbackName(callbackFn)) return;
             runOnUiThread(() -> {
                 Sensor sensor = sensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE);
                 if (sensor == null) { fireEvent(callbackFn, "{\"error\":\"sensor not available\"}"); return; }
@@ -3024,12 +3077,12 @@ public class ShellActivity extends Activity {
         }
         @JavascriptInterface
         public void startStepCounter(String callbackFn) {
-            if (callbackFn == null || callbackFn.isEmpty()) return;
+            if (callbackFn == null || callbackFn.isEmpty() || !isSafeCallbackName(callbackFn)) return;
             // Android 10+ requires ACTIVITY_RECOGNITION runtime permission
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 if (ContextCompat.checkSelfPermission(ShellActivity.this,
                         Manifest.permission.ACTIVITY_RECOGNITION) != PackageManager.PERMISSION_GRANTED) {
-                    pendingStepCallbackFn = callbackFn;
+                    if (isSafeCallbackName(callbackFn)) pendingStepCallbackFn = callbackFn;
                     ActivityCompat.requestPermissions(ShellActivity.this,
                         new String[]{Manifest.permission.ACTIVITY_RECOGNITION}, REQ_ACTIVITY_RECOG);
                     return;
@@ -3057,7 +3110,7 @@ public class ShellActivity extends Activity {
         }
         @JavascriptInterface
         public void startCompass(String callbackFn) {
-            if (callbackFn == null || callbackFn.isEmpty()) return;
+            if (callbackFn == null || callbackFn.isEmpty() || !isSafeCallbackName(callbackFn)) return;
             runOnUiThread(() -> {
                 // Use rotation vector for stable, fused compass heading
                 Sensor sensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
@@ -3303,13 +3356,21 @@ public class ShellActivity extends Activity {
                 piFlags(PendingIntent.FLAG_UPDATE_CURRENT));
             am.cancel(pi);
             getSharedPreferences("iappyx_alarm", MODE_PRIVATE).edit()
-                .remove("callbackFn_" + id).remove("ts_" + id).apply();
+                .remove("callbackFn_" + id).remove("ts_" + id).remove("interval_" + id).apply();
         }
 
         @JavascriptInterface
-        public String getScheduled() {
-            long ts = getSharedPreferences("iappyx_alarm", MODE_PRIVATE).getLong("ts_default", 0);
-            return ts > 0 ? String.valueOf(ts) : null;
+        public String getScheduled() { return getScheduledById(null); }
+
+        @JavascriptInterface
+        public String getScheduledById(String alarmId) {
+            String id = alarmId != null ? alarmId : "default";
+            android.content.SharedPreferences prefs = getSharedPreferences("iappyx_alarm", MODE_PRIVATE);
+            long ts = prefs.getLong("ts_" + id, 0);
+            long interval = prefs.getLong("interval_" + id, 0);
+            if (ts > 0) return String.valueOf(ts);
+            if (interval > 0) return "{\"repeating\":true,\"intervalMs\":" + interval + "}";
+            return null;
         }
 
         @JavascriptInterface
@@ -3325,7 +3386,8 @@ public class ShellActivity extends Activity {
             }
             String id = alarmId != null ? alarmId : "default";
             getSharedPreferences("iappyx_alarm", MODE_PRIVATE).edit()
-                .putString("callbackFn_" + id, callbackFn).apply();
+                .putString("callbackFn_" + id, callbackFn)
+                .putLong("interval_" + id, (long) intervalMs).apply();
             Intent intent = makeReceiverIntent();
             intent.putExtra("callbackFn", callbackFn);
             intent.putExtra("alarmId", id);
@@ -3334,8 +3396,11 @@ public class ShellActivity extends Activity {
                 piFlags(PendingIntent.FLAG_UPDATE_CURRENT));
             AlarmManager am = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
             if (am == null) return;
-            am.setRepeating(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + (long) intervalMs,
-                (long) intervalMs, pi);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + (long) intervalMs, pi);
+            } else {
+                am.setExact(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + (long) intervalMs, pi);
+            }
         }
     }
 
@@ -3382,6 +3447,11 @@ public class ShellActivity extends Activity {
         private String resolveDataUrl(String url) {
             if (url != null && url.startsWith("data:")) {
                 try {
+                    // Clean up old temp files (lazy cleanup to avoid race with ExoPlayer)
+                    try {
+                        File[] old = getCacheDir().listFiles((d, n) -> n.startsWith("audio_"));
+                        if (old != null) for (File f : old) f.delete();
+                    } catch (Exception ignored) {}
                     int commaIdx = url.indexOf(',');
                     if (commaIdx < 0) return url;
                     String b64 = url.substring(commaIdx + 1);
@@ -3774,12 +3844,12 @@ public class ShellActivity extends Activity {
 
         @JavascriptInterface
         public void onComplete(String callbackFn) {
-            audioCompleteCallbackFn = callbackFn;
+            if (isSafeCallbackName(callbackFn)) audioCompleteCallbackFn = callbackFn;
         }
 
         @JavascriptInterface
         public void onMetadata(String callbackFn) {
-            audioMetadataCallbackFn = callbackFn;
+            if (isSafeCallbackName(callbackFn)) audioMetadataCallbackFn = callbackFn;
         }
 
         // ── Audio Focus ──
@@ -4197,6 +4267,7 @@ public class ShellActivity extends Activity {
 
         @JavascriptInterface
         public void startReading(final String callbackFn) {
+            if (!isSafeCallbackName(callbackFn)) return;
             if (nfcAdapter == null) {
                 fireEvent(callbackFn, "{\"error\":\"NFC not available on this device\"}");
                 return;
@@ -4269,9 +4340,6 @@ public class ShellActivity extends Activity {
 
     // ── SQLite ──
     class SqliteBridge {
-        private final java.util.concurrent.locks.ReentrantLock txLock = new java.util.concurrent.locks.ReentrantLock();
-        private volatile Thread txOwner;
-
         private synchronized android.database.sqlite.SQLiteDatabase getDb() {
             if (sqliteDb == null || !sqliteDb.isOpen()) {
                 sqliteDb = ShellActivity.this.openOrCreateDatabase("iappyx_app.db",
@@ -4288,7 +4356,7 @@ public class ShellActivity extends Activity {
                 if (paramsJson != null && !paramsJson.isEmpty()) {
                     JSONArray arr = new JSONArray(paramsJson);
                     String[] params = new String[arr.length()];
-                    for (int i = 0; i < arr.length(); i++) params[i] = arr.getString(i);
+                    for (int i = 0; i < arr.length(); i++) params[i] = arr.isNull(i) ? null : arr.getString(i);
                     d.execSQL(sql, params);
                 } else {
                     d.execSQL(sql);
@@ -4314,7 +4382,7 @@ public class ShellActivity extends Activity {
                 if (paramsJson != null && !paramsJson.isEmpty()) {
                     JSONArray arr = new JSONArray(paramsJson);
                     params = new String[arr.length()];
-                    for (int i = 0; i < arr.length(); i++) params[i] = arr.getString(i);
+                    for (int i = 0; i < arr.length(); i++) params[i] = arr.isNull(i) ? null : arr.getString(i);
                 }
                 c = d.rawQuery(sql, params);
                 JSONArray rows = new JSONArray();
@@ -4351,32 +4419,28 @@ public class ShellActivity extends Activity {
             }
         }
         @JavascriptInterface
-        public String beginTransaction() {
-            txLock.lock();
-            txOwner = Thread.currentThread();
+        public synchronized String beginTransaction() {
             try {
                 getDb().beginTransaction();
                 return "{\"ok\":true}";
-            } catch (Exception e) { txOwner = null; txLock.unlock(); return "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}"; }
+            } catch (Exception e) { return "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}"; }
         }
 
         @JavascriptInterface
-        public String commit() {
+        public synchronized String commit() {
             try {
                 getDb().setTransactionSuccessful();
                 getDb().endTransaction();
                 return "{\"ok\":true}";
             } catch (Exception e) { return "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}"; }
-            finally { txOwner = null; if (txLock.isHeldByCurrentThread()) txLock.unlock(); }
         }
 
         @JavascriptInterface
-        public String rollback() {
+        public synchronized String rollback() {
             try {
                 getDb().endTransaction();
                 return "{\"ok\":true}";
             } catch (Exception e) { return "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}"; }
-            finally { txOwner = null; if (txLock.isHeldByCurrentThread()) txLock.unlock(); }
         }
     }
 
@@ -4386,6 +4450,7 @@ public class ShellActivity extends Activity {
         @JavascriptInterface
         public void enqueue(String url, String filename, String callbackFn) {
             if (url == null || url.isEmpty()) return;
+            if (callbackFn != null && !isSafeCallbackName(callbackFn)) return;
             try {
                 android.app.DownloadManager dm = (android.app.DownloadManager)
                     getSystemService(Context.DOWNLOAD_SERVICE);
@@ -4424,7 +4489,7 @@ public class ShellActivity extends Activity {
                                 if (status == android.app.DownloadManager.STATUS_SUCCESSFUL) {
                                     c.close();
                                     fireEvent(callbackFn, "{\"ok\":true,\"id\":" + dlId +
-                                        ",\"filename\":\"" + fname.replace("\"", "\\\"") +
+                                        ",\"filename\":\"" + escapeJson(fname) +
                                         "\",\"status\":\"complete\",\"progress\":100}");
                                     stop = true;
                                 } else if (status == android.app.DownloadManager.STATUS_FAILED) {
@@ -4873,14 +4938,16 @@ public class ShellActivity extends Activity {
     class WifiDirectBridge {
 
         @SuppressWarnings("MissingPermission")
-        private void ensureP2pInit() {
-            if (wifiP2pManager != null) return;
+        private boolean ensureP2pInit() {
+            if (wifiP2pManager != null) return true;
             wifiP2pManager = (android.net.wifi.p2p.WifiP2pManager) getSystemService(Context.WIFI_P2P_SERVICE);
+            if (wifiP2pManager == null) return false; // WiFi Direct not supported
             wifiP2pChannel = wifiP2pManager.initialize(ShellActivity.this, getMainLooper(), null);
             // Register receiver
             android.content.IntentFilter filter = new android.content.IntentFilter();
             filter.addAction(android.net.wifi.p2p.WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION);
             filter.addAction(android.net.wifi.p2p.WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION);
+            filter.addAction(android.net.wifi.p2p.WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION);
             wifiP2pReceiver = new BroadcastReceiver() {
                 @Override
                 public void onReceive(Context ctx, Intent intent) {
@@ -4940,6 +5007,7 @@ public class ShellActivity extends Activity {
             } else {
                 registerReceiver(wifiP2pReceiver, filter);
             }
+            return true;
         }
 
         private boolean ensureWifiDirectPermissions(Runnable action, String cbId) {
@@ -4962,7 +5030,7 @@ public class ShellActivity extends Activity {
         @JavascriptInterface
         public void createGroup(String cbId) {
             runOnUiThread(() -> {
-                ensureP2pInit();
+                if (!ensureP2pInit()) { deliverResult(cbId, "{\"ok\":false,\"error\":\"WiFi Direct not supported\"}"); return; }
                 if (!ensureWifiDirectPermissions(() -> createGroup(cbId), cbId)) return;
                 try {
                     wifiP2pManager.createGroup(wifiP2pChannel, new android.net.wifi.p2p.WifiP2pManager.ActionListener() {
@@ -4986,8 +5054,9 @@ public class ShellActivity extends Activity {
 
         @JavascriptInterface
         public void discoverPeers(String callbackFn) {
+            if (!isSafeCallbackName(callbackFn)) return;
             runOnUiThread(() -> {
-                ensureP2pInit();
+                if (!ensureP2pInit()) { fireEvent(callbackFn, "{\"event\":\"error\",\"error\":\"WiFi Direct not supported\"}"); return; }
                 wifiP2pPeerCallbackFn = callbackFn;
                 if (!ensureWifiDirectPermissions(() -> discoverPeers(callbackFn), null)) return;
                 try {
@@ -5015,7 +5084,7 @@ public class ShellActivity extends Activity {
         @JavascriptInterface
         public void connect(String address, String cbId) {
             runOnUiThread(() -> {
-                ensureP2pInit();
+                if (!ensureP2pInit()) { deliverResult(cbId, "{\"ok\":false,\"error\":\"WiFi Direct not supported\"}"); return; }
                 if (!ensureWifiDirectPermissions(() -> connect(address, cbId), cbId)) return;
                 try {
                     android.net.wifi.p2p.WifiP2pConfig config = new android.net.wifi.p2p.WifiP2pConfig();
@@ -5043,7 +5112,7 @@ public class ShellActivity extends Activity {
         @JavascriptInterface
         public void getConnectionInfo(String cbId) {
             runOnUiThread(() -> {
-                ensureP2pInit();
+                if (!ensureP2pInit()) { deliverResult(cbId, "{\"ok\":false,\"error\":\"WiFi Direct not supported\"}"); return; }
                 wifiP2pManager.requestConnectionInfo(wifiP2pChannel, info -> {
                     try {
                         JSONObject r = new JSONObject();
@@ -5064,8 +5133,9 @@ public class ShellActivity extends Activity {
 
         @JavascriptInterface
         public void onConnectionChanged(String callbackFn) {
+            if (!isSafeCallbackName(callbackFn)) return;
             wifiP2pConnectionCallbackFn = callbackFn;
-            runOnUiThread(() -> ensureP2pInit());
+            runOnUiThread(() -> { ensureP2pInit(); });
         }
     }
 
@@ -5587,10 +5657,10 @@ public class ShellActivity extends Activity {
         }
 
         @JavascriptInterface
-        public void onData(String callbackFn) { sshDataCallbackFn = callbackFn; }
+        public void onData(String callbackFn) { if (isSafeCallbackName(callbackFn)) sshDataCallbackFn = callbackFn; }
 
         @JavascriptInterface
-        public void onClose(String callbackFn) { sshCloseCallbackFn = callbackFn; }
+        public void onClose(String callbackFn) { if (isSafeCallbackName(callbackFn)) sshCloseCallbackFn = callbackFn; }
 
         @JavascriptInterface
         public void forwardLocal(String localPortStr, String remoteHost, String remotePortStr, String cbId) {
@@ -5661,10 +5731,14 @@ public class ShellActivity extends Activity {
                         long fileSize = getContentSize(localPath);
                         sftp.put(is, remotePath, new com.jcraft.jsch.SftpProgressMonitor() {
                             long transferred = 0;
+                            long lastProgress = 0;
                             @Override public void init(int op, String src, String dest, long max) {}
                             @Override public boolean count(long count) {
                                 transferred += count;
-                                fireEvent("window.onTransferProgress", "{\"transferred\":" + transferred + ",\"total\":" + fileSize + "}");
+                                if (transferred - lastProgress >= 131072 || transferred == fileSize) {
+                                    lastProgress = transferred;
+                                    fireEvent("window.onTransferProgress", "{\"transferred\":" + transferred + ",\"total\":" + fileSize + "}");
+                                }
                                 return true;
                             }
                             @Override public void end() {}
@@ -5692,10 +5766,15 @@ public class ShellActivity extends Activity {
                     try (FileOutputStream fos = new FileOutputStream(resolved)) {
                         sftp.get(remotePath, fos, new com.jcraft.jsch.SftpProgressMonitor() {
                             long transferred = 0;
-                            @Override public void init(int op, String src, String dest, long max) {}
+                            long total = -1;
+                            long lastProgress = 0;
+                            @Override public void init(int op, String src, String dest, long max) { total = max; }
                             @Override public boolean count(long count) {
                                 transferred += count;
-                                fireEvent("window.onTransferProgress", "{\"transferred\":" + transferred + ",\"total\":-1}");
+                                if (transferred - lastProgress >= 131072 || transferred == total) {
+                                    lastProgress = transferred;
+                                    fireEvent("window.onTransferProgress", "{\"transferred\":" + transferred + ",\"total\":" + total + "}");
+                                }
                                 return true;
                             }
                             @Override public void end() {}
@@ -5708,6 +5787,7 @@ public class ShellActivity extends Activity {
                     result.put("size", new File(resolved).length());
                     deliverResult(cbId, result.toString());
                 } catch (Exception e) {
+                    try { new File(resolveFilePath(localPath)).delete(); } catch (Exception ignored) {}
                     deliverResult(cbId, "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
                 }
             });
@@ -5776,11 +5856,12 @@ public class ShellActivity extends Activity {
 
     class SmbBridge {
         private jcifs.smb.SmbFile resolveSmbPath(String remotePath) throws Exception {
-            if (smbRoot == null) throw new Exception("not connected");
-            if (remotePath == null || remotePath.isEmpty()) return smbRoot;
+            jcifs.smb.SmbFile root = smbRoot; // capture local ref to avoid TOCTOU
+            if (root == null) throw new Exception("not connected");
+            if (remotePath == null || remotePath.isEmpty()) return root;
             String path = remotePath.startsWith("/") ? remotePath.substring(1) : remotePath;
-            if (path.isEmpty()) return smbRoot;
-            return new jcifs.smb.SmbFile(smbRoot, path);
+            if (path.isEmpty()) return root;
+            return new jcifs.smb.SmbFile(root, path);
         }
 
         @JavascriptInterface
@@ -5871,6 +5952,7 @@ public class ShellActivity extends Activity {
                     result.put("size", size);
                     deliverResult(cbId, result.toString());
                 } catch (Exception e) {
+                    try { new File(resolveFilePath(localPath)).delete(); } catch (Exception ignored) {}
                     deliverResult(cbId, "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
                 }
             });
@@ -6089,6 +6171,7 @@ public class ShellActivity extends Activity {
 
         @JavascriptInterface
         public void startScan(String callbackFn) {
+            if (!isSafeCallbackName(callbackFn)) return;
             runOnUiThread(() -> {
                 ensureBleAdapter();
                 if (bleAdapter == null || !bleAdapter.isEnabled()) {
@@ -6499,18 +6582,20 @@ public class ShellActivity extends Activity {
                 return;
             }
             com.google.firebase.messaging.FirebaseMessaging.getInstance().getToken()
-                .addOnSuccessListener(token -> deliverResult(cbId, "{\"ok\":true,\"token\":\"" + token + "\"}"))
+                .addOnSuccessListener(token -> deliverResult(cbId, "{\"ok\":true,\"token\":\"" + escapeJson(token) + "\"}"))
                 .addOnFailureListener(e -> deliverResult(cbId, "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}"));
         }
 
         @JavascriptInterface
         public void onMessage(String callbackFn) {
+            if (!isSafeCallbackName(callbackFn)) return;
             PushService.foregroundCallbackFn = callbackFn;
             PushService.activeActivity = ShellActivity.this;
         }
 
         @JavascriptInterface
         public void onTokenRefresh(String callbackFn) {
+            if (!isSafeCallbackName(callbackFn)) return;
             PushService.tokenRefreshFn = callbackFn;
             PushService.activeActivity = ShellActivity.this;
         }
@@ -6548,10 +6633,10 @@ public class ShellActivity extends Activity {
                         javax.net.ssl.SSLContext ctx = javax.net.ssl.SSLContext.getInstance("TLS");
                         ctx.init(null, tm, new java.security.SecureRandom());
                         tcpSocket = ctx.getSocketFactory().createSocket();
-                        tcpSocket.connect(new java.net.InetSocketAddress(host, port), 5000);
+                        tcpSocket.connect(new java.net.InetSocketAddress(host, port), 30000);
                     } else {
                         tcpSocket = new java.net.Socket();
-                        tcpSocket.connect(new java.net.InetSocketAddress(host, port), 5000);
+                        tcpSocket.connect(new java.net.InetSocketAddress(host, port), 30000);
                     }
                     tcpSocket.setKeepAlive(true);
                     tcpOut = tcpSocket.getOutputStream();
@@ -6621,7 +6706,7 @@ public class ShellActivity extends Activity {
                     javax.net.ssl.SSLContext ctx = javax.net.ssl.SSLContext.getInstance("TLS");
                     ctx.init(null, tm, new java.security.SecureRandom());
                     tcpSocket = ctx.getSocketFactory().createSocket();
-                    tcpSocket.connect(new java.net.InetSocketAddress(host, port), 5000);
+                    tcpSocket.connect(new java.net.InetSocketAddress(host, port), 30000);
                     tcpSocket.setKeepAlive(true);
                     tcpOut = tcpSocket.getOutputStream();
                     tcpRunning = true;
@@ -6702,10 +6787,10 @@ public class ShellActivity extends Activity {
         }
 
         @JavascriptInterface
-        public void onData(String callbackFn) { tcpDataCallbackFn = callbackFn; }
+        public void onData(String callbackFn) { if (isSafeCallbackName(callbackFn)) tcpDataCallbackFn = callbackFn; }
 
         @JavascriptInterface
-        public void onClose(String callbackFn) { tcpCloseCallbackFn = callbackFn; }
+        public void onClose(String callbackFn) { if (isSafeCallbackName(callbackFn)) tcpCloseCallbackFn = callbackFn; }
 
         @JavascriptInterface
         public void close() {
@@ -6731,6 +6816,196 @@ public class ShellActivity extends Activity {
     private java.net.MulticastSocket udpSocket;
     private Thread udpReceiveThread;
     private String udpReceiveCallbackFn;
+    // ── Bluetooth Classic ──
+    private android.bluetooth.BluetoothSocket btSocket;
+    private java.io.OutputStream btOut;
+    private Thread btReadThread;
+    private volatile boolean btRunning = false;
+    private final Object btLock = new Object();
+    private String btDataCallbackFn;
+    private String btCloseCallbackFn;
+    private String btScanCallbackFn; // #4 fix: own callback for BT Classic scan
+    private BroadcastReceiver btDiscoveryReceiver;
+    private static final java.util.UUID SPP_UUID = java.util.UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
+
+    class BluetoothClassicBridge {
+        @JavascriptInterface
+        public void scan(String callbackFn) {
+            if (callbackFn == null || !isSafeCallbackName(callbackFn)) return;
+            boolean hasLocation = ContextCompat.checkSelfPermission(ShellActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+            boolean hasBtPerms = Build.VERSION.SDK_INT < 31 || (
+                ContextCompat.checkSelfPermission(ShellActivity.this, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(ShellActivity.this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED);
+            if (!hasLocation || !hasBtPerms) {
+                // #4 fix: store BT Classic scan callback separately
+                btScanCallbackFn = callbackFn;
+                final String fn = callbackFn;
+                blePendingAction = () -> new BluetoothClassicBridge().scan(fn);
+                java.util.List<String> perms = new java.util.ArrayList<>();
+                perms.add(Manifest.permission.ACCESS_FINE_LOCATION);
+                if (Build.VERSION.SDK_INT >= 31) { perms.add(Manifest.permission.BLUETOOTH_SCAN); perms.add(Manifest.permission.BLUETOOTH_CONNECT); }
+                ActivityCompat.requestPermissions(ShellActivity.this, perms.toArray(new String[0]), REQ_BLE);
+                return;
+            }
+            // #3 fix: unregister previous receiver before registering new one
+            unregisterBtDiscovery();
+            // Check adapter BEFORE registering receiver
+            android.bluetooth.BluetoothAdapter adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+            if (adapter == null) { fireEvent(callbackFn, "{\"event\":\"error\",\"error\":\"Bluetooth not available\"}"); return; }
+
+            btDiscoveryReceiver = new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context context, Intent intent) {
+                    String action = intent.getAction();
+                    if (android.bluetooth.BluetoothDevice.ACTION_FOUND.equals(action)) {
+                        android.bluetooth.BluetoothDevice dev = intent.getParcelableExtra(android.bluetooth.BluetoothDevice.EXTRA_DEVICE);
+                        if (dev == null) return;
+                        String name = "";
+                        try { name = dev.getName() != null ? dev.getName() : ""; } catch (SecurityException ignored) {}
+                        int rssi = intent.getShortExtra(android.bluetooth.BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE);
+                        fireEvent(callbackFn, "{\"event\":\"found\",\"name\":\"" + escapeJson(name) +
+                            "\",\"address\":\"" + dev.getAddress() + "\",\"rssi\":" + rssi + "}");
+                    } else if (android.bluetooth.BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
+                        fireEvent(callbackFn, "{\"event\":\"done\"}");
+                    }
+                }
+            };
+            android.content.IntentFilter filter = new android.content.IntentFilter();
+            filter.addAction(android.bluetooth.BluetoothDevice.ACTION_FOUND);
+            filter.addAction(android.bluetooth.BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
+            registerReceiver(btDiscoveryReceiver, filter);
+            try {
+                if (adapter.isDiscovering()) adapter.cancelDiscovery();
+                adapter.startDiscovery();
+            } catch (SecurityException e) {
+                // #3 fix: unregister on error
+                unregisterBtDiscovery();
+                fireEvent(callbackFn, "{\"event\":\"error\",\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+            }
+        }
+
+        @JavascriptInterface
+        public void stopScan() {
+            try {
+                android.bluetooth.BluetoothAdapter adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+                if (adapter != null && adapter.isDiscovering()) adapter.cancelDiscovery();
+            } catch (SecurityException ignored) {}
+            unregisterBtDiscovery();
+        }
+
+        @JavascriptInterface
+        public void connect(String address, String cbId) {
+            httpClientPool.submit(() -> {
+                synchronized (btLock) { // #7 fix: synchronize connect
+                    if (btRunning) { deliverResult(cbId, "{\"ok\":false,\"error\":\"already connected\"}"); return; }
+                    btRunning = true;
+                }
+                android.bluetooth.BluetoothSocket socket = null;
+                try {
+                    android.bluetooth.BluetoothAdapter adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+                    if (adapter == null) { synchronized (btLock) { btRunning = false; } deliverResult(cbId, "{\"ok\":false,\"error\":\"Bluetooth not available\"}"); return; }
+                    try { adapter.cancelDiscovery(); } catch (SecurityException ignored) {}
+
+                    android.bluetooth.BluetoothDevice device = adapter.getRemoteDevice(address);
+                    socket = device.createRfcommSocketToServiceRecord(SPP_UUID);
+                    socket.connect();
+
+                    // #1 fix: capture local reference for read thread
+                    final android.bluetooth.BluetoothSocket connectedSocket = socket;
+                    synchronized (btLock) {
+                        btSocket = connectedSocket;
+                        btOut = connectedSocket.getOutputStream();
+                    }
+
+                    btReadThread = new Thread(() -> {
+                        byte[] buf = new byte[4096];
+                        try {
+                            java.io.InputStream in = connectedSocket.getInputStream(); // #1 fix: use local ref
+                            int r;
+                            while (btRunning && (r = in.read(buf)) != -1) {
+                                if (btDataCallbackFn == null) continue;
+                                String data = new String(buf, 0, r, java.nio.charset.StandardCharsets.UTF_8);
+                                StringBuilder hex = new StringBuilder();
+                                for (int i = 0; i < r; i++) hex.append(String.format("%02x", buf[i]));
+                                fireEvent(btDataCallbackFn, "{\"data\":\"" + escapeJson(data) +
+                                    "\",\"hex\":\"" + hex.toString() + "\",\"length\":" + r + "}");
+                            }
+                        } catch (Exception e) {
+                            if (btRunning) Log.e("iappyxOS", "BT read: " + e.getMessage());
+                        }
+                        synchronized (btLock) { btRunning = false; }
+                        if (btCloseCallbackFn != null) fireEvent(btCloseCallbackFn, "{}");
+                    });
+                    btReadThread.setDaemon(true);
+                    btReadThread.start();
+
+                    deliverResult(cbId, "{\"ok\":true}");
+                } catch (Exception e) {
+                    // #6 fix: close socket on failed connect
+                    if (socket != null) { try { socket.close(); } catch (Exception ignored) {} }
+                    synchronized (btLock) { btRunning = false; btSocket = null; btOut = null; }
+                    deliverResult(cbId, "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void send(String data) {
+            // #5 fix: capture local ref to avoid TOCTOU
+            final java.io.OutputStream out;
+            synchronized (btLock) {
+                if (!btRunning || btOut == null) return;
+                out = btOut;
+            }
+            httpClientPool.submit(() -> {
+                try { out.write(data.getBytes(java.nio.charset.StandardCharsets.UTF_8)); out.flush(); }
+                catch (Exception e) { Log.e("iappyxOS", "BT send: " + e.getMessage()); }
+            });
+        }
+
+        @JavascriptInterface
+        public void sendHex(String hexStr) {
+            final java.io.OutputStream out;
+            synchronized (btLock) {
+                if (!btRunning || btOut == null || hexStr == null) return;
+                out = btOut;
+            }
+            httpClientPool.submit(() -> {
+                try {
+                    String clean = hexStr.replaceAll("[^0-9a-fA-F]", "");
+                    byte[] bytes = new byte[clean.length() / 2];
+                    for (int i = 0; i < bytes.length; i++) bytes[i] = (byte) Integer.parseInt(clean.substring(i*2, i*2+2), 16);
+                    out.write(bytes); out.flush();
+                } catch (Exception e) { Log.e("iappyxOS", "BT sendHex: " + e.getMessage()); }
+            });
+        }
+
+        @JavascriptInterface
+        public void onData(String callbackFn) { if (isSafeCallbackName(callbackFn)) btDataCallbackFn = callbackFn; }
+
+        @JavascriptInterface
+        public void onClose(String callbackFn) { if (isSafeCallbackName(callbackFn)) btCloseCallbackFn = callbackFn; }
+
+        @JavascriptInterface
+        public void disconnect() {
+            synchronized (btLock) {
+                btRunning = false;
+                try { if (btSocket != null) btSocket.close(); } catch (Exception ignored) {}
+                btSocket = null; btOut = null;
+            }
+        }
+
+        @JavascriptInterface
+        public boolean isConnected() { synchronized (btLock) { return btRunning && btSocket != null && btSocket.isConnected(); } }
+    }
+
+    private void unregisterBtDiscovery() {
+        if (btDiscoveryReceiver != null) {
+            try { unregisterReceiver(btDiscoveryReceiver); } catch (Exception ignored) {}
+            btDiscoveryReceiver = null;
+        }
+    }
+
     private volatile boolean udpRunning = false;
 
     class UdpBridge {
@@ -6821,7 +7096,7 @@ public class ShellActivity extends Activity {
 
         @JavascriptInterface
         public void onReceive(String callbackFn) {
-            udpReceiveCallbackFn = callbackFn;
+            if (isSafeCallbackName(callbackFn)) udpReceiveCallbackFn = callbackFn;
         }
 
         @JavascriptInterface
@@ -6907,10 +7182,12 @@ public class ShellActivity extends Activity {
                 try { nsdManager.unregisterService(nsdRegistrationListener); } catch (Exception ignored) {}
                 nsdRegistrationListener = null;
             }
+            if (nsdDiscoveryListener == null) releaseMulticastLock();
         }
 
         @JavascriptInterface
         public void startDiscovery(String serviceType, String callbackFn) {
+            if (!isSafeCallbackName(callbackFn)) return;
             if (nsdManager == null) nsdManager = (android.net.nsd.NsdManager) getSystemService(Context.NSD_SERVICE);
             acquireMulticastLock();
             // Stop previous discovery if any
@@ -6923,6 +7200,8 @@ public class ShellActivity extends Activity {
                 @Override public void onDiscoveryStarted(String type) {}
                 @Override public void onDiscoveryStopped(String type) {}
                 @Override public void onStartDiscoveryFailed(String type, int err) {
+                    nsdDiscoveryListener = null;
+                    if (nsdRegistrationListener == null) releaseMulticastLock();
                     fireEvent(nsdDiscoveryCallbackFn, "{\"event\":\"error\",\"error\":\"discovery start failed: " + err + "\"}");
                 }
                 @Override public void onStopDiscoveryFailed(String type, int err) {}
@@ -6944,6 +7223,7 @@ public class ShellActivity extends Activity {
                 try { nsdManager.stopServiceDiscovery(nsdDiscoveryListener); } catch (Exception ignored) {}
                 nsdDiscoveryListener = null;
             }
+            if (nsdRegistrationListener == null) releaseMulticastLock();
         }
 
         @JavascriptInterface
@@ -7076,7 +7356,7 @@ public class ShellActivity extends Activity {
 
         @JavascriptInterface
         public void onRequest(String callbackFn) {
-            httpRequestCallbackFn = callbackFn;
+            if (isSafeCallbackName(callbackFn)) httpRequestCallbackFn = callbackFn;
         }
 
         @JavascriptInterface
@@ -7322,6 +7602,9 @@ public class ShellActivity extends Activity {
         } catch (Exception e) {
             httpPendingRequests.remove(requestId);
             try { client.close(); } catch (Exception ignored) {}
+            // Clean up upload temp file on error
+            File tempFile = new File(getCacheDir(), "http_upload_" + requestId);
+            if (tempFile.exists()) tempFile.delete();
         }
     }
 
@@ -7426,49 +7709,110 @@ public class ShellActivity extends Activity {
         httpSelfSignedCert = null;
     }
 
+    // ── Scheduled Background Tasks ──
+    class TaskBridge {
+        private static final String PREFS = "iappyx_tasks";
+
+        @JavascriptInterface
+        public void schedule(String taskId, String intervalMsStr, String callbackFn) {
+            if (taskId == null || callbackFn == null || !isSafeCallbackName(callbackFn)) return;
+            long intervalMs = Long.parseLong(intervalMsStr);
+            if (intervalMs < 900000) intervalMs = 900000; // Android minimum: 15 min
+
+            // Save task config
+            android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+            try {
+                JSONObject tasks = new JSONObject(prefs.getString("tasks", "{}"));
+                JSONObject task = new JSONObject();
+                task.put("callbackFn", callbackFn);
+                task.put("intervalMs", intervalMs);
+                tasks.put(taskId, task);
+                prefs.edit().putString("tasks", tasks.toString()).apply();
+            } catch (Exception e) { Log.e("iappyxOS", "task.schedule: " + e.getMessage()); return; }
+
+            // Set repeating alarm
+            android.app.AlarmManager am = (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
+            Intent intent = new Intent(ShellActivity.this, TaskSchedulerReceiver.class);
+            intent.putExtra("taskId", taskId);
+            intent.putExtra("callbackFn", callbackFn);
+            intent.setAction("com.iappyx.TASK_" + taskId);
+            android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(ShellActivity.this,
+                taskId.hashCode(), intent, android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP,
+                    System.currentTimeMillis() + intervalMs, pi);
+            } else {
+                am.setExact(android.app.AlarmManager.RTC_WAKEUP,
+                    System.currentTimeMillis() + intervalMs, pi);
+            }
+        }
+
+        @JavascriptInterface
+        public void cancel(String taskId) {
+            if (taskId == null) return;
+            android.app.AlarmManager am = (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
+            Intent intent = new Intent(ShellActivity.this, TaskSchedulerReceiver.class);
+            intent.setAction("com.iappyx.TASK_" + taskId);
+            android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(ShellActivity.this,
+                taskId.hashCode(), intent, android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
+            am.cancel(pi);
+
+            android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+            try {
+                JSONObject tasks = new JSONObject(prefs.getString("tasks", "{}"));
+                tasks.remove(taskId);
+                prefs.edit().putString("tasks", tasks.toString()).apply();
+            } catch (Exception ignored) {}
+        }
+
+        @JavascriptInterface
+        public void cancelAll() {
+            android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+            try {
+                JSONObject tasks = new JSONObject(prefs.getString("tasks", "{}"));
+                android.app.AlarmManager am = (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
+                java.util.Iterator<String> keys = tasks.keys();
+                while (keys.hasNext()) {
+                    String taskId = keys.next();
+                    Intent intent = new Intent(ShellActivity.this, TaskSchedulerReceiver.class);
+                    intent.setAction("com.iappyx.TASK_" + taskId);
+                    android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(ShellActivity.this,
+                        taskId.hashCode(), intent, android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
+                    am.cancel(pi);
+                }
+            } catch (Exception ignored) {}
+            prefs.edit().remove("tasks").apply();
+        }
+
+        @JavascriptInterface
+        public String getScheduled() {
+            android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+            try {
+                JSONObject tasks = new JSONObject(prefs.getString("tasks", "{}"));
+                JSONArray arr = new JSONArray();
+                java.util.Iterator<String> keys = tasks.keys();
+                while (keys.hasNext()) {
+                    String id = keys.next();
+                    JSONObject t = tasks.getJSONObject(id);
+                    JSONObject entry = new JSONObject();
+                    entry.put("id", id);
+                    entry.put("intervalMs", t.getLong("intervalMs"));
+                    arr.put(entry);
+                }
+                return arr.toString();
+            } catch (Exception e) { return "[]"; }
+        }
+    }
+
     // ── Home Screen Widget ──
     private String widgetActionCallbackFn;
 
     class WidgetBridge {
         @JavascriptInterface
-        public void update(String configJson) {
-            try {
-                // Validate JSON
-                new JSONObject(configJson);
-                // Enable widget provider on first use
-                android.content.pm.PackageManager pm = getPackageManager();
-                android.content.ComponentName widgetComp = new android.content.ComponentName(
-                    getPackageName(), "com.iappyx.generated.placeholder.WidgetProvider");
-                if (pm.getComponentEnabledSetting(widgetComp) != android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
-                    pm.setComponentEnabledSetting(widgetComp,
-                        android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                        android.content.pm.PackageManager.DONT_KILL_APP);
-                }
-                android.content.SharedPreferences prefs = getSharedPreferences("iappyx_widget", MODE_PRIVATE);
-                prefs.edit().putString("config", configJson).commit(); // commit (sync) so widget reads it immediately
-                // Trigger widget update directly via AppWidgetManager
-                android.appwidget.AppWidgetManager awm = android.appwidget.AppWidgetManager.getInstance(ShellActivity.this);
-                int[] ids = awm.getAppWidgetIds(widgetComp);
-                if (ids.length > 0) {
-                    new WidgetProvider().onUpdate(ShellActivity.this, awm, ids);
-                }
-            } catch (Exception e) {
-                Log.e("iappyxOS", "widget.update error: " + e.getMessage());
-            }
-        }
+        public void update(String configJson) { BridgeUtils.updateWidget(ShellActivity.this, configJson); }
 
         @JavascriptInterface
-        public void clear() {
-            android.content.SharedPreferences prefs = getSharedPreferences("iappyx_widget", MODE_PRIVATE);
-            prefs.edit().remove("config").commit();
-            android.content.ComponentName widgetComp = new android.content.ComponentName(
-                getPackageName(), "com.iappyx.generated.placeholder.WidgetProvider");
-            android.appwidget.AppWidgetManager awm = android.appwidget.AppWidgetManager.getInstance(ShellActivity.this);
-            int[] ids = awm.getAppWidgetIds(widgetComp);
-            if (ids.length > 0) {
-                new WidgetProvider().onUpdate(ShellActivity.this, awm, ids);
-            }
-        }
+        public void clear() { BridgeUtils.clearWidget(ShellActivity.this); }
 
         @JavascriptInterface
         public void onAction(String callbackFn) {
@@ -7519,6 +7863,8 @@ public class ShellActivity extends Activity {
                 bridges.put("udp", true);
                 bridges.put("wifiDirect", true);
                 bridges.put("widget", true);
+                bridges.put("tasks", true);
+                bridges.put("bluetooth", true);
                 caps.put("bridges", bridges);
 
                 JSONObject perms = new JSONObject();

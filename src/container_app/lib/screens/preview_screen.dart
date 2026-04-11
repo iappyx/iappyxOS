@@ -49,6 +49,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
 (function(){
   // In-memory storage (persists within preview session)
   var _store={};
+  window._iappyxStoreRef=_store;
 
   // Callback registry (mirrors real bridge pattern)
   window._iappyxCb=window._iappyxCb||{};
@@ -502,6 +503,23 @@ class _PreviewScreenState extends State<PreviewScreen> {
     onTokenRefresh:function(){}
   };
 
+  var bluetooth={
+    scan:function(fn){console.warn('[Preview] Bluetooth not available in preview');},
+    stopScan:function(){},
+    connect:function(addr,cbId){_unsupported('bluetooth.connect',cbId);},
+    send:function(){},sendHex:function(){},
+    onData:function(){},onClose:function(){},
+    disconnect:function(){},
+    isConnected:function(){return false;}
+  };
+
+  var tasks={
+    schedule:function(id,ms,fn){console.log('[Preview] Task scheduled: '+id+' every '+ms+'ms');},
+    cancel:function(id){console.log('[Preview] Task cancelled: '+id);},
+    cancelAll:function(){console.log('[Preview] All tasks cancelled');},
+    getScheduled:function(){return '[]';}
+  };
+
   var widget={
     update:function(json){console.log('[Preview] Widget update:', JSON.stringify(typeof json==='string'?JSON.parse(json):json));},
     clear:function(){console.log('[Preview] Widget cleared');},
@@ -538,7 +556,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
     httpServer:httpServer, httpClient:httpClient,
     tcp:tcp, udp:udp, nsd:nsd,
     wifiDirect:wifiDirect, push:push,
-    download:download, media:media, widget:widget,
+    download:download, media:media, bluetooth:bluetooth, tasks:tasks, widget:widget,
     // Top-level convenience methods (same as ShellActivity)
     save:function(k,v){storage.save(k,v);},
     load:function(k){return storage.load(k);},
@@ -603,7 +621,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
           final text = args['text'] as String? ?? '';
           Clipboard.setData(ClipboardData(text: text));
           if (mounted) {
-            _controller.runJavaScript("window.iappyx._store=window.iappyx._store||{};window.iappyx._store['__clipboard']=${jsonEncode(text)};");
+            _controller.runJavaScript("window.iappyx._store=window.iappyx._store||{};window.iappyx._store['__clipboard']=${jsonEncode(text)};if(window._iappyxStoreRef)window._iappyxStoreRef['__clipboard']=${jsonEncode(text)};");
           }
         }
         break;

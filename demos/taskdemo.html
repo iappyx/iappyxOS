@@ -1,0 +1,123 @@
+<!-- MIT License — iappyxOS Demo App -->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Background Tasks</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:#0d0d1a;color:#eaeaea;font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:20px}
+h2{font-size:18px;margin-bottom:16px;text-align:center}
+.section{background:#1a1a2e;border-radius:14px;padding:16px;margin-bottom:16px}
+.section h3{font-size:14px;color:#4FC3F7;margin-bottom:12px}
+.btn{background:#0f3460;color:#fff;border:none;padding:12px 20px;border-radius:10px;font-size:14px;width:100%;margin-bottom:8px;cursor:pointer}
+.btn:active{opacity:0.7}
+.btn.danger{background:#ff6b6b22;color:#FF6B6B}
+.status{color:#4FC3F7;font-size:12px;margin-top:8px;text-align:center}
+.log{background:#0d0d1a;border-radius:8px;padding:12px;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);max-height:200px;overflow-y:auto;font-family:monospace}
+.info{background:#0d0d1a;border-radius:8px;padding:12px;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4)}
+</style></head><body>
+<h2>Background Tasks</h2>
+
+<div class="section">
+<h3>Schedule a Background Task</h3>
+<p style="font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:12px">Tasks run every 15+ minutes, even when the app is closed. They can fetch data, update widgets, and send notifications.</p>
+<button class="btn" onclick="scheduleTask()">Schedule Counter Task (15 min)</button>
+<button class="btn" onclick="scheduleWidget()">Schedule Widget Updater (15 min)</button>
+<button class="btn danger" onclick="cancelAll()">Cancel All Tasks</button>
+</div>
+
+<div class="section">
+<h3>Active Tasks</h3>
+<div id="taskList">Loading...</div>
+</div>
+
+<div id="status" class="status"></div>
+<div id="logBox" class="log"></div>
+
+<div class="info">Each task runs in a background WebView with full bridge access. Call <code>window._taskDone()</code> when finished. Max 30 seconds per execution.</div>
+
+<script>
+var logEl;
+function waitBridge(fn){if(typeof iappyx!=='undefined')fn();else setTimeout(function(){waitBridge(fn)},200)}
+
+function log(msg){
+  var d=new Date().toLocaleTimeString();
+  logEl.innerHTML='['+d+'] '+msg+'<br>'+logEl.innerHTML;
+}
+
+function setStatus(msg){document.getElementById('status').textContent=msg}
+
+function refreshList(){
+  var raw=iappyx.tasks.getScheduled();
+  var tasks=JSON.parse(raw);
+  var el=document.getElementById('taskList');
+  if(tasks.length===0){el.innerHTML='<span style="color:rgba(255,255,255,0.3)">No tasks scheduled</span>';return}
+  el.innerHTML=tasks.map(function(t){
+    return '<div style="padding:6px 0;border-bottom:1px solid #0d0d1a">'+t.id+' — every '+(t.intervalMs/60000)+' min</div>';
+  }).join('');
+}
+
+function scheduleTask(){
+  iappyx.tasks.schedule('counter','900000','window.onBackgroundTask');
+  iappyx.vibration.click();
+  log('Scheduled: counter task');
+  setStatus('Counter task scheduled — runs every 15 min');
+  refreshList();
+}
+
+function scheduleWidget(){
+  // First set up a widget
+  iappyx.widget.update(JSON.stringify({
+    layout:'100',
+    background:'#1A1A2E',padding:12,
+    rows:[{cells:[{title:'Last updated',value:'Never',valueColor:'#4FC3F7',titleSize:10,valueSize:16}]}]
+  }));
+  iappyx.tasks.schedule('widgetRefresh','900000','window.onBackgroundTask');
+  iappyx.vibration.click();
+  log('Scheduled: widget refresh task (add widget to home screen!)');
+  setStatus('Widget updater scheduled');
+  refreshList();
+}
+
+function cancelAll(){
+  iappyx.tasks.cancelAll();
+  iappyx.vibration.tick();
+  log('All tasks cancelled');
+  setStatus('All tasks cancelled');
+  refreshList();
+}
+
+// This function runs in the background AND in the foreground
+window.onBackgroundTask=function(e){
+  var bg=e&&e.background;
+  var now=new Date().toLocaleTimeString();
+
+  if(e.taskId==='counter'){
+    // Increment a persistent counter
+    var count=parseInt(iappyx.load('task_count')||'0')+1;
+    iappyx.save('task_count',String(count));
+    if(!bg) log('Counter task ran: count='+count);
+  }
+
+  if(e.taskId==='widgetRefresh'){
+    // Update the widget with current time
+    iappyx.widget.update(JSON.stringify({
+      layout:'100',
+      background:'#1A1A2E',padding:12,
+      rows:[{cells:[{title:'Last updated',value:now,valueColor:'#69F0AE',titleSize:10,valueSize:16}]}]
+    }));
+    if(!bg) log('Widget updated at '+now);
+  }
+
+  // Signal completion
+  if(typeof window._taskDone==='function') window._taskDone();
+};
+
+waitBridge(function(){
+  logEl=document.getElementById('logBox');
+  refreshList();
+  log('Ready');
+  setStatus('Schedule a task to get started');
+});
+</script></body></html>

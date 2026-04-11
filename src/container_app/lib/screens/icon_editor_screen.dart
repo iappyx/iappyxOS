@@ -68,7 +68,6 @@ class _IconEditorScreenState extends State<IconEditorScreen> {
       _selectedIndex >= 0 && _selectedIndex < _config.elements.length
           ? _config.elements[_selectedIndex] : null;
 
-  @override
   Future<bool> _onBack() async {
     if (_config.toJsonString() != widget.config.toJsonString()) {
       final discard = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
