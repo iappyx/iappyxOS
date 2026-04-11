@@ -24,6 +24,7 @@ class MyAppsScreen extends StatefulWidget {
 
 class MyAppsScreenState extends State<MyAppsScreen> {
   List<AppData> _apps = [];
+  Map<String, int> _versionCounts = {};
   bool _loading = true;
   String? _rebuildingId;
   final List<String> _log = [];
@@ -36,7 +37,12 @@ class MyAppsScreenState extends State<MyAppsScreen> {
 
   Future<void> refresh() async {
     final apps = await AppStorage.loadAll();
-    if (mounted) setState(() { _apps = apps; _loading = false; });
+    final counts = <String, int>{};
+    for (final app in apps) {
+      final versions = await AppStorage.getVersions(app.id);
+      if (versions.isNotEmpty) counts[app.id] = versions.length + 1; // current = versions + 1
+    }
+    if (mounted) setState(() { _apps = apps; _versionCounts = counts; _loading = false; });
   }
 
   void _addLog(String msg) { if (mounted) setState(() => _log.add(msg)); }
@@ -165,6 +171,12 @@ class MyAppsScreenState extends State<MyAppsScreen> {
                 title: const Text('Share'),
                 onTap: () { Navigator.pop(ctx); _showShareSheet(app); },
               ),
+              if (app.html.isNotEmpty && app.templateId.isEmpty)
+                ListTile(
+                  leading: const Icon(Icons.history, color: Colors.white54),
+                  title: const Text('Version History'),
+                  onTap: () { Navigator.pop(ctx); _showVersionHistory(app); },
+                ),
               if (app.packageName.isNotEmpty)
                 ListTile(
                   leading: const Icon(Icons.delete_forever, color: Colors.white54),
@@ -266,13 +278,6 @@ class MyAppsScreenState extends State<MyAppsScreen> {
                   title: const Text('Submit to Showcase'),
                   subtitle: const Text('Share with the community via GitHub PR', style: TextStyle(fontSize: 12, color: Colors.white38)),
                   onTap: () { Navigator.pop(ctx); _submitToShowcase(app); },
-                ),
-              if (app.html.isNotEmpty && app.templateId.isEmpty)
-                ListTile(
-                  leading: const Icon(Icons.history, color: Colors.white54),
-                  title: const Text('Version History'),
-                  subtitle: const Text('View and restore previous versions', style: TextStyle(fontSize: 12, color: Colors.white38)),
-                  onTap: () { Navigator.pop(ctx); _showVersionHistory(app); },
                 ),
               ],
             ],
@@ -478,7 +483,17 @@ class MyAppsScreenState extends State<MyAppsScreen> {
                         ]),
                         const SizedBox(height: 24),
                         if (_log.isNotEmpty) ...[
-                          BuildLog(log: _log),
+                          Stack(children: [
+                            BuildLog(log: _log),
+                            Positioned(right: 0, top: 20, child: GestureDetector(
+                              onTap: () => setState(() => _log.clear()),
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(color: const Color(0xFF1A1A2E), borderRadius: BorderRadius.circular(12)),
+                                child: const Icon(Icons.close, size: 16, color: Colors.white38),
+                              ),
+                            )),
+                          ]),
                           const SizedBox(height: 16),
                         ],
                       ],
@@ -569,6 +584,11 @@ class MyAppsScreenState extends State<MyAppsScreen> {
                               fontSize: 15, fontWeight: FontWeight.w600,
                             ), maxLines: 1, overflow: TextOverflow.ellipsis),
                           ),
+                          if (_versionCounts.containsKey(app.id))
+                            Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: Text('v${_versionCounts[app.id]}', style: const TextStyle(fontSize: 10, color: Color(0xFF4FC3F7))),
+                            ),
                           Text(date, style: const TextStyle(fontSize: 11, color: Colors.white38)),
                         ],
                       ),
@@ -678,8 +698,20 @@ class MyAppsScreenState extends State<MyAppsScreen> {
     return null;
   }
 
-  void _uninstall(AppData app) {
-    Generator.uninstallApp(packageName: app.packageName);
+  void _uninstall(AppData app) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A2E),
+        title: const Text('Uninstall from device?'),
+        content: Text('Uninstall "${app.name}" from your device. Your saved app data in iappyxOS will be kept.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Uninstall', style: TextStyle(color: Color(0xFFFF6B6B)))),
+        ],
+      ),
+    );
+    if (confirm == true) Generator.uninstallApp(packageName: app.packageName);
   }
 
   // ── P2P Sharing ──

@@ -190,6 +190,21 @@ class CreateScreenState extends State<CreateScreen> {
   /// Called when the Create tab becomes visible (e.g. after Settings change).
   void refreshProvider() => _loadActiveProvider();
 
+  bool get isEditing => _isEditing;
+  bool get hasMode => _mode != null;
+  bool get isShowingBuildLog => _showBuildLog;
+
+  void dismissBuildLog() {
+    if (!_isBuilding) setState(() => _showBuildLog = false);
+  }
+
+  /// Called when user taps the Create tab while already on it or from another tab while editing.
+  void handleCreateTap() {
+    if (_editingId != null || _mode != null) {
+      _confirmExit(_reset);
+    }
+  }
+
   /// When editing an existing app via API, seed the conversation with the current code
   /// so the user can ask for changes directly without re-generating from scratch.
   void _startEditConversation() {
@@ -278,18 +293,22 @@ class CreateScreenState extends State<CreateScreen> {
     return _conversation.any((m) => m.role == 'assistant' && m.content.trim().startsWith('<'));
   }
 
+  bool get _isEditing => _editingId != null;
+
   Future<void> _confirmExit(VoidCallback onConfirm) async {
-    if (!_hasUnsavedChanges) { onConfirm(); return; }
+    if (!_hasUnsavedChanges && !_isEditing) { onConfirm(); return; }
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A2E),
-        title: const Text('Unsaved changes'),
-        content: const Text('You have AI-generated code that hasn\'t been saved. Leave anyway?'),
+        title: const Text('Discard changes?'),
+        content: Text(_isEditing
+          ? 'You\'re currently editing ${_nameController.text.trim().isNotEmpty ? _nameController.text.trim() : 'this app'}. Discard and start fresh?'
+          : 'You have unsaved changes. Discard and start fresh?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Stay')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           TextButton(onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Leave', style: TextStyle(color: Color(0xFFFF6B6B)))),
+            child: const Text('Discard changes', style: TextStyle(color: Color(0xFFFF6B6B)))),
         ],
       ),
     );
@@ -545,10 +564,15 @@ class CreateScreenState extends State<CreateScreen> {
     child: ShowcaseScreen(onBack: () => setState(() => _mode = null), onLoadApp: (name, html) {
       _nameController.text = name;
       _htmlController.text = html;
+      _descController.text = 'Showcase app: $name';
       _genMethod = 'manual';
       _htmlExpanded = true;
       _descExpanded = false;
       setState(() => _mode = 'ai');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$name loaded — preview or build it'), backgroundColor: const Color(0xFF1A1A2E), duration: const Duration(seconds: 3)));
+      });
     }),
   );
 
@@ -579,6 +603,14 @@ class CreateScreenState extends State<CreateScreen> {
                 Text(_nameController.text, style: const TextStyle(fontSize: 12, color: Colors.white38)),
             ],
           )),
+          GestureDetector(
+            onTap: () => _confirmExit(isEdit ? () => widget.onViewMyApps?.call() : _reset),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(color: const Color(0xFF1A1A2E), borderRadius: BorderRadius.circular(8)),
+              child: const Text('Cancel', style: TextStyle(fontSize: 13, color: Colors.white54)),
+            ),
+          ),
         ]),
         const SizedBox(height: 24),
 
@@ -903,21 +935,29 @@ class CreateScreenState extends State<CreateScreen> {
           final elapsed = _genStartTime != null
               ? DateTime.now().difference(_genStartTime!).inSeconds
               : 0;
-          return Row(children: [
-            const SizedBox(width: 16, height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF4FC3F7))),
-            const SizedBox(width: 10),
-            Text('Generating... ${elapsed}s',
-                style: const TextStyle(fontSize: 12, color: Colors.white38)),
-            const Spacer(),
-            GestureDetector(
-              onTap: () => setState(() {
-                _genId++;
-                _aiGenerating = false;
-                _genStartTime = null;
-              }),
-              child: const Text('Cancel', style: TextStyle(fontSize: 12, color: Color(0xFFFF6B6B))),
-            ),
+          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const SizedBox(width: 16, height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF4FC3F7))),
+              const SizedBox(width: 10),
+              Text('Generating... ${elapsed}s',
+                  style: const TextStyle(fontSize: 12, color: Colors.white38)),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => setState(() {
+                  _genId++;
+                  _aiGenerating = false;
+                  _genStartTime = null;
+                }),
+                child: const Text('Cancel', style: TextStyle(fontSize: 12, color: Color(0xFFFF6B6B))),
+              ),
+            ]),
+            if (elapsed > 60)
+              const Padding(
+                padding: EdgeInsets.only(left: 26, top: 6),
+                child: Text('Taking longer than usual. You can cancel and try again.',
+                  style: TextStyle(fontSize: 11, color: Colors.white24)),
+              ),
           ]);
         },
       ),
@@ -1049,9 +1089,20 @@ class CreateScreenState extends State<CreateScreen> {
   Widget _buildingView() => SingleChildScrollView(
     padding: const EdgeInsets.fromLTRB(24, 32, 24, 40),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      _appHeader('Building...'),
+      Row(children: [
+        if (!_isBuilding)
+          GestureDetector(
+            onTap: () => setState(() { _showBuildLog = false; _log.clear(); }),
+            child: Container(
+              width: 38, height: 38, margin: const EdgeInsets.only(right: 12),
+              decoration: BoxDecoration(color: const Color(0xFF1A1A2E), borderRadius: BorderRadius.circular(10)),
+              child: const Icon(Icons.arrow_back, size: 18, color: Colors.white54),
+            ),
+          ),
+        Expanded(child: _appHeader(_isBuilding ? 'Building...' : 'Build Complete')),
+      ]),
       const SizedBox(height: 24),
-      if (_log.isEmpty) const LinearProgressIndicator(color: Color(0xFF4FC3F7), backgroundColor: Color(0xFF1A1A2E)),
+      if (_isBuilding && _log.isEmpty) const LinearProgressIndicator(color: Color(0xFF4FC3F7), backgroundColor: Color(0xFF1A1A2E)),
       BuildLog(log: _log),
       if (!_isBuilding && _log.isNotEmpty) ...[
         const SizedBox(height: 24),

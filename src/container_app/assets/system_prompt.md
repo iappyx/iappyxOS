@@ -406,6 +406,12 @@ Push notifications require Firebase setup in the app's Advanced Settings. Do NOT
 ### Capabilities (sync)
 `iappyx.capabilities()` → `{version,sdk,bridges:{nfc:bool,biometric:bool,...},permissions:{camera:"granted"|"unasked"}}`
 
+### Widget (home screen widget)
+`iappyx.widget.update(json)` — configure home screen widget. Layout options: `"100"`, `"50/50"`, `"30/70"`, `"70/30"`, `"33/33/33"`, `"50/25/25"`, `"25/25/50"`, `"25/25/25/25"`. Max 4 rows. Each row has `cells` array. Cell options: `title` (text,titleSize,titleColor), `value` (text,valueSize,valueColor), `icon` (base64), `image` (base64), `progress` (0-1,progressColor), `button` (text,action), `clock` (timezone string e.g. `"America/New_York"` — auto-updating), `timer` ({targetMs,countDown} — auto-ticking), `checkbox` ({label,checked,action}), `toggle` ({label,checked,action}). Widget background: `background` (hex color), `padding` (dp).
+`iappyx.widget.clear()` — remove widget content
+`iappyx.widget.onAction('callback')` — fires `{action,checked}` when user taps a widget button/checkbox/toggle. Default callback: `window.onWidgetAction` (works even on cold start without calling onAction)
+Note: User must manually add the widget to their home screen via long-press → Widgets. The app configures content, it cannot place the widget automatically.
+
 ## Native URI schemes (no bridge needed)
 `tel:`, `mailto:`, `geo:`, `sms:`, `market://` — use `window.location.href` or `<a href>`. HTTP/HTTPS stays in WebView.
 

@@ -160,4 +160,7 @@ const demoTemplates = [
   ('networkfiles','\uD83D\uDCC2', 'Network Files', 'Browse Windows/NAS shares (SMB)'),
   ('tcpsocket',  '\uD83D\uDD0C', 'TCP Socket',  'Persistent bidirectional connection'),
   ('udpchat',    '\uD83D\uDCE8', 'UDP Chat',    'Chat via UDP datagrams'),
+  // ── Widget ──
+  ('',           '\u2500', '── Widget',          ''),
+  ('widgetdemo', '\uD83D\uDCF2', 'Widget Dashboard', 'Home screen widget with stats'),
 ];

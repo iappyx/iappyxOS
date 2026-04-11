@@ -220,6 +220,7 @@ class AppGenerator(private val context: Context) {
             "networkfiles" -> getNetworkFilesApp(label)
             "tcpsocket"    -> getTcpSocketApp(label)
             "udpchat"      -> getUdpChatApp(label)
+            "widgetdemo"   -> getWidgetDemoApp(label)
             else           -> todoApp(label)
         }
         val cleanHtml = html.replace("<!-- Built with iappyxOS — https://github.com/iappyx/iappyxOS -->\n", "")
@@ -5809,6 +5810,168 @@ function knownChar(uuid) {
 function esc(s) { return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
 
 window.addEventListener('load', function() { setTimeout(init, 200); });
+</script></body></html>""".trimIndent()
+
+    fun getWidgetDemoApp(label: String) = """<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>$label</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:#0d0d1a;color:#eaeaea;font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:20px}
+h2{font-size:18px;margin-bottom:16px;text-align:center}
+.section{background:#1a1a2e;border-radius:14px;padding:16px;margin-bottom:16px}
+.section h3{font-size:14px;color:#4FC3F7;margin-bottom:12px}
+.row{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.btn{background:#0f3460;color:#fff;border:none;padding:10px 16px;border-radius:10px;font-size:13px;flex:1;min-width:100px;cursor:pointer}
+.btn:active{opacity:0.7}
+.btn.active{background:#4FC3F7;color:#0d0d1a}
+.status{color:#4FC3F7;font-size:12px;margin-top:8px;text-align:center}
+label{font-size:12px;color:rgba(255,255,255,0.5);display:block;margin-bottom:4px}
+input,select{background:#0d0d1a;color:#eaeaea;border:1px solid #2a2a3e;border-radius:8px;padding:8px 12px;width:100%;font-size:13px;margin-bottom:8px}
+.info{background:#0d0d1a;border-radius:8px;padding:12px;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4)}
+</style></head><body>
+<h2>$label</h2>
+
+<div class="section">
+<h3>Layout</h3>
+<div class="row">
+<button class="btn active" onclick="setLayout('100')">1 Col</button>
+<button class="btn" onclick="setLayout('50/50')">50/50</button>
+<button class="btn" onclick="setLayout('70/30')">70/30</button>
+<button class="btn" onclick="setLayout('33/33/33')">3 Col</button>
+<button class="btn" onclick="setLayout('25/25/25/25')">4 Col</button>
+</div>
+</div>
+
+<div class="section">
+<h3>Quick Presets</h3>
+<div class="row">
+<button class="btn" onclick="presetStats()">Stats Dashboard</button>
+<button class="btn" onclick="presetClock()">World Clock</button>
+</div>
+<div class="row">
+<button class="btn" onclick="presetTodo()">Todo List</button>
+<button class="btn" onclick="presetTimer()">Timer</button>
+</div>
+<div class="row">
+<button class="btn" onclick="presetControls()">Controls</button>
+<button class="btn" onclick="clearWidget()">Clear Widget</button>
+</div>
+</div>
+
+<div class="status" id="status">Add the widget to your home screen first</div>
+<div class="info">Long-press your home screen → Widgets → find this app → drag to home screen. Then tap a preset above to configure it.</div>
+
+<script>
+var layout='100';
+function waitBridge(fn){if(typeof iappyx!=='undefined')fn();else setTimeout(function(){waitBridge(fn)},200)}
+
+function setLayout(l){
+  layout=l;
+  document.querySelectorAll('.row .btn').forEach(function(b){b.classList.remove('active')});
+  event.target.classList.add('active');
+  setStatus('Layout: '+l);
+}
+
+function setStatus(msg){document.getElementById('status').textContent=msg}
+
+function updateWidget(config){
+  config.layout=layout;
+  config.background='#1A1A2E';
+  config.padding=12;
+  iappyx.widget.update(JSON.stringify(config));
+  iappyx.vibration.tick();
+  setStatus('Widget updated! Check your home screen.');
+}
+
+function makeIcon(emoji,size){
+  var c=document.createElement('canvas');c.width=size;c.height=size;
+  var ctx=c.getContext('2d');ctx.font=size*0.7+'px serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(emoji,size/2,size/2);
+  return c.toDataURL('image/png').split(',')[1];
+}
+
+function presetStats(){
+  var steps=makeIcon('\uD83D\uDEB6',48),dist=makeIcon('\uD83D\uDCCF',48),cal=makeIcon('\uD83D\uDD25',48),time=makeIcon('\u23F1',48);
+  updateWidget({
+    layout:'25/25/25/25',
+    rows:[{cells:[
+      {icon:steps,title:'Steps',value:'4,231',valueColor:'#4FC3F7',titleSize:10,valueSize:18},
+      {icon:dist,title:'Distance',value:'3.2 km',valueColor:'#69F0AE',titleSize:10,valueSize:18},
+      {icon:cal,title:'Calories',value:'287',valueColor:'#FF6B6B',titleSize:10,valueSize:18},
+      {icon:time,title:'Active',value:'42 min',valueColor:'#FFD93D',titleSize:10,valueSize:18}
+    ]}]
+  });
+}
+
+function presetClock(){
+  updateWidget({
+    layout:'25/25/25/25',
+    rows:[{cells:[
+      {title:'Tokyo',titleColor:'#aaa',titleSize:10,clock:'Asia/Tokyo'},
+      {title:'London',titleColor:'#aaa',titleSize:10,clock:'Europe/London'},
+      {title:'New York',titleColor:'#aaa',titleSize:10,clock:'America/New_York'},
+      {title:'Sydney',titleColor:'#aaa',titleSize:10,clock:'Australia/Sydney'}
+    ]}]
+  });
+}
+
+function presetTodo(){
+  updateWidget({
+    layout:'100',
+    rows:[
+      {cells:[{checkbox:{label:'Buy groceries',checked:false,action:'t1'}}]},
+      {cells:[{checkbox:{label:'Walk the dog',checked:true,action:'t2'}}]},
+      {cells:[{checkbox:{label:'Call dentist',checked:false,action:'t3'}}]},
+      {cells:[{checkbox:{label:'Read a book',checked:false,action:'t4'}}]}
+    ]
+  });
+}
+
+function presetTimer(){
+  updateWidget({
+    layout:'100',
+    rows:[
+      {cells:[{title:'Cooking Timer',titleColor:'#4FC3F7',titleSize:14}]},
+      {cells:[{timer:{targetMs:600000,countDown:true}}]},
+      {cells:[{button:'Open App',action:'open'}]}
+    ]
+  });
+}
+
+function presetControls(){
+  updateWidget({
+    layout:'50/50',
+    rows:[
+      {cells:[
+        {toggle:{label:'Living Room',checked:true,action:'light1'}},
+        {toggle:{label:'Bedroom',checked:false,action:'light2'}}
+      ]},
+      {cells:[
+        {toggle:{label:'Kitchen',checked:true,action:'light3'}},
+        {toggle:{label:'Garden',checked:false,action:'light4'}}
+      ]}
+    ]
+  });
+}
+
+function clearWidget(){
+  iappyx.widget.clear();
+  iappyx.vibration.tick();
+  setStatus('Widget cleared');
+}
+
+waitBridge(function(){
+  iappyx.widget.onAction('onWidgetAction');
+  setStatus('Ready — pick a preset or add the widget to your home screen');
+});
+
+function onWidgetAction(e){
+  setStatus('Widget action: '+e.action+(e.checked!==undefined?' (checked: '+e.checked+')':''));
+  iappyx.vibration.click();
+}
 </script></body></html>""".trimIndent()
 
 }

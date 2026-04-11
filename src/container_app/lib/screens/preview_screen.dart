@@ -502,6 +502,12 @@ class _PreviewScreenState extends State<PreviewScreen> {
     onTokenRefresh:function(){}
   };
 
+  var widget={
+    update:function(json){console.log('[Preview] Widget update:', JSON.stringify(typeof json==='string'?JSON.parse(json):json));},
+    clear:function(){console.log('[Preview] Widget cleared');},
+    onAction:function(fn){console.log('[Preview] Widget onAction registered');}
+  };
+
   var download={
     enqueue:function(url,name,fn){console.warn('[Preview] Download not available in preview');},
     cancel:function(){}
@@ -532,7 +538,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
     httpServer:httpServer, httpClient:httpClient,
     tcp:tcp, udp:udp, nsd:nsd,
     wifiDirect:wifiDirect, push:push,
-    download:download, media:media,
+    download:download, media:media, widget:widget,
     // Top-level convenience methods (same as ShellActivity)
     save:function(k,v){storage.save(k,v);},
     load:function(k){return storage.load(k);},

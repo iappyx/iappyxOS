@@ -105,13 +105,42 @@ class _AppShellState extends State<AppShell> {
     setState(() => _tab = tab);
   }
 
+  Future<bool> _onBackPressed() async {
+    if (_tab == 1) {
+      final cs = _createKey.currentState;
+      if (cs != null) {
+        if (cs.isShowingBuildLog) { cs.dismissBuildLog(); return false; }
+        if (cs.isEditing || cs.hasMode) { cs.handleCreateTap(); return false; }
+      }
+      setState(() => _tab = 0);
+      return false;
+    }
+    if (_tab == 2) { setState(() => _tab = 0); return false; }
+    return true; // My Apps tab — let system handle (exit/minimize)
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final shouldPop = await _onBackPressed();
+        if (shouldPop && context.mounted) Navigator.of(context).maybePop();
+      },
+      child: Scaffold(
       body: IndexedStack(
         index: _tab,
         children: [
-          MyAppsScreen(key: _myAppsKey, onEditApp: _editApp, onCreateTap: () => _switchTab(1)),
+          MyAppsScreen(key: _myAppsKey, onEditApp: _editApp, onCreateTap: () {
+            final cs = _createKey.currentState;
+            if (cs != null && cs.isEditing) {
+              cs.handleCreateTap();
+              setState(() => _tab = 1);
+            } else {
+              _switchTab(1);
+            }
+          }),
           CreateScreen(key: _createKey, onAppSaved: _onAppSaved, onViewMyApps: () => _switchTab(0)),
           SettingsScreen(onAppsImported: _onAppsImported),
         ],
@@ -138,6 +167,6 @@ class _AppShellState extends State<AppShell> {
           ),
         ],
       ),
-    );
+    ));
   }
 }

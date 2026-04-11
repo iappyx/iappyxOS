@@ -69,8 +69,32 @@ class _IconEditorScreenState extends State<IconEditorScreen> {
           ? _config.elements[_selectedIndex] : null;
 
   @override
+  Future<bool> _onBack() async {
+    if (_config.toJsonString() != widget.config.toJsonString()) {
+      final discard = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A2E),
+        title: const Text('Discard changes?'),
+        content: const Text('You have unsaved icon changes.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep editing')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Discard', style: TextStyle(color: Color(0xFFFF6B6B)))),
+        ],
+      ));
+      return discard == true;
+    }
+    return true;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (await _onBack() && context.mounted) Navigator.pop(context);
+      },
+      child: Scaffold(
       backgroundColor: const Color(0xFF0D0D1A),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0D0D1A),
@@ -78,20 +102,7 @@ class _IconEditorScreenState extends State<IconEditorScreen> {
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () async {
-            if (_config.toJsonString() != widget.config.toJsonString()) {
-              final discard = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
-                backgroundColor: const Color(0xFF1A1A2E),
-                title: const Text('Discard changes?'),
-                content: const Text('You have unsaved icon changes.'),
-                actions: [
-                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep editing')),
-                  TextButton(onPressed: () => Navigator.pop(ctx, true),
-                    child: const Text('Discard', style: TextStyle(color: Color(0xFFFF6B6B)))),
-                ],
-              ));
-              if (discard != true) return;
-            }
-            if (context.mounted) Navigator.pop(context);
+            if (await _onBack() && context.mounted) Navigator.pop(context);
           },
         ),
         actions: [
@@ -114,7 +125,7 @@ class _IconEditorScreenState extends State<IconEditorScreen> {
           Expanded(child: _buildLayerList()),
         ],
       ),
-    );
+    ));
   }
 
   Widget _buildPreview(double size) {

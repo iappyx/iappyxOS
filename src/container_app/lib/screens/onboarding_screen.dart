@@ -23,7 +23,7 @@ class OnboardingScreen extends StatelessWidget {
                 fontSize: 15, color: Colors.white38,
               )),
               const Spacer(flex: 2),
-              _step(Icons.chat_outlined, 'Describe', 'Tell an AI what app you want'),
+              _step(Icons.chat_outlined, 'Describe', 'Tell any AI what app you want — or connect your own API key'),
               const SizedBox(height: 28),
               _step(Icons.build_outlined, 'Build', 'It gets built and signed on your phone'),
               const SizedBox(height: 28),

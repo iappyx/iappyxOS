@@ -303,6 +303,7 @@ public class ShellActivity extends Activity {
         webView.addJavascriptInterface(new WifiDirectBridge(),   "iappyxWifiDirect");
         webView.addJavascriptInterface(new NsdBridge(),          "iappyxNsd");
         webView.addJavascriptInterface(new HttpServerBridge(),   "iappyxHttpServer");
+        webView.addJavascriptInterface(new WidgetBridge(),"iappyxWidget");
         webView.addJavascriptInterface(new CapabilitiesBridge(),"iappyxCapabilities");
 
         webView.setWebChromeClient(new WebChromeClient() {
@@ -429,6 +430,7 @@ public class ShellActivity extends Activity {
                     "getAppName:function(){return iappyxDevice.getAppName()}," +
                     "sharePhoto:function(b){iappyxCamera.sharePhoto(b)}," +
                     "shareText:function(t,s){iappyxCamera.shareText(t,s||'')}," +
+                    "widget:iappyxWidget," +
                     "capabilities:function(){return JSON.parse(iappyxCapabilities.get())}," +
                     "onTextSelected:function(fn){document.addEventListener('selectionchange',function(){" +
                     "var s=window.getSelection();if(s&&s.toString().trim().length>0){fn({text:s.toString().trim()})}" +
@@ -466,6 +468,20 @@ public class ShellActivity extends Activity {
                         if (activityAlive) fireEvent(sCb, "{\"shortcutId\":\"" + escapeJson(shortcutId) + "\"}");
                     }, 500);
                     launchIntent.removeExtra("shortcut_id");
+                }
+                // Check if launched by widget action (cold start)
+                if (launchIntent != null && launchIntent.hasExtra("widget_action")) {
+                    final String wAct = launchIntent.getStringExtra("widget_action");
+                    final boolean wChk = launchIntent.getBooleanExtra("widget_checked", false);
+                    v.postDelayed(() -> {
+                        if (!activityAlive) return;
+                        v.evaluateJavascript("typeof window.onWidgetAction", result -> {
+                            if ("\"function\"".equals(result)) {
+                                v.evaluateJavascript("window.onWidgetAction({action:\"" + escapeJson(wAct) + "\",checked:" + wChk + "})", null);
+                            }
+                        });
+                    }, 500);
+                    launchIntent.removeExtra("widget_action");
                 }
                 // Check if launched by share (cold start)
                 if (launchIntent != null) handleShareIntent(launchIntent);
@@ -869,6 +885,16 @@ public class ShellActivity extends Activity {
             if (callbackFn != null && isSafeCallbackName(callbackFn)) {
                 webView.postDelayed(() -> fireEvent(callbackFn, "{}"), 500);
             }
+        }
+
+        // Handle widget action
+        if (intent.hasExtra("widget_action")) {
+            String wAction = intent.getStringExtra("widget_action");
+            boolean wChecked = intent.getBooleanExtra("widget_checked", false);
+            String wFn = widgetActionCallbackFn != null && isSafeCallbackName(widgetActionCallbackFn)
+                ? widgetActionCallbackFn : "window.onWidgetAction";
+            fireEvent(wFn, "{\"action\":\"" + escapeJson(wAction) + "\",\"checked\":" + wChecked + "}");
+            intent.removeExtra("widget_action");
         }
 
         // Handle app shortcut
@@ -7400,6 +7426,58 @@ public class ShellActivity extends Activity {
         httpSelfSignedCert = null;
     }
 
+    // ── Home Screen Widget ──
+    private String widgetActionCallbackFn;
+
+    class WidgetBridge {
+        @JavascriptInterface
+        public void update(String configJson) {
+            try {
+                // Validate JSON
+                new JSONObject(configJson);
+                // Enable widget provider on first use
+                android.content.pm.PackageManager pm = getPackageManager();
+                android.content.ComponentName widgetComp = new android.content.ComponentName(
+                    getPackageName(), "com.iappyx.generated.placeholder.WidgetProvider");
+                if (pm.getComponentEnabledSetting(widgetComp) != android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
+                    pm.setComponentEnabledSetting(widgetComp,
+                        android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                        android.content.pm.PackageManager.DONT_KILL_APP);
+                }
+                android.content.SharedPreferences prefs = getSharedPreferences("iappyx_widget", MODE_PRIVATE);
+                prefs.edit().putString("config", configJson).commit(); // commit (sync) so widget reads it immediately
+                // Trigger widget update directly via AppWidgetManager
+                android.appwidget.AppWidgetManager awm = android.appwidget.AppWidgetManager.getInstance(ShellActivity.this);
+                int[] ids = awm.getAppWidgetIds(widgetComp);
+                if (ids.length > 0) {
+                    new WidgetProvider().onUpdate(ShellActivity.this, awm, ids);
+                }
+            } catch (Exception e) {
+                Log.e("iappyxOS", "widget.update error: " + e.getMessage());
+            }
+        }
+
+        @JavascriptInterface
+        public void clear() {
+            android.content.SharedPreferences prefs = getSharedPreferences("iappyx_widget", MODE_PRIVATE);
+            prefs.edit().remove("config").commit();
+            android.content.ComponentName widgetComp = new android.content.ComponentName(
+                getPackageName(), "com.iappyx.generated.placeholder.WidgetProvider");
+            android.appwidget.AppWidgetManager awm = android.appwidget.AppWidgetManager.getInstance(ShellActivity.this);
+            int[] ids = awm.getAppWidgetIds(widgetComp);
+            if (ids.length > 0) {
+                new WidgetProvider().onUpdate(ShellActivity.this, awm, ids);
+            }
+        }
+
+        @JavascriptInterface
+        public void onAction(String callbackFn) {
+            if (callbackFn != null && isSafeCallbackName(callbackFn)) {
+                widgetActionCallbackFn = callbackFn;
+            }
+        }
+    }
+
     class CapabilitiesBridge {
         @JavascriptInterface
         public String get() {
@@ -7440,6 +7518,7 @@ public class ShellActivity extends Activity {
                 bridges.put("nsd", true);
                 bridges.put("udp", true);
                 bridges.put("wifiDirect", true);
+                bridges.put("widget", true);
                 caps.put("bridges", bridges);
 
                 JSONObject perms = new JSONObject();

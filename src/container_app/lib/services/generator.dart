@@ -133,11 +133,11 @@ class Generator {
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A2E),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Signature mismatch'),
+        title: const Text('Update required'),
         content: const Text(
-          'This app was built on a different device and has a different signature. '
-          'To install a new version, the existing app must be uninstalled first.\n\n'
-          'App data will be lost.',
+          'A different version of this app is already installed. '
+          'To update it, the old version needs to be removed first.\n\n'
+          'Any data saved in the app will be deleted.',
           style: TextStyle(color: Colors.white70),
         ),
         actions: [
