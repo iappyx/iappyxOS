@@ -42,12 +42,13 @@ public class TaskSchedulerReceiver extends BroadcastReceiver {
                 next.setAction("com.iappyx.TASK_" + taskId);
                 PendingIntent pi = PendingIntent.getBroadcast(context,
                     taskId.hashCode(), next, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,
-                        System.currentTimeMillis() + intervalMs, pi);
+                long triggerAt = System.currentTimeMillis() + intervalMs;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !am.canScheduleExactAlarms()) {
+                    am.set(AlarmManager.RTC_WAKEUP, triggerAt, pi);
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
                 } else {
-                    am.setExact(AlarmManager.RTC_WAKEUP,
-                        System.currentTimeMillis() + intervalMs, pi);
+                    am.setExact(AlarmManager.RTC_WAKEUP, triggerAt, pi);
                 }
                 Log.i("iappyxOS-Task", "Rescheduled task " + taskId + " in " + (intervalMs / 60000) + " min");
             }

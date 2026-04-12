@@ -80,11 +80,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                     int flags = PendingIntent.FLAG_UPDATE_CURRENT;
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
                     PendingIntent pi2 = PendingIntent.getBroadcast(context, rc, next, flags);
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + interval, pi2);
-                    } else {
-                        am.setExact(android.app.AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + interval, pi2);
-                    }
+                    scheduleExact(am, System.currentTimeMillis() + interval, pi2);
                 }
             } catch (Exception ignored) {}
         } else {
@@ -119,19 +115,10 @@ public class AlarmReceiver extends BroadcastReceiver {
                 PendingIntent pi = PendingIntent.getBroadcast(context, rc, alarmIntent, flags);
                 if (interval > 0) {
                     // Repeating alarm — schedule next occurrence
-                    long next = System.currentTimeMillis() + interval;
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, next, pi);
-                    } else {
-                        am.setExact(android.app.AlarmManager.RTC_WAKEUP, next, pi);
-                    }
+                    scheduleExact(am, System.currentTimeMillis() + interval, pi);
                 } else if (ts > System.currentTimeMillis()) {
                     // Future one-shot alarm
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, ts, pi);
-                    } else {
-                        am.setExact(android.app.AlarmManager.RTC_WAKEUP, ts, pi);
-                    }
+                    scheduleExact(am, ts, pi);
                 }
                 // Past one-shot alarms — expired, clean up
                 else {
@@ -161,15 +148,20 @@ public class AlarmReceiver extends BroadcastReceiver {
                 int tFlags = PendingIntent.FLAG_UPDATE_CURRENT;
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) tFlags |= PendingIntent.FLAG_IMMUTABLE;
                 PendingIntent tPi = PendingIntent.getBroadcast(context, taskId.hashCode(), taskIntent, tFlags);
-                long next = System.currentTimeMillis() + intervalMs;
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    taskAm.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, next, tPi);
-                } else {
-                    taskAm.setExact(android.app.AlarmManager.RTC_WAKEUP, next, tPi);
-                }
+                scheduleExact(taskAm, System.currentTimeMillis() + intervalMs, tPi);
             }
         } catch (Exception e) {
             android.util.Log.e("iappyxOS", "reRegisterTasks: " + e.getMessage());
+        }
+    }
+
+    private static void scheduleExact(android.app.AlarmManager am, long triggerAt, PendingIntent pi) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !am.canScheduleExactAlarms()) {
+            am.set(android.app.AlarmManager.RTC_WAKEUP, triggerAt, pi);
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerAt, pi);
+        } else {
+            am.setExact(android.app.AlarmManager.RTC_WAKEUP, triggerAt, pi);
         }
     }
 

@@ -17,13 +17,13 @@ Describe what you want to your favorite AI, and iappyxOS turns it into a real in
   <img src="docs/screenshot_6_preview.png" width="24%" />
 </p>
 
-*My Apps • Create • 60+ Demos • Generated Radio App • Icon Editor • Preview with Console*
+*My Apps • Create • 57 Demos • Generated Radio App • Icon Editor • Preview with Console*
 
 ## What it does
 
 - **AI-generated App** — describe your app in plain language, let an AI generate the code, preview it, and build
 - **Website as App** — turn any website into a lightweight standalone app (1MB, no bridges, sandboxed)
-- **Demo Apps** — 60+ pre-built apps to test native bridges (camera, GPS, NFC, BLE, SSH, network shares, and more)
+- **Demo Apps** — 57 pre-built apps to test native bridges (camera, GPS, NFC, BLE, SSH, network shares, and more)
 
 Every generated app is a real signed APK that appears in your Android launcher. You can share it, uninstall it, or update it — just like any app. Generated apps pass Google Play Protect scanning.
 
@@ -58,7 +58,7 @@ Every generated app is a real signed APK that appears in your Android launcher. 
 ## Features
 
 - **AI generation** — automatic via API (Anthropic, OpenRouter) or manual copy-paste to any AI
-- **33 native bridge classes (120+ methods)** — camera, location, sensors, audio, notifications, push notifications (FCM), NFC, Bluetooth LE, SSH/SFTP, SMB network shares, HTTP server/client, TCP/UDP sockets, WiFi Direct, mDNS, biometric, SQLite, contacts, SMS, calendar, clipboard, TTS, screen, vibration, alarms, media gallery, download manager, home screen widgets, and more
+- **35 native bridge classes (130+ methods)** — camera, location, sensors, audio, notifications, push notifications (FCM), NFC, Bluetooth LE, Bluetooth Classic (serial), SSH/SFTP, SMB network shares, HTTP server/client, TCP/UDP sockets, WiFi Direct, mDNS, biometric, SQLite, contacts, SMS, calendar, clipboard, TTS, screen, vibration, alarms, media gallery, download manager, home screen widgets, scheduled background tasks, and more
 - **Icon editor** — emoji, text, images, custom colors, gradients, shadows, filters, rotation, multiple layers
 - **App management** — launch, rebuild, edit, share (APK, HTML, QR code, WiFi Direct), uninstall
 - **QR code transfer** — share apps between devices via animated QR codes (no internet needed)
@@ -67,6 +67,11 @@ Every generated app is a real signed APK that appears in your Android launcher. 
 - **Preview** — test your app in a WebView with live JS console and simulated bridges before building
 - **Offline-first** — everything except AI generation works in airplane mode
 - **Configurable** — custom system prompt, app ID prefix, multiple AI providers, CSS styles
+- **Showcase** — browse and build community apps from GitHub, submit your own via PR
+- **Home screen widgets** — generated apps can create configurable widgets with grids, clocks, timers, toggles
+- **Background tasks** — scheduled JS execution even when the app is closed, auto-updates widgets
+- **Version history** — automatic snapshots on rebuild, restore previous versions
+- **Onboarding** — guided first-launch experience
 
 ## Quick start
 
@@ -126,7 +131,9 @@ Generated apps access device hardware through a JavaScript bridge (`window.iappy
 | NSD (mDNS) | Service registration, discovery, and resolve |
 | WiFi Direct | P2P peer discovery, connection, group management |
 | Push Notifications | FCM push notifications (requires Firebase setup in Advanced Settings) |
+| Bluetooth Classic | Serial communication (SPP) for Arduino, ESP32, OBD-II car diagnostics, HC-05/HC-06 |
 | Widget | Home screen widgets with configurable grid layouts, clocks, timers, checkboxes, toggles |
+| Tasks | Scheduled background JS execution — fetch APIs, update widgets, send notifications while app is closed |
 | Capabilities | Query available bridges and permissions at runtime |
 
 ## Building from source

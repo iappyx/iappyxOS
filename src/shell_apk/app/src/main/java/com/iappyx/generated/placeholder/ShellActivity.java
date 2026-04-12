@@ -3396,10 +3396,13 @@ public class ShellActivity extends Activity {
                 piFlags(PendingIntent.FLAG_UPDATE_CURRENT));
             AlarmManager am = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
             if (am == null) return;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + (long) intervalMs, pi);
+            long triggerAt = System.currentTimeMillis() + (long) intervalMs;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !am.canScheduleExactAlarms()) {
+                am.set(AlarmManager.RTC_WAKEUP, triggerAt, pi);
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
             } else {
-                am.setExact(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + (long) intervalMs, pi);
+                am.setExact(AlarmManager.RTC_WAKEUP, triggerAt, pi);
             }
         }
     }
@@ -7738,12 +7741,13 @@ public class ShellActivity extends Activity {
             intent.setAction("com.iappyx.TASK_" + taskId);
             android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(ShellActivity.this,
                 taskId.hashCode(), intent, android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP,
-                    System.currentTimeMillis() + intervalMs, pi);
+            long triggerAt = System.currentTimeMillis() + intervalMs;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !am.canScheduleExactAlarms()) {
+                am.set(android.app.AlarmManager.RTC_WAKEUP, triggerAt, pi);
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerAt, pi);
             } else {
-                am.setExact(android.app.AlarmManager.RTC_WAKEUP,
-                    System.currentTimeMillis() + intervalMs, pi);
+                am.setExact(android.app.AlarmManager.RTC_WAKEUP, triggerAt, pi);
             }
         }
 
