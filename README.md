@@ -71,7 +71,7 @@ Every generated app is a real signed APK that appears in your Android launcher. 
 - **Preview** — test your app in a WebView with live JS console and simulated bridges before building
 - **Offline-first** — everything except AI generation works in airplane mode
 - **Configurable** — custom system prompt, app ID prefix, multiple AI providers, CSS styles
-- **Showcase** — browse and build community apps from GitHub, submit your own via PR
+- **[Showcase](https://github.com/iappyx/iappyxOS-showcase)** — browse and build community apps directly in the app, or submit your own via PR
 - **Home screen widgets** — generated apps can create configurable widgets with grids, clocks, timers, toggles
 - **Background tasks** — scheduled JS execution even when the app is closed, auto-updates widgets
 - **Version history** — automatic snapshots on rebuild, restore previous versions

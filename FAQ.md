@@ -68,6 +68,9 @@ Yes. In My Apps, tap the menu on any app and choose Share. Options include:
 
 The receiver can rebuild shared apps in their own iappyxOS with their own icon and name.
 
+### What is the Showcase?
+The [Showcase](https://github.com/iappyx/iappyxOS-showcase) is a collection of community-built apps that you can browse and build directly inside iappyxOS. Go to Create → Showcase, pick an app, and build it. You can also submit your own apps — tap the menu on any app in My Apps → "Submit to Showcase" and a GitHub pull request is created automatically.
+
 ### Can generated apps receive push notifications?
 Yes, with setup. In the app's edit flow, expand "Advanced Settings" — you'll see the app's package name and a file picker for Firebase config. Create a free Firebase project at console.firebase.google.com, add an Android app with that package name, download `google-services.json`, and pick it. Rebuild the app. The AI can then use push notifications when you ask for them.
 
@@ -201,3 +204,5 @@ No plans to. The architecture is deliberately serverless — no infrastructure m
 
 ### Why not build an app store around this?
 Because that would require servers, moderation, accounts, legal compliance, payment processing, and a full-time job maintaining it. iappyxOS is a tool, not a platform. You make apps for yourself and share them however you want — WiFi Direct, email, USB, or just send the APK file. No middleman.
+
+Instead, there's the [Showcase](https://github.com/iappyx/iappyxOS-showcase) — a curated collection of community apps on GitHub. No accounts, no moderation overhead. Anyone can submit an app via pull request, and everyone can browse and build them directly in the app. Open source all the way down.
