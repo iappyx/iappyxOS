@@ -4,6 +4,10 @@
 
 Describe what you want to your favorite AI, and iappyxOS turns it into a real installed APK with its own launcher icon. Building, signing, and installing all happen on-device. No cloud. No subscription. No coding required.
 
+## Demo
+
+[![Watch the demo](https://img.youtube.com/vi/VWvjfr7BCnY/maxresdefault.jpg)](https://youtu.be/VWvjfr7BCnY)
+
 ## Screenshots
 
 <p align="center">
