@@ -29,6 +29,7 @@ package com.iappyx.container
 import android.content.Intent
 import android.media.MediaPlayer
 import android.os.Bundle
+import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
@@ -46,6 +47,9 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val CHANNEL = "com.iappyx.container/generator"
     }
+
+    private var speechResult: MethodChannel.Result? = null
+    private val SPEECH_REQUEST_CODE = 9999
 
     private lateinit var generator: AppGenerator
     private lateinit var p2p: P2PService
@@ -305,6 +309,20 @@ class MainActivity : FlutterActivity() {
                         result.error("FAILED", e.message, null)
                     }
                 }
+                "speechToText" -> {
+                    try {
+                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en")
+                            putExtra(RecognizerIntent.EXTRA_PROMPT, "Describe your app...")
+                        }
+                        speechResult = result
+                        @Suppress("DEPRECATION")
+                        startActivityForResult(intent, SPEECH_REQUEST_CODE)
+                    } catch (e: Exception) {
+                        result.error("FAILED", e.message, null)
+                    }
+                }
                 "keepScreenOn" -> {
                     window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                     result.success(null)
@@ -419,6 +437,20 @@ class MainActivity : FlutterActivity() {
                 }
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == SPEECH_REQUEST_CODE) {
+            if (resultCode == RESULT_OK) {
+                val matches = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                speechResult?.success(matches?.firstOrNull() ?: "")
+            } else {
+                speechResult?.success("")
+            }
+            speechResult = null
         }
     }
 

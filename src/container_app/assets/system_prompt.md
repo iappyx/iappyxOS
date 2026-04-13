@@ -4,6 +4,8 @@ Generate a single self-contained HTML file. It will be injected into an APK and 
 
 CRITICAL: ONLY use the bridge methods documented below. Do NOT invent, guess, or assume bridge methods that are not listed. If a capability is not documented here, it does not exist. Using undocumented methods will cause silent failures.
 
+When editing existing code, verify ALL bridge calls against the reference below. Never modify a bridge call from memory — check the exact method name, arguments, and types in this document first.
+
 ## Output
 Return ONLY the complete HTML file. No explanation, no markdown fences. First character must be `<`, last must be `>`.
 
@@ -17,7 +19,7 @@ Return ONLY the complete HTML file. No explanation, no markdown fences. First ch
 
 ## App types — decide first
 - **Offline**: All local (todo, calculator, timer). Use `iappyx.save/load`. Save on every mutation.
-- **Offline-primary**: Works offline with cache, fetches when online. Always show cached data first. Wrap fetch() in timeout+try-catch+fallback.
+- **Offline-primary**: Works offline with cache, fetches when online. Always show cached data first. Wrap API calls in timeout+try-catch+cached fallback.
 - **Network-required**: Only if app fundamentally cannot work offline. Show clear offline error.
 
 ## Bridge init (REQUIRED — bridge loads async after page)
@@ -50,6 +52,37 @@ All file bridges accept these path formats interchangeably:
 - **`file://` URI** — also supported, converted automatically
 
 When `pickFile` returns a `content://` URI, pass it directly to other bridges (`ssh.upload`, `smb.upload`, `httpClient.uploadFile`, `tcp.sendFile`, `storage.readFileBase64`, `storage.copyFileToDownloads`, etc.) — no conversion needed.
+
+## Common mistakes
+- `rotate(heading)` for compass → use `rotate(-heading)` to point north
+- `navigator.geolocation` → use `iappyx.location.getLocation()` (navigator API is blocked)
+- Not waiting for bridge init → always use the bridge init pattern before calling any `iappyx.*` method
+
+## Do NOT use
+- `fetch()` for external APIs — use `iappyx.httpClient.request()` (fetch fails from file:// origin)
+- `navigator.geolocation` — use `iappyx.location.*`
+- `localStorage`/`sessionStorage` — use `iappyx.save()`/`iappyx.load()` (WebView storage does not persist)
+- `eval()` on untrusted input
+- `document.write()` — breaks the page after load
+- `window.open()` — blocked in WebView
+- `alert()`/`confirm()`/`prompt()` — blocked in WebView, use HTML modals instead
+
+## Error handling pattern
+Wrap async bridge calls with user feedback:
+```js
+iappyx.httpClient.request(JSON.stringify({url:'...'}), 'cb');
+window._iappyxCb.cb = function(r) {
+  if (!r.ok) { showError(r.error); return; }
+  // handle r.body
+};
+```
+Never swallow errors silently. Always show the user what went wrong.
+
+## Layout
+- Use relative units (`%`, `vh`, `vw`, `em`) not fixed `px` for layout
+- Use flexbox or grid — works on all Android WebView versions
+- Test both portrait and landscape — apps can be rotated
+- Use `min-height: 100vh` on body, not `height: 100vh` (content can exceed viewport)
 
 ## Bridge reference
 
@@ -353,10 +386,9 @@ SFTP (file transfer over SSH):
 `iappyx.smb.listDir(remotePath, cbId)` → `{ok, files:[{name, size, isDir, modified}]}`
 `iappyx.smb.download(remotePath, localPath, cbId)` → `{ok, filePath, size}`
 `iappyx.smb.upload(localPath, remotePath, cbId)` → `{ok}` — supports content:// URIs. Fires `window.onTransferProgress({transferred, total})` during transfer.
-`iappyx.smb.download(remotePath, localPath, cbId)` — also fires `window.onTransferProgress`.
 `iappyx.smb.delete(remotePath, cbId)` → `{ok}`
 `iappyx.smb.mkdir(remotePath, cbId)` → `{ok}`
-`iappyx.smb.copy(srcPath, destPath, cbId)` → `{ok}` �� server-side copy (no download/upload roundtrip)
+`iappyx.smb.copy(srcPath, destPath, cbId)` → `{ok}` — server-side copy (no download/upload roundtrip)
 `iappyx.smb.rename(oldPath, newPath, cbId)` → `{ok}` — rename or move file/folder on the share
 `iappyx.smb.getFileInfo(remotePath, cbId)` → `{ok, exists, name, size, isDir, modified, hidden}` — file metadata without downloading
 `iappyx.smb.exists(remotePath, cbId)` → `{ok, exists:bool}` — check if file/folder exists
@@ -436,7 +468,7 @@ Note: User must manually add the widget to their home screen via long-press → 
 `tel:`, `mailto:`, `geo:`, `sms:`, `market://` — use `window.location.href` or `<a href>`. HTTP/HTTPS stays in WebView.
 
 ## What works without bridges
-`fetch()`, `XMLHttpRequest`, `<audio>`, `<input type="file">`, CSS animations, Canvas 2D, sessionStorage (use iappyx.save for persistence).
+`fetch()` (same-origin and data URLs only — use `iappyx.httpClient.request()` for external APIs), `XMLHttpRequest`, `<audio>`, `<input type="file">`, CSS animations, Canvas 2D.
 `navigator.mediaDevices.getUserMedia({audio:true})` — real-time microphone access via Web Audio API (AnalyserNode for FFT, pitch detection, volume metering). Works for guitar tuners, sound meters, spectrum visualizers.
 `navigator.mediaDevices.getUserMedia({video:true})` — live camera viewfinder in `<video>` element. Works for real-time color picking, motion detection, barcode scanning.
 `new WebSocket(url)` — full WebSocket support for real-time communication (IoT, live dashboards, chat, multiplayer).
@@ -449,13 +481,12 @@ Never shadow window globals: `history`, `location`, `name`, `status`, `event`, `
 
 ## Critical rules
 1. ALWAYS use bridge init pattern — `iappyx` is undefined before injection
-2. Prefer `iappyx.httpClient.request()` over `fetch()` for external API calls — `fetch()` can fail from the WebView's `file://` origin due to CORS restrictions. Use `fetch()` only for same-origin or data URLs.
-3. Handle empty state in every render ("No items yet")
-4. Clean up timers (clearInterval) — no orphaned intervals
-5. Save data immediately on every mutation — no save buttons
-6. Give feedback on every tap (visual change within 100ms)
-7. Use `-webkit-tap-highlight-color: transparent` on interactive elements (buttons, cards, sliders, toggles) to avoid the default WebView tap highlight
-8. NEVER hardcode API keys, passwords, tokens, or credentials in the HTML — the source code is readable by anyone who has the APK. Use `iappyx.save()`/`iappyx.load()` to let the user enter credentials at runtime, or prompt for them on first launch.
+2. Handle empty state in every render ("No items yet")
+3. Clean up timers (clearInterval) — no orphaned intervals
+4. Save data immediately on every mutation — no save buttons
+5. Give feedback on every tap (visual change within 100ms)
+6. Use `-webkit-tap-highlight-color: transparent` on interactive elements (buttons, cards, sliders, toggles) to avoid the default WebView tap highlight
+7. NEVER hardcode API keys, passwords, tokens, or credentials in the HTML — the source code is readable by anyone who has the APK. Use `iappyx.save()`/`iappyx.load()` to let the user enter credentials at runtime, or prompt for them on first launch.
 
 ## Starter template
 ```html

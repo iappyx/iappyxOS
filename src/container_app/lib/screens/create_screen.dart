@@ -365,6 +365,24 @@ class CreateScreenState extends State<CreateScreen> {
     });
   }
 
+  static const _channel = MethodChannel('com.iappyx.container/generator');
+
+  Future<void> _voiceInput() async {
+    try {
+      final result = await _channel.invokeMethod<String>('speechToText');
+      if (result != null && result.isNotEmpty && mounted) {
+        setState(() {
+          _descController.text = _descController.text.isEmpty
+            ? result
+            : '${_descController.text} $result';
+          _descController.selection = TextSelection.collapsed(offset: _descController.text.length);
+        });
+      }
+    } catch (e) {
+      _snack('Speech recognition not available');
+    }
+  }
+
   void _snack(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -719,8 +737,19 @@ class CreateScreenState extends State<CreateScreen> {
         done: _genMethod.isNotEmpty || _generatedPrompt.isNotEmpty,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const SizedBox(height: 8),
-          TextField(controller: _descController, style: const TextStyle(color: Colors.white), maxLines: 4,
-            decoration: const InputDecoration(hintText: 'What should the app do?'), textCapitalization: TextCapitalization.sentences),
+          Stack(children: [
+            TextField(controller: _descController, style: const TextStyle(color: Colors.white), maxLines: 4,
+              decoration: const InputDecoration(hintText: 'What should the app do?', contentPadding: EdgeInsets.fromLTRB(12, 12, 48, 12)),
+              textCapitalization: TextCapitalization.sentences),
+            Positioned(right: 4, bottom: 4, child: GestureDetector(
+              onTap: _voiceInput,
+              child: Container(
+                width: 36, height: 36,
+                decoration: BoxDecoration(color: const Color(0xFF0F3460), borderRadius: BorderRadius.circular(10)),
+                child: const Icon(Icons.mic, size: 18, color: Color(0xFF4FC3F7)),
+              ),
+            )),
+          ]),
           const SizedBox(height: 16),
           const Text('Choose how to generate the code for your app.',
               style: TextStyle(fontSize: 12, color: Colors.white38)),
