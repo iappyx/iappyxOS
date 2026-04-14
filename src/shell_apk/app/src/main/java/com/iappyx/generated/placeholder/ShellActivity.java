@@ -3785,15 +3785,27 @@ public class ShellActivity extends Activity {
                 if (exoPlayer != null) {
                     final androidx.media3.exoplayer.ExoPlayer old = exoPlayer;
                     exoPlayer = null;
-                    runOnUiThread(() -> { try { old.pause(); old.stop(); old.release(); } catch (Exception ignored) {} });
-                    if (lastAudioUrl != null) {
-                        Intent playIntent = new Intent(ShellActivity.this, AudioService.class);
-                        playIntent.setAction(AudioService.ACTION_PLAY);
-                        playIntent.putExtra("url", lastAudioUrl);
-                        if (title != null) playIntent.putExtra("title", title);
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(playIntent);
-                        else startService(playIntent);
-                    }
+                    final String handoffUrl = lastAudioUrl;
+                    final String handoffTitle = title;
+                    final String handoffArtist = artist;
+                    final String handoffAlbum = album;
+                    // Serialize: start AudioService inside the same runnable AFTER release,
+                    // so both players are never alive simultaneously during the handoff.
+                    runOnUiThread(() -> {
+                        try { old.pause(); old.stop(); old.release(); } catch (Exception ignored) {}
+                        if (handoffUrl != null) {
+                            Intent playIntent = new Intent(ShellActivity.this, AudioService.class);
+                            playIntent.setAction(AudioService.ACTION_PLAY);
+                            playIntent.putExtra("url", handoffUrl);
+                            if (handoffTitle != null) playIntent.putExtra("title", handoffTitle);
+                            if (handoffArtist != null) playIntent.putExtra("artist", handoffArtist);
+                            if (handoffAlbum != null) playIntent.putExtra("album", handoffAlbum);
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(playIntent);
+                            else startService(playIntent);
+                        }
+                    });
+                    mediaSessionActive = true;
+                    return;
                 }
 
                 if (mediaSessionActive || lastAudioUrl != null) {
