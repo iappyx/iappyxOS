@@ -250,6 +250,7 @@ class AppGenerator(private val context: Context) {
             "btserial"     -> getBtSerialApp(label)
             "widgetdemo"   -> getWidgetDemoApp(label)
             "taskdemo"     -> getTaskDemoApp(label)
+            "triggerdemo"  -> getTriggerDemoApp(label)
             else           -> todoApp(label)
         }
         val cleanHtml = html.replace("<!-- Built with iappyxOS — https://github.com/iappyx/iappyxOS -->\n", "")
@@ -6125,6 +6126,248 @@ waitBridge(function(){
   refreshList();
   log('Ready');
   setStatus('Schedule a task to get started');
+});
+</script></body></html>""".trimIndent()
+
+    fun getTriggerDemoApp(label: String) = """<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>$label</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+*:focus{outline:none}
+body{background:#0d0d1a;color:#eaeaea;font-family:-apple-system,sans-serif;padding:20px;min-height:100vh}
+h2{font-size:18px;margin-bottom:16px;text-align:center}
+.section{background:#1a1a2e;border-radius:14px;padding:16px;margin-bottom:16px}
+.section h3{font-size:14px;color:#4FC3F7;margin-bottom:12px}
+.desc{font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:12px;line-height:1.5}
+.btn{background:#0f3460;color:#fff;border:none;padding:12px 20px;border-radius:10px;font-size:14px;width:100%;margin-bottom:8px;cursor:pointer}
+.btn:active{opacity:0.7}
+.btn.danger{background:#ff6b6b22;color:#FF6B6B}
+.log{background:#0d0d1a;border-radius:8px;padding:12px;font-size:11px;color:rgba(255,255,255,0.5);max-height:220px;overflow-y:auto;font-family:monospace;line-height:1.6}
+.log .hit{color:#69F0AE}
+.log .err{color:#FF6B6B}
+.status{color:#4FC3F7;font-size:12px;text-align:center;margin-top:8px}
+.list-item{background:#0d0d1a;border-radius:8px;padding:10px 12px;margin-bottom:6px;font-size:12px;display:flex;justify-content:space-between;align-items:center}
+.list-item .meta{color:rgba(255,255,255,0.4);font-size:10px;margin-top:2px}
+.x{color:#FF6B6B;cursor:pointer;padding:4px 8px}
+input[type=text]{width:100%;padding:10px;border-radius:8px;background:#0d0d1a;border:1px solid rgba(255,255,255,0.1);color:#eaeaea;font-size:13px;margin-bottom:8px}
+.persist-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px;color:rgba(255,255,255,0.6)}
+.persist-row input[type=checkbox]{width:16px;height:16px;accent-color:#4FC3F7}
+.ka-banner{background:rgba(79,195,247,0.1);border:1px solid rgba(79,195,247,0.25);border-radius:8px;padding:10px;margin-bottom:12px;font-size:11px;color:#4FC3F7}
+.ka-banner.off{background:rgba(255,255,255,0.03);border-color:rgba(255,255,255,0.08);color:rgba(255,255,255,0.4)}
+</style></head><body>
+<h2>$label</h2>
+
+<div class="ka-banner off" id="kaBanner">Background service: <span id="kaState">off</span></div>
+
+<div class="section">
+<h3>Charger trigger</h3>
+<div class="desc">Fires a notification every time you plug or unplug the charger.</div>
+<div class="persist-row"><input type="checkbox" id="pCharger"><label for="pCharger">Keep firing when app is closed</label></div>
+<button class="btn" onclick="setupCharger()">Enable charger trigger</button>
+</div>
+
+<div class="section">
+<h3>Headphones trigger</h3>
+<div class="desc">Fires when you plug in wired headphones.</div>
+<div class="persist-row"><input type="checkbox" id="pHp"><label for="pHp">Keep firing when app is closed</label></div>
+<button class="btn" onclick="setupHeadphones()">Enable headphones trigger</button>
+</div>
+
+<div class="section">
+<h3>WiFi trigger</h3>
+<div class="desc">Fires when you connect to a specific WiFi network. Leave SSID empty to match any network. Needs location permission on Android 10+.</div>
+<input id="ssidInput" type="text" placeholder="SSID (or empty for any)">
+<div class="persist-row"><input type="checkbox" id="pWifi"><label for="pWifi">Keep firing when app is closed</label></div>
+<button class="btn" onclick="setupWifi()">Enable WiFi trigger</button>
+</div>
+
+<div class="section">
+<h3>Bluetooth trigger</h3>
+<div class="desc">Fires when a BT device connects or disconnects. Leave address empty to match any device.</div>
+<input id="btInput" type="text" placeholder="MAC (e.g. AA:BB:CC:DD:EE:FF) or empty">
+<div class="persist-row"><input type="checkbox" id="pBt"><label for="pBt">Keep firing when app is closed</label></div>
+<button class="btn" onclick="setupBt()">Enable Bluetooth trigger</button>
+</div>
+
+<div class="section">
+<h3>Android Auto → launch app</h3>
+<div class="desc">When the phone connects to Android Auto, automatically open another installed app on your phone. Always persistent.</div>
+<div class="desc" style="color:#FF8A65">Needs "Display over other apps" permission to launch silently when the phone is backgrounded. Grant it once in Settings.</div>
+<div id="overlayBanner" class="ka-banner off" style="margin-bottom:8px">Overlay permission: <span id="overlayState">checking…</span></div>
+<select id="autoPkgInput" style="width:100%;padding:10px;border-radius:8px;background:#0d0d1a;border:1px solid rgba(255,255,255,0.1);color:#eaeaea;font-size:13px;margin-bottom:8px">
+<option value="">— Select an installed app —</option>
+</select>
+<button class="btn" onclick="requestOverlay()">Grant overlay permission</button>
+<button class="btn" onclick="setupAuto()">Enable Auto trigger</button>
+</div>
+
+<div class="section">
+<h3>Registered triggers</h3>
+<div id="listBox"></div>
+<button class="btn danger" onclick="cancelAll()">Cancel all</button>
+</div>
+
+<div class="section">
+<h3>Event log</h3>
+<div class="desc">Events land here even if you close the app (re-open to see them — they persist via storage).</div>
+<div class="log" id="logBox"></div>
+</div>
+
+<script>
+var logEl;
+function log(msg,cls){
+  if(!logEl)logEl=document.getElementById('logBox');
+  var line=document.createElement('div');
+  if(cls)line.className=cls;
+  line.textContent='['+new Date().toLocaleTimeString()+'] '+msg;
+  logEl.insertBefore(line,logEl.firstChild);
+  // Persist so closed-app fires are visible on next open
+  var existing=iappyx.load('trigger_log')||'';
+  iappyx.save('trigger_log',line.textContent+'\n'+existing);
+}
+
+function waitBridge(cb){
+  if(typeof iappyx!=='undefined')cb();
+  else setTimeout(function(){waitBridge(cb)},50);
+}
+
+function refreshList(){
+  try{
+    var arr=JSON.parse(iappyx.trigger.list());
+    var box=document.getElementById('listBox');
+    if(!arr.length){box.innerHTML='<div class="desc">No triggers registered</div>';refreshKaBanner();return;}
+    box.innerHTML='';
+    arr.forEach(function(t){
+      var item=document.createElement('div');
+      item.className='list-item';
+      var last=t.lastFiredMs?new Date(t.lastFiredMs).toLocaleTimeString():'never';
+      var pLabel=t.persistent?' <span style="color:#69F0AE">★</span>':'';
+      item.innerHTML='<div><div>'+t.id+' <span style="color:#4FC3F7">('+t.type+'/'+t.event+')</span>'+pLabel+'</div>'+
+        '<div class="meta">'+(t.match?'match: '+t.match+' · ':'')+'last: '+last+'</div></div>'+
+        '<span class="x" data-id="'+t.id+'">✕</span>';
+      item.querySelector('.x').onclick=function(){iappyx.trigger.cancel(t.id);refreshList();log('Cancelled '+t.id);};
+      box.appendChild(item);
+    });
+    refreshKaBanner();
+  }catch(e){log('list error: '+e.message,'err');}
+}
+
+function opts(id){
+  return JSON.stringify({persistent: document.getElementById(id).checked});
+}
+function setupCharger(){
+  iappyx.trigger.charger('demo_charger','any','window.onTrigger',opts('pCharger'));
+  log('Registered charger trigger'+(document.getElementById('pCharger').checked?' (persistent)':''));
+  refreshList();
+}
+function setupHeadphones(){
+  iappyx.trigger.headphones('demo_hp','any','window.onTrigger',opts('pHp'));
+  log('Registered headphones trigger'+(document.getElementById('pHp').checked?' (persistent)':''));
+  refreshList();
+}
+function setupWifi(){
+  var ssid=document.getElementById('ssidInput').value.trim();
+  iappyx.trigger.wifi('demo_wifi',ssid,'any','window.onTrigger',opts('pWifi'));
+  log('Registered WiFi trigger'+(ssid?' for '+ssid:' (any)')+(document.getElementById('pWifi').checked?' (persistent)':''));
+  refreshList();
+}
+function setupBt(){
+  var addr=document.getElementById('btInput').value.trim().toUpperCase();
+  iappyx.trigger.bluetooth('demo_bt',addr,'any','window.onTrigger',opts('pBt'));
+  log('Registered Bluetooth trigger'+(addr?' for '+addr:' (any)')+(document.getElementById('pBt').checked?' (persistent)':''));
+  refreshList();
+}
+function cancelAll(){
+  iappyx.trigger.cancelAll();
+  log('Cancelled all triggers');
+  refreshList();
+}
+function requestOverlay(){
+  try{iappyx.intent.requestOverlayPermission();log('Opened Settings — toggle "Display over other apps" on, then return.');}
+  catch(e){log('overlay request failed: '+e.message,'err');}
+}
+function populateAppPicker(){
+  var sel=document.getElementById('autoPkgInput');if(!sel)return;
+  var saved=iappyx.load('auto_launch_pkg')||'';
+  try{
+    var arr=JSON.parse(iappyx.intent.listInstalledApps());
+    sel.innerHTML='<option value="">— Select an installed app —</option>';
+    arr.forEach(function(a){
+      var opt=document.createElement('option');
+      opt.value=a.pkg;
+      opt.textContent=a.label+' ('+a.pkg+')';
+      if(a.pkg===saved)opt.selected=true;
+      sel.appendChild(opt);
+    });
+  }catch(e){log('app list failed: '+e.message,'err');}
+}
+function refreshOverlayBanner(){
+  var on=false;
+  try{on=iappyx.intent.hasOverlayPermission();}catch(e){}
+  var b=document.getElementById('overlayBanner'),s=document.getElementById('overlayState');
+  if(!s)return;
+  s.textContent=on?'granted':'not granted';
+  b.className='ka-banner'+(on?'':' off');
+  iappyx.save('pending_launch_pkg_flag', on?'ok':'no'); // no-op beyond storage marker
+}
+function setupAuto(){
+  var pkg=document.getElementById('autoPkgInput').value.trim();
+  if(!pkg){log('Enter a package name first','err');return;}
+  try{iappyx.save('auto_launch_pkg',pkg);}catch(e){}
+  iappyx.trigger.auto('demo_auto','connected','window.onAutoLaunch','{"persistent":true}');
+  log('Registered Auto trigger — will launch '+pkg+' on connect');
+  refreshList();
+}
+window.onAutoLaunch=function(e){
+  var pkg=iappyx.load('auto_launch_pkg');
+  if(!pkg)return;
+  var ok=false;
+  try{ok=iappyx.intent.launchApp(pkg);}catch(_) {}
+  try{
+    if(ok){
+      iappyx.notification.send('Auto connected','Launched '+pkg);
+    }else{
+      iappyx.notification.send('Auto connected — launch failed',
+        'Package '+pkg+' not installed, or overlay permission missing');
+    }
+  }catch(_) {}
+};
+function refreshKaBanner(){
+  var on=false;
+  try{on=iappyx.trigger.isPersistentActive();}catch(e){}
+  var b=document.getElementById('kaBanner'),s=document.getElementById('kaState');
+  s.textContent=on?'ON (notification in shade)':'off';
+  b.className='ka-banner'+(on?'':' off');
+}
+
+window.onTrigger=function(e){
+  // Works both in foreground (DOM available) and background (DOM might be null in headless WebView)
+  var msg='🔔 '+e.type+'/'+e.event+' id='+e.triggerId;
+  if(e.ssid)msg+=' ssid='+e.ssid;
+  if(e.address)msg+=' addr='+e.address;
+  if(e.name)msg+=' name='+e.name;
+  // Always send a notification — visible whether app is open or not
+  try{iappyx.notification.send(e.type+' '+e.event,msg);}catch(_) {}
+  // Also log if DOM is live
+  if(document.body)log(msg,'hit');
+};
+
+waitBridge(function(){
+  logEl=document.getElementById('logBox');
+  // Restore persisted log from previous fires
+  var saved=iappyx.load('trigger_log');
+  if(saved)saved.split('\n').forEach(function(line){
+    if(!line.trim())return;
+    var d=document.createElement('div');d.className='hit';d.textContent=line;logEl.appendChild(d);
+  });
+  populateAppPicker();
+  refreshList();
+  refreshOverlayBanner();
+  // Re-check overlay permission on resume (user may have toggled it in Settings)
+  window.addEventListener('focus',refreshOverlayBanner);
 });
 </script></body></html>""".trimIndent()
 

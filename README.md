@@ -62,7 +62,7 @@ Every generated app is a real signed APK that appears in your Android launcher. 
 ## Features
 
 - **AI generation** — automatic via API (Anthropic, OpenRouter) or manual copy-paste to any AI
-- **35 native bridge classes (130+ methods)** — camera, location, sensors, audio, notifications, push notifications (FCM), NFC, Bluetooth LE, Bluetooth Classic (serial), SSH/SFTP, SMB network shares, HTTP server/client, TCP/UDP sockets, WiFi Direct, mDNS, biometric, SQLite, contacts, SMS, calendar, clipboard, TTS, screen, vibration, alarms, media gallery, download manager, home screen widgets, scheduled background tasks, and more
+- **37 native bridge classes (140+ methods)** — camera, location, sensors, audio, notifications, push notifications (FCM), NFC, Bluetooth LE, Bluetooth Classic (serial), SSH/SFTP, SMB network shares, HTTP server/client, TCP/UDP sockets, WiFi Direct, mDNS, biometric, SQLite, contacts, SMS, calendar, clipboard, TTS, screen, vibration, alarms, media gallery, download manager, home screen widgets, scheduled background tasks, event triggers (charger / headphones / Bluetooth / WiFi / Android Auto), app-launch intents, and more
 - **Icon editor** — emoji, text, images, custom colors, gradients, shadows, filters, rotation, multiple layers
 - **App management** — launch, rebuild, edit, share (APK, HTML, QR code, WiFi Direct), uninstall
 - **QR code transfer** — share apps between devices via animated QR codes (no internet needed)
@@ -138,6 +138,8 @@ Generated apps access device hardware through a JavaScript bridge (`window.iappy
 | Bluetooth Classic | Serial communication (SPP) for Arduino, ESP32, OBD-II car diagnostics, HC-05/HC-06 |
 | Widget | Home screen widgets with configurable grid layouts, clocks, timers, checkboxes, toggles |
 | Tasks | Scheduled background JS execution — fetch APIs, update widgets, send notifications while app is closed |
+| Triggers | Fire a JS callback when charger / headphones / Bluetooth / WiFi / Android Auto connects or disconnects. Optional persistent mode survives app swipe-away and reboot. |
+| Intent | Launch other installed apps (by package) or deep-link URIs. Enumerate installed apps for pickers. |
 | Capabilities | Query available bridges and permissions at runtime |
 
 ## Building from source

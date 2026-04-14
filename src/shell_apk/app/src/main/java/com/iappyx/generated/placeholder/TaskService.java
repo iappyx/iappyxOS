@@ -77,6 +77,10 @@ public class TaskService extends Service {
         if (intent == null) { finish(); return START_NOT_STICKY; }
         String taskId = intent.getStringExtra("taskId");
         String callbackFn = intent.getStringExtra("callbackFn");
+        // Optional JSON payload (trigger dispatch passes this; normal tasks don't).
+        // If present, it's parsed client-side and passed to the callback instead of the
+        // default {taskId,background:true} args.
+        final String payloadJson = intent.getStringExtra("payloadJson");
 
         if (taskId == null || callbackFn == null) { finish(); return START_NOT_STICKY; }
         if (!ShellActivity.isSafeCallbackName(callbackFn)) { finish(); return START_NOT_STICKY; }
@@ -130,6 +134,44 @@ public class TaskService extends Service {
                     @JavascriptInterface public String getConnectivity() { return BridgeUtils.getConnectivity(ctx); }
                 }, "iappyxDevice");
 
+                // Intent bridge — launch other apps / URIs from headless callbacks
+                webView.addJavascriptInterface(new Object() {
+                    @JavascriptInterface public boolean launchApp(String pkg) {
+                        if (pkg == null || pkg.isEmpty()) return false;
+                        try {
+                            Intent i = ctx.getPackageManager().getLaunchIntentForPackage(pkg);
+                            if (i == null) return false;
+                            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            ctx.getApplicationContext().startActivity(i);
+                            return true;
+                        } catch (Exception e) {
+                            Log.w(TAG, "launchApp(" + pkg + "): " + e.getMessage());
+                            return false;
+                        }
+                    }
+                    @JavascriptInterface public boolean openUrl(String url) {
+                        if (url == null || url.isEmpty()) return false;
+                        try {
+                            Intent i = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url));
+                            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            ctx.getApplicationContext().startActivity(i);
+                            return true;
+                        } catch (Exception e) { return false; }
+                    }
+                    @JavascriptInterface public boolean isAppInstalled(String pkg) {
+                        if (pkg == null || pkg.isEmpty()) return false;
+                        try { ctx.getPackageManager().getPackageInfo(pkg, 0); return true; }
+                        catch (Exception e) { return false; }
+                    }
+                    @JavascriptInterface public boolean hasOverlayPermission() {
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true;
+                        return android.provider.Settings.canDrawOverlays(ctx);
+                    }
+                    @JavascriptInterface public void requestOverlayPermission() {
+                        // Can't open Settings from a background service — foreground-only.
+                    }
+                }, "iappyxIntent");
+
                 // HTTP Client bridge (via BridgeUtils)
                 webView.addJavascriptInterface(new Object() {
                     @JavascriptInterface
@@ -159,6 +201,7 @@ public class TaskService extends Service {
                             "widget:iappyxWidget," +
                             "notification:iappyxNotification," +
                             "device:iappyxDevice," +
+                            "intent:iappyxIntent," +
                             "httpClient:iappyxHttpClient," +
                             "save:function(k,v){iappyxStorage.save(k,v)}," +
                             "load:function(k){return iappyxStorage.load(k)}," +
@@ -175,8 +218,13 @@ public class TaskService extends Service {
                             if (done) return;
                             v.evaluateJavascript("typeof iappyx", result -> {
                                 if (!"\"undefined\"".equals(result)) {
+                                    // If a payload JSON was supplied (trigger dispatch), pass it verbatim;
+                                    // otherwise use the default {taskId,background:true} task args.
+                                    String argsJs = (payloadJson != null && !payloadJson.isEmpty())
+                                        ? payloadJson
+                                        : "{taskId:'" + ShellActivity.escapeJson(tid) + "',background:true}";
                                     v.evaluateJavascript(
-                                        "try{" + fn + "({taskId:'" + ShellActivity.escapeJson(tid) + "',background:true})}catch(e){window._taskDone()}", null);
+                                        "try{" + fn + "(" + argsJs + ")}catch(e){window._taskDone()}", null);
                                 } else if (attempt[0]++ < 10) {
                                     handler.postDelayed(retry[0], 300);
                                 } else {

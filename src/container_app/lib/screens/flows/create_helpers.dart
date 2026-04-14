@@ -167,4 +167,5 @@ const demoTemplates = [
   ('',           '\u2500', '── Widget & Tasks',  ''),
   ('widgetdemo', '\uD83D\uDCF2', 'Widget Dashboard', 'Home screen widget with stats'),
   ('taskdemo',   '\u23F0', 'Background Tasks',   'Scheduled tasks + widget refresh'),
+  ('triggerdemo','\u26A1', 'Triggers',           'Fire actions on charger/headphones/BT/WiFi events'),
 ];

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Existing -->
     <uses-permission android:name="android.permission.CAMERA" />
@@ -29,6 +30,17 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SHORT_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <!-- Silent background activity starts (used by iappyx.intent.launchApp from triggers).
+         Defaults OFF per-app — no install-time dialog, no functional effect until the user
+         explicitly enables "Display over other apps" in Settings for the specific app. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- Needed for iappyx.intent.isAppInstalled() / launchApp() to see arbitrary packages
+         on Android 11+. Sideloaded app — Play Store policy on this permission doesn't apply. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
     <!-- Batch 2 — Contacts & SMS -->
@@ -208,6 +220,43 @@
         <receiver
             android:name="com.iappyx.generated.placeholder.GeofenceReceiver"
             android:exported="false" />
+
+        <!-- Trigger bridge: broadcast-based triggers (charger, headphones).
+             Static registration needed for charger/headphones because they must fire even
+             when the process is dead. BT/WiFi are dynamic-only (registered from ShellActivity
+             and BOOT_COMPLETED via TriggerReceiver.registerDynamic). -->
+        <receiver
+            android:name="com.iappyx.generated.placeholder.TriggerReceiver"
+            android:exported="true">
+            <!-- Charger + headphones: exempt from background-broadcast restrictions,
+                 work from a static receiver on all API levels. -->
+            <intent-filter>
+                <action android:name="android.intent.action.ACTION_POWER_CONNECTED" />
+                <action android:name="android.intent.action.ACTION_POWER_DISCONNECTED" />
+                <action android:name="android.intent.action.HEADSET_PLUG" />
+            </intent-filter>
+            <!-- Bluetooth ACL connect/disconnect: still allowed to static receivers
+                 on API 26+. WiFi NETWORK_STATE_CHANGED is NOT in the exempt list, so
+                 WiFi triggers are dynamic-only (registered when ShellActivity runs).
+                 Caveat: after a reboot, WiFi triggers won't fire until the user opens
+                 the app once. -->
+            <intent-filter>
+                <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
+                <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Keeps the app process alive so dynamic TriggerReceiver registrations survive
+             the user swiping the app away. Started on-demand when a trigger is registered
+             with persistent:true; stopped when the last persistent trigger is cancelled. -->
+        <service
+            android:name="com.iappyx.generated.placeholder.TriggerKeepaliveService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-configured event triggers for automation" />
+        </service>
 
         <!-- FileProvider for camera + share -->
         <provider

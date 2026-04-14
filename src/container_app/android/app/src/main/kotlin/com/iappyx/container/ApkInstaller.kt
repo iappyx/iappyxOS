@@ -92,23 +92,34 @@ class ApkInstaller(private val context: Context) {
             throw e
         }
 
-        // Register result receiver
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(ctx: Context, intent: Intent) {
-                context.unregisterReceiver(this)
+        // State tracking: flip to false when the receiver is unregistered, so re-entry
+        // and cancellation can't double-unregister (IllegalArgumentException crash) or
+        // drop a final-status broadcast that arrives while we were briefly unregistered.
+        var registered = false
+        lateinit var receiver: BroadcastReceiver
+        val unregisterSafely: () -> Unit = {
+            if (registered) {
+                try { context.unregisterReceiver(receiver) } catch (_: Exception) {}
+                registered = false
+            }
+        }
 
+        receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context, intent: Intent) {
                 val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, -1)
                 val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
 
                 when (status) {
                     PackageInstaller.STATUS_SUCCESS -> {
+                        // Terminal — unregister and resume.
+                        unregisterSafely()
                         Log.i(TAG, "Install success")
                         cont.resume(Unit)
                     }
 
                     PackageInstaller.STATUS_PENDING_USER_ACTION -> {
-                        // Show the system confirm dialog
-                        // The coroutine stays suspended until user acts
+                        // NOT terminal. Keep receiver registered so the follow-up
+                        // STATUS_SUCCESS/STATUS_FAILURE broadcast still lands here.
                         val confirmIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                             intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
                         } else {
@@ -119,13 +130,11 @@ class ApkInstaller(private val context: Context) {
                             confirmIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             context.startActivity(confirmIntent)
                         }
-                        // Re-register for the final result after user action
-                        // (Android will send STATUS_SUCCESS or STATUS_FAILURE after)
-                        context.registerReceiver(this, IntentFilter(ACTION_INSTALL_RESULT),
-                            Context.RECEIVER_NOT_EXPORTED)
                     }
 
                     else -> {
+                        // Terminal failure — unregister and resume with exception.
+                        unregisterSafely()
                         Log.e(TAG, "Install failed (status $status): $message")
                         cont.resumeWithException(
                             InstallException("Install failed: $message (status $status)")
@@ -156,13 +165,12 @@ class ApkInstaller(private val context: Context) {
             @Suppress("UnspecifiedRegisterReceiverFlag")
             context.registerReceiver(receiver, IntentFilter(ACTION_INSTALL_RESULT))
         }
+        registered = true
 
         session.commit(pendingIntent.intentSender)
         session.close()
 
-        cont.invokeOnCancellation {
-            try { context.unregisterReceiver(receiver) } catch (_: Exception) {}
-        }
+        cont.invokeOnCancellation { unregisterSafely() }
     }
 
     class InstallException(message: String) : Exception(message)

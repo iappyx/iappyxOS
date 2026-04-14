@@ -73,6 +73,8 @@ class CreateScreenState extends State<CreateScreen> {
   bool _htmlExpanded = false;
 
   String? _selectedDemoId;
+  final _demoFilterController = TextEditingController();
+  String _demoFilter = '';
 
   // AI generation
   String _genMethod = ''; // 'api', 'manual'
@@ -94,6 +96,7 @@ class CreateScreenState extends State<CreateScreen> {
     _htmlController.dispose();
     _followUpController.dispose();
     _formScrollController.dispose();
+    _demoFilterController.dispose();
     super.dispose();
   }
 
@@ -1104,41 +1107,109 @@ class CreateScreenState extends State<CreateScreen> {
   Widget _demoFields() {
     final widgets = <Widget>[
       const Text('Select a demo', style: TextStyle(fontSize: 13, color: Colors.white54)),
+      const SizedBox(height: 8),
+      TextField(
+        controller: _demoFilterController,
+        onChanged: (v) => setState(() {
+          _demoFilter = v.trim().toLowerCase();
+          // Clear selection if the selected demo is no longer visible under the filter.
+          // Avoids the "Build X" action referring to a hidden card.
+          if (_selectedDemoId != null && _demoFilter.isNotEmpty) {
+            final stillVisible = h.demoTemplates.any((t) =>
+              t.$1 == _selectedDemoId && (
+                t.$1.toLowerCase().contains(_demoFilter) ||
+                t.$3.toLowerCase().contains(_demoFilter) ||
+                t.$4.toLowerCase().contains(_demoFilter)
+              ));
+            if (!stillVisible) _selectedDemoId = null;
+          }
+        }),
+        style: const TextStyle(color: Colors.white, fontSize: 14),
+        decoration: InputDecoration(
+          hintText: 'Filter demos…',
+          hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
+          prefixIcon: const Icon(Icons.search, color: Colors.white38, size: 20),
+          suffixIcon: _demoFilter.isEmpty ? null : IconButton(
+            icon: const Icon(Icons.clear, color: Colors.white38, size: 18),
+            onPressed: () {
+              _demoFilterController.clear();
+              setState(() => _demoFilter = '');
+            },
+          ),
+          filled: true,
+          fillColor: Colors.white.withValues(alpha: 0.05),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        ),
+      ),
       const SizedBox(height: 12),
     ];
-    final items = h.demoTemplates;
-    int i = 0;
-    while (i < items.length) {
-      final t = items[i];
-      if (t.$1.isEmpty) {
-        // Section header
-        widgets.add(Padding(
-          padding: EdgeInsets.only(top: i == 0 ? 0 : 16, bottom: 8),
-          child: Text(t.$3, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white38)),
+
+    final q = _demoFilter;
+    if (q.isEmpty) {
+      // Full grid with section headers (original layout)
+      final items = h.demoTemplates;
+      int i = 0;
+      while (i < items.length) {
+        final t = items[i];
+        if (t.$1.isEmpty) {
+          widgets.add(Padding(
+            padding: EdgeInsets.only(top: i == 0 ? 0 : 16, bottom: 8),
+            child: Text(t.$3, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white38)),
+          ));
+          i++;
+        } else if (i + 1 < items.length && items[i + 1].$1.isNotEmpty) {
+          widgets.add(Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(children: [
+              Expanded(child: SizedBox(height: 80, child: _demoCard(t))),
+              const SizedBox(width: 8),
+              Expanded(child: SizedBox(height: 80, child: _demoCard(items[i + 1]))),
+            ]),
+          ));
+          i += 2;
+        } else {
+          widgets.add(Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(children: [
+              Expanded(child: SizedBox(height: 80, child: _demoCard(t))),
+              const SizedBox(width: 8),
+              const Expanded(child: SizedBox()),
+            ]),
+          ));
+          i++;
+        }
+      }
+    } else {
+      // Filtered: flat pair grid, no section headers, match on id/name/description
+      final matches = h.demoTemplates.where((t) =>
+        t.$1.isNotEmpty && (
+          t.$1.toLowerCase().contains(q) ||
+          t.$3.toLowerCase().contains(q) ||
+          t.$4.toLowerCase().contains(q)
+        )
+      ).toList();
+      if (matches.isEmpty) {
+        widgets.add(const Padding(
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: Center(child: Text('No demos match', style: TextStyle(color: Colors.white38, fontSize: 13))),
         ));
-        i++;
-      } else if (i + 1 < items.length && items[i + 1].$1.isNotEmpty) {
-        // Two items side by side
-        widgets.add(Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Row(children: [
-            Expanded(child: SizedBox(height: 80, child: _demoCard(t))),
-            const SizedBox(width: 8),
-            Expanded(child: SizedBox(height: 80, child: _demoCard(items[i + 1]))),
-          ]),
-        ));
-        i += 2;
       } else {
-        // Single item (odd one at end of section)
-        widgets.add(Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Row(children: [
-            Expanded(child: SizedBox(height: 80, child: _demoCard(t))),
-            const SizedBox(width: 8),
-            const Expanded(child: SizedBox()),
-          ]),
-        ));
-        i++;
+        for (int j = 0; j < matches.length; j += 2) {
+          final left = matches[j];
+          final right = j + 1 < matches.length ? matches[j + 1] : null;
+          widgets.add(Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(children: [
+              Expanded(child: SizedBox(height: 80, child: _demoCard(left))),
+              const SizedBox(width: 8),
+              right == null
+                ? const Expanded(child: SizedBox())
+                : Expanded(child: SizedBox(height: 80, child: _demoCard(right))),
+            ]),
+          ));
+        }
       }
     }
     if (_selectedDemoId != null) {

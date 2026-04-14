@@ -50,7 +50,7 @@ Use Preview to check for errors. The console shows JavaScript errors, warnings, 
 Yes. Each generated app is a real signed Android APK. It gets its own launcher icon, runs independently from iappyxOS, and can be shared with other people. You can uninstall iappyxOS and your generated apps keep working. Generated apps pass Google Play Protect scanning.
 
 ### What can generated apps do?
-Generated apps run inside a WebView with access to 35 native bridge classes (130+ methods):
+Generated apps run inside a WebView with access to 37 native bridge classes (140+ methods):
 
 Camera (photo, video, QR scan, OCR, ML classification, background removal, EXIF, real-time scanning), GPS (tracking, geofencing), sensors (accelerometer, gyroscope, magnetometer, compass, proximity, light, pressure, step counter), audio (playback, recording, speech-to-text, media session with lock screen controls, sound effects, audio focus, audio visualizer), notifications (with actions, scheduled, repeating, badge), NFC read/write, Bluetooth LE (scan, connect, read/write characteristics, notifications), SQLite database, biometric authentication, text-to-speech, contacts, SMS, calendar, clipboard (read/write/monitor), screen control, vibration, alarms (exact and repeating), media gallery (browse photos/videos/music, save to gallery, metadata), download manager, HTTP server/client with TLS, SSH/SFTP, SMB network shares, TCP/UDP sockets, mDNS service discovery, WiFi Direct, wallpaper, torch, print, DND, app shortcuts, share target, Material You theme colors, push notifications (FCM), home screen widgets (configurable grid layouts, clocks, timers, checkboxes, toggles), Bluetooth Classic serial (Arduino, ESP32, OBD-II), scheduled background tasks (fetch APIs, update widgets while closed), and persistent storage.
 
@@ -124,6 +124,17 @@ App data is stored on the device. If you uninstall iappyxOS, the app library is 
 
 ### A generated app crashes or shows a white screen
 The HTML/JavaScript has an error. Edit the app in iappyxOS, open Preview, and check the console for errors. If the app was AI-generated, paste the errors back into the AI and ask for a fix.
+
+### My event trigger stopped firing (charger / headphones / Bluetooth / WiFi / Android Auto)
+Triggers come in two modes:
+
+- **Non-persistent (default)** — fires only while the app's process is alive. Android will eventually evict the process when you swipe the app away from recents or under memory pressure. After that the trigger stops firing until you open the app again.
+- **Persistent** — registered with `{persistent: true}`. The app keeps a low-priority "Triggers active" notification in the shade, which prevents Android from evicting the process. Survives swipe-away and reboot. Required for Android Auto triggers.
+
+If your trigger was working and then stopped, either use persistent mode, or re-open the app before you need it to fire. Aggressive OEM battery-savers (Samsung, Xiaomi, Huawei) may also kill the app even in persistent mode — whitelist it in the OS battery settings if needed.
+
+### My `iappyx.intent.launchApp()` call from a trigger doesn't launch anything
+Android blocks background activity starts by default. To launch another app silently from a trigger callback while your app isn't visible, the user must grant "Display over other apps" for your app (Settings → Special access). Call `iappyx.intent.requestOverlayPermission()` once at setup time to jump them to the right Settings page. Without this grant, the call returns `false` silently.
 
 ---
 

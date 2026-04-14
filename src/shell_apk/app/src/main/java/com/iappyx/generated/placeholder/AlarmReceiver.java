@@ -48,7 +48,15 @@ public class AlarmReceiver extends BroadcastReceiver {
             final PendingResult pendingResult = goAsync();
             final Context ctx = context.getApplicationContext();
             new Thread(() -> {
-                try { reRegisterAlarms(ctx); }
+                try {
+                    reRegisterAlarms(ctx);
+                    // If any persistent triggers exist, start the keepalive so their
+                    // dynamic receiver survives reboot without waiting for the user
+                    // to open the app. BOOT_COMPLETED is on the FGS-exempt list.
+                    if (TriggerStore.hasAnyPersistent(ctx)) {
+                        TriggerKeepaliveService.start(ctx);
+                    }
+                }
                 finally { pendingResult.finish(); }
             }).start();
             return;

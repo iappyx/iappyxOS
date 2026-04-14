@@ -44,4 +44,9 @@ dependencies {
     implementation 'eu.agno3.jcifs:jcifs-ng:2.1.10'
     implementation 'no.nordicsemi.android:ble:2.11.0'
     implementation 'com.google.firebase:firebase-messaging:24.0.0'
+    // Android Auto connection-state observer for trigger.auto(). App library only —
+    // we observe projection/native connection state, no car-app rendering.
+    implementation 'androidx.car.app:app:1.4.0'
+    // LifecycleService — host for the CarConnection LiveData observer.
+    implementation 'androidx.lifecycle:lifecycle-service:2.7.0'
 }

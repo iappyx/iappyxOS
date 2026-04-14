@@ -300,8 +300,11 @@ public class WidgetProvider extends AppWidgetProvider {
         intent.putExtra("widget_checked", checked);
         // Unique action per state so PendingIntent is always distinct
         intent.setAction(ACTION_WIDGET_TAP + "_" + action + "_" + checked);
+        // IMMUTABLE: widget taps use a fully pre-filled intent (action + extras already set).
+        // No RemoteInput, no system-fill — mutability was unnecessary and let other apps on
+        // the device rewrite the payload in flight.
         PendingIntent pi = PendingIntent.getActivity(context, viewId, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         views.setOnClickPendingIntent(viewId, pi);
     }
 

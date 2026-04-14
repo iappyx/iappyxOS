@@ -88,6 +88,7 @@ import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
@@ -333,6 +334,12 @@ public class ShellActivity extends Activity {
         webView.addJavascriptInterface(new TaskBridge(),"iappyxTasks");
         webView.addJavascriptInterface(new WidgetBridge(),"iappyxWidget");
         webView.addJavascriptInterface(new CapabilitiesBridge(),"iappyxCapabilities");
+        webView.addJavascriptInterface(new TriggerBridge(),      "iappyxTrigger");
+        webView.addJavascriptInterface(new IntentBridge(),       "iappyxIntent");
+        // Register trigger receivers dynamically for the life of this process.
+        // Unconditional because on Android 15+ static manifest receivers for charger/
+        // headphones appear to be suppressed silently — dynamic registration works.
+        TriggerReceiver.registerDynamic(this);
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override public void onPermissionRequest(PermissionRequest r) {
@@ -461,6 +468,8 @@ public class ShellActivity extends Activity {
                     "bluetooth:iappyxBluetooth," +
                     "tasks:iappyxTasks," +
                     "widget:iappyxWidget," +
+                    "trigger:iappyxTrigger," +
+                    "intent:iappyxIntent," +
                     "capabilities:function(){return JSON.parse(iappyxCapabilities.get())}," +
                     "onTextSelected:function(fn){document.addEventListener('selectionchange',function(){" +
                     "var s=window.getSelection();if(s&&s.toString().trim().length>0){fn({text:s.toString().trim()})}" +
@@ -645,14 +654,16 @@ public class ShellActivity extends Activity {
             "window._iappyxCb['" + safeCb + "'](" + json + ");" +
             "delete window._iappyxCb['" + safeCb + "'];}";
         runOnUiThread(() -> {
-            if (activityAlive) webView.evaluateJavascript(js, null);
+            // Race guard: activityAlive flips to false before webView is nulled in onDestroy,
+            // but a callback scheduled here can still fire after webView is gone.
+            if (activityAlive && webView != null) webView.evaluateJavascript(js, null);
         });
     }
 
     void fireEvent(String fn, String json) {
         if (!activityAlive) return;
         runOnUiThread(() -> {
-            if (activityAlive) webView.evaluateJavascript(
+            if (activityAlive && webView != null) webView.evaluateJavascript(
                 "if(typeof " + fn + "==='function')" + fn + "(" + json + ");", null);
         });
     }
@@ -3027,7 +3038,7 @@ public class ShellActivity extends Activity {
                         final String js = callbackFn + "({x:" + e.values[0] +
                             ",y:" + e.values[1] + ",z:" + e.values[2] +
                             ",t:" + (e.timestamp / 1000000L) + "})";
-                        runOnUiThread(() -> { if (activityAlive) webView.evaluateJavascript(js, null); });
+                        runOnUiThread(() -> { if (activityAlive && webView != null) webView.evaluateJavascript(js, null); });
                     }
                     @Override public void onAccuracyChanged(Sensor s, int a) {}
                 };
@@ -3052,7 +3063,7 @@ public class ShellActivity extends Activity {
                         final String js = callbackFn + "({distance:" + e.values[0] +
                             ",near:" + (e.values[0] < e.sensor.getMaximumRange()) +
                             ",t:" + (e.timestamp / 1000000L) + "})";
-                        runOnUiThread(() -> { if (activityAlive) webView.evaluateJavascript(js, null); });
+                        runOnUiThread(() -> { if (activityAlive && webView != null) webView.evaluateJavascript(js, null); });
                     }
                     @Override public void onAccuracyChanged(Sensor s, int a) {}
                 };
@@ -3072,7 +3083,7 @@ public class ShellActivity extends Activity {
                     @Override public void onSensorChanged(SensorEvent e) {
                         if (!activityAlive) return;
                         final String js = callbackFn + "({lux:" + e.values[0] + ",t:" + (e.timestamp / 1000000L) + "})";
-                        runOnUiThread(() -> { if (activityAlive) webView.evaluateJavascript(js, null); });
+                        runOnUiThread(() -> { if (activityAlive && webView != null) webView.evaluateJavascript(js, null); });
                     }
                     @Override public void onAccuracyChanged(Sensor s, int a) {}
                 };
@@ -3092,7 +3103,7 @@ public class ShellActivity extends Activity {
                     @Override public void onSensorChanged(SensorEvent e) {
                         if (!activityAlive) return;
                         final String js = callbackFn + "({hPa:" + e.values[0] + ",t:" + (e.timestamp / 1000000L) + "})";
-                        runOnUiThread(() -> { if (activityAlive) webView.evaluateJavascript(js, null); });
+                        runOnUiThread(() -> { if (activityAlive && webView != null) webView.evaluateJavascript(js, null); });
                     }
                     @Override public void onAccuracyChanged(Sensor s, int a) {}
                 };
@@ -3125,7 +3136,7 @@ public class ShellActivity extends Activity {
                     @Override public void onSensorChanged(SensorEvent e) {
                         if (!activityAlive) return;
                         final String js = callbackFn + "({steps:" + (int)e.values[0] + ",t:" + (e.timestamp / 1000000L) + "})";
-                        runOnUiThread(() -> { if (activityAlive) webView.evaluateJavascript(js, null); });
+                        runOnUiThread(() -> { if (activityAlive && webView != null) webView.evaluateJavascript(js, null); });
                     }
                     @Override public void onAccuracyChanged(Sensor s, int a) {}
                 };
@@ -3161,7 +3172,7 @@ public class ShellActivity extends Activity {
                         final String js = callbackFn + "({heading:" + heading +
                             ",accuracy:" + e.accuracy +
                             ",t:" + (e.timestamp / 1000000L) + "})";
-                        runOnUiThread(() -> { if (activityAlive) webView.evaluateJavascript(js, null); });
+                        runOnUiThread(() -> { if (activityAlive && webView != null) webView.evaluateJavascript(js, null); });
                     }
                     @Override public void onAccuracyChanged(Sensor s, int a) {}
                 };
@@ -3198,7 +3209,7 @@ public class ShellActivity extends Activity {
                             final String js = callbackFn + "({heading:" + heading +
                                 ",accuracy:" + e.accuracy +
                                 ",t:" + (e.timestamp / 1000000L) + "})";
-                            runOnUiThread(() -> { if (activityAlive) webView.evaluateJavascript(js, null); });
+                            runOnUiThread(() -> { if (activityAlive && webView != null) webView.evaluateJavascript(js, null); });
                         }
                     }
                 }
@@ -7935,6 +7946,7 @@ public class ShellActivity extends Activity {
                 bridges.put("widget", true);
                 bridges.put("tasks", true);
                 bridges.put("bluetooth", true);
+                bridges.put("trigger", true);
                 caps.put("bridges", bridges);
 
                 JSONObject perms = new JSONObject();
@@ -7954,6 +7966,290 @@ public class ShellActivity extends Activity {
             } catch (Exception e) {
                 return "{}";
             }
+        }
+    }
+
+    /**
+     * iappyx.trigger.* — fire a JS callback when the device enters/leaves a state.
+     *
+     * Supported types (Phase 1, broadcast-based — Android Auto coming in Phase 2):
+     *   - wifi(id, ssid, event, cb)         event: "connected" | "disconnected" | "any"
+     *   - bluetooth(id, address, event, cb) event: "connected" | "disconnected" | "any"
+     *   - charger(id, event, cb)            event: "plugged"   | "unplugged"    | "any"
+     *   - headphones(id, event, cb)         event: "plugged"   | "unplugged"    | "any"
+     *
+     * Bookkeeping: cancel(id), cancelAll(), list() → JSON array.
+     *
+     * Semantics:
+     *   - Callback may run in a headless WebView (via TaskService) if the app is
+     *     closed when the trigger fires. Composition (AND/OR), deduplication beyond
+     *     the 30s debounce, and time gates are the JS handler's responsibility.
+     *   - Re-registering an existing id replaces it.
+     */
+    class TriggerBridge {
+        // 3-arg variants — non-persistent charger/headphones (back-compat)
+        @JavascriptInterface public void charger(String id, String event, String callbackFn) {
+            register("charger", id, null, event, callbackFn, null);
+        }
+        @JavascriptInterface public void headphones(String id, String event, String callbackFn) {
+            register("headphones", id, null, event, callbackFn, null);
+        }
+        // 4-arg variants with opts — charger/headphones with {persistent:true}
+        @JavascriptInterface public void charger(String id, String event, String callbackFn, String optsJson) {
+            register("charger", id, null, event, callbackFn, optsJson);
+        }
+        @JavascriptInterface public void headphones(String id, String event, String callbackFn, String optsJson) {
+            register("headphones", id, null, event, callbackFn, optsJson);
+        }
+        // 4-arg variants — non-persistent wifi/bluetooth (back-compat)
+        @JavascriptInterface public void wifi(String id, String ssid, String event, String callbackFn) {
+            register("wifi", id, ssid, event, callbackFn, null);
+        }
+        @JavascriptInterface public void bluetooth(String id, String address, String event, String callbackFn) {
+            register("bluetooth", id, address, event, callbackFn, null);
+        }
+        // 5-arg variants with opts
+        @JavascriptInterface public void wifi(String id, String ssid, String event, String callbackFn, String optsJson) {
+            register("wifi", id, ssid, event, callbackFn, optsJson);
+        }
+        @JavascriptInterface public void bluetooth(String id, String address, String event, String callbackFn, String optsJson) {
+            register("bluetooth", id, address, event, callbackFn, optsJson);
+        }
+        // Android Auto connection state.
+        // Auto triggers are ALWAYS persistent — the CarConnection LiveData observer
+        // lives in TriggerKeepaliveService, which only runs while at least one
+        // persistent trigger exists. A non-persistent auto trigger would never fire.
+        @JavascriptInterface public void auto(String id, String event, String callbackFn) {
+            register("auto", id, null, event, callbackFn, "{\"persistent\":true}");
+        }
+        @JavascriptInterface public void auto(String id, String event, String callbackFn, String optsJson) {
+            // Silently force persistent — log for debuggability.
+            String forced;
+            try {
+                JSONObject o = (optsJson == null || optsJson.isEmpty())
+                    ? new JSONObject() : new JSONObject(optsJson);
+                if (!o.optBoolean("persistent", false)) {
+                    Log.i("iappyxOS", "trigger.auto: forcing persistent:true (required for Auto observer)");
+                }
+                o.put("persistent", true);
+                forced = o.toString();
+            } catch (JSONException e) { forced = "{\"persistent\":true}"; }
+            register("auto", id, null, event, callbackFn, forced);
+        }
+
+        @JavascriptInterface public void cancel(String id) {
+            if (id == null) return;
+            TriggerStore.remove(ShellActivity.this, id);
+            TriggerKeepaliveService.refresh(ShellActivity.this);
+        }
+        @JavascriptInterface public void cancelAll() {
+            TriggerStore.clear(ShellActivity.this);
+            TriggerKeepaliveService.stop(ShellActivity.this);
+        }
+        @JavascriptInterface public String list() {
+            return TriggerStore.toJsonArray(TriggerStore.all(ShellActivity.this)).toString();
+        }
+        @JavascriptInterface public boolean isPersistentActive() {
+            return TriggerStore.hasAnyPersistent(ShellActivity.this);
+        }
+
+        private void register(String type, String id, String match, String event,
+                              String callbackFn, String optsJson) {
+            if (id == null || id.isEmpty() || callbackFn == null) return;
+            if (!isSafeCallbackName(callbackFn)) return;
+            if (event == null || event.isEmpty()) event = "any";
+
+            boolean persistent = false;
+            if (optsJson != null && !optsJson.isEmpty()) {
+                try { persistent = new JSONObject(optsJson).optBoolean("persistent", false); }
+                catch (JSONException ignored) {}
+            }
+
+            try {
+                JSONObject t = new JSONObject();
+                t.put("id", id);
+                t.put("type", type);
+                t.put("event", event);
+                t.put("match", match == null ? "" : match);
+                t.put("callbackFn", callbackFn);
+                t.put("lastFiredMs", 0);
+                t.put("debounceMs", TriggerStore.DEFAULT_DEBOUNCE_MS);
+                t.put("persistent", persistent);
+                TriggerStore.put(ShellActivity.this, t);
+            } catch (JSONException ignored) { return; }
+
+            // Ensure the dynamic receiver is registered on this process. Idempotent.
+            TriggerReceiver.registerDynamic(ShellActivity.this);
+
+            // Auto-request the runtime permissions that each trigger type needs —
+            // without these, Android silently suppresses the broadcast.
+            //   bluetooth → BLUETOOTH_CONNECT (Android 12+) for ACL_CONNECTED delivery
+            //   wifi      → ACCESS_FINE_LOCATION (Android 10+) for SSID in NETWORK_STATE_CHANGED
+            ensurePermissionsFor(type);
+
+            if (persistent) {
+                ensureNotificationPermission();
+                TriggerKeepaliveService.start(ShellActivity.this);
+            } else {
+                // Non-persistent: if a previous version of this id was persistent and
+                // nothing else holds the service open, shut it down.
+                TriggerKeepaliveService.refresh(ShellActivity.this);
+            }
+        }
+
+        private void ensurePermissionsFor(String type) {
+            java.util.List<String> toRequest = new java.util.ArrayList<>();
+            if ("bluetooth".equals(type) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (ContextCompat.checkSelfPermission(ShellActivity.this,
+                        "android.permission.BLUETOOTH_CONNECT") != PackageManager.PERMISSION_GRANTED) {
+                    toRequest.add("android.permission.BLUETOOTH_CONNECT");
+                }
+            }
+            if ("wifi".equals(type)) {
+                if (ContextCompat.checkSelfPermission(ShellActivity.this,
+                        Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                    toRequest.add(Manifest.permission.ACCESS_FINE_LOCATION);
+                }
+            }
+            if (!toRequest.isEmpty()) {
+                ActivityCompat.requestPermissions(ShellActivity.this,
+                    toRequest.toArray(new String[0]), REQ_LOCATION);
+            }
+        }
+
+        private void ensureNotificationPermission() {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return;
+            if (ContextCompat.checkSelfPermission(ShellActivity.this,
+                    "android.permission.POST_NOTIFICATIONS") == PackageManager.PERMISSION_GRANTED) return;
+            ActivityCompat.requestPermissions(ShellActivity.this,
+                new String[]{"android.permission.POST_NOTIFICATIONS"}, REQ_NOTIFICATION);
+        }
+    }
+
+    /**
+     * iappyx.intent.* — launch other installed apps or deep-link URIs.
+     *
+     * {@link #launchApp(String)} can be called from a headless trigger callback
+     * (i.e., while the app is backgrounded) ONLY if the user has granted
+     * "Display over other apps" in Settings. Without it, Android silently blocks
+     * the background activity start and the call returns false.
+     *
+     * {@link #requestOverlayPermission()} must be called while the app is in the
+     * foreground — it launches a Settings activity for the user to toggle the
+     * permission on. Apps that plan to call launchApp from a trigger should call
+     * this at setup time.
+     */
+    class IntentBridge {
+        @JavascriptInterface
+        public boolean launchApp(String packageName) {
+            if (packageName == null || packageName.isEmpty()) return false;
+            try {
+                Intent launch = getPackageManager().getLaunchIntentForPackage(packageName);
+                if (launch == null) return false;
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getApplicationContext().startActivity(launch);
+                return true;
+            } catch (Exception e) {
+                Log.w("iappyxOS", "launchApp(" + packageName + "): " + e.getMessage());
+                return false;
+            }
+        }
+
+        @JavascriptInterface
+        public boolean openUrl(String url) {
+            if (url == null || url.isEmpty()) return false;
+            try {
+                Intent i = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url));
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getApplicationContext().startActivity(i);
+                return true;
+            } catch (Exception e) {
+                Log.w("iappyxOS", "openUrl(" + url + "): " + e.getMessage());
+                return false;
+            }
+        }
+
+        @JavascriptInterface
+        public boolean isAppInstalled(String packageName) {
+            if (packageName == null || packageName.isEmpty()) return false;
+            try {
+                getPackageManager().getPackageInfo(packageName, 0);
+                return true;
+            } catch (PackageManager.NameNotFoundException e) {
+                return false;
+            } catch (Exception e) {
+                return false;
+            }
+        }
+
+        /**
+         * Returns a JSON array of all apps with a launcher activity.
+         * Entry shape: {"pkg":"...","label":"..."}. Sorted alphabetically by label.
+         * Filters out the caller itself so it doesn't appear as a target.
+         *
+         * Result is cached per-process. PackageManager.queryIntentActivities() is
+         * cheap on most devices but can hit ~1s on devices with thousands of apps;
+         * cache avoids stuttering the JS caller on repeated invocations.
+         */
+        private volatile String cachedInstalledAppsJson;
+
+        @JavascriptInterface
+        public String listInstalledApps() {
+            String cached = cachedInstalledAppsJson;
+            if (cached != null) return cached;
+            try {
+                Intent probe = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+                java.util.List<android.content.pm.ResolveInfo> list =
+                    getPackageManager().queryIntentActivities(probe, 0);
+                java.util.List<JSONObject> rows = new java.util.ArrayList<>(list.size());
+                String self = getPackageName();
+                for (android.content.pm.ResolveInfo ri : list) {
+                    if (ri.activityInfo == null) continue;
+                    String pkg = ri.activityInfo.packageName;
+                    if (pkg == null || pkg.equals(self)) continue;
+                    CharSequence label = ri.loadLabel(getPackageManager());
+                    JSONObject o = new JSONObject();
+                    o.put("pkg", pkg);
+                    o.put("label", label == null ? pkg : label.toString());
+                    rows.add(o);
+                }
+                // Dedupe by pkg (some apps register multiple launcher activities)
+                java.util.Map<String, JSONObject> dedup = new java.util.LinkedHashMap<>();
+                for (JSONObject o : rows) dedup.put(o.optString("pkg"), o);
+                java.util.List<JSONObject> sorted = new java.util.ArrayList<>(dedup.values());
+                java.util.Collections.sort(sorted, (a, b) ->
+                    a.optString("label").compareToIgnoreCase(b.optString("label")));
+                JSONArray arr = new JSONArray();
+                for (JSONObject o : sorted) arr.put(o);
+                String out = arr.toString();
+                cachedInstalledAppsJson = out;
+                return out;
+            } catch (Exception e) {
+                Log.w("iappyxOS", "listInstalledApps: " + e.getMessage());
+                return "[]";
+            }
+        }
+
+        @JavascriptInterface
+        public boolean hasOverlayPermission() {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true;
+            return android.provider.Settings.canDrawOverlays(ShellActivity.this);
+        }
+
+        @JavascriptInterface
+        public void requestOverlayPermission() {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return;
+            if (android.provider.Settings.canDrawOverlays(ShellActivity.this)) return;
+            runOnUiThread(() -> {
+                try {
+                    Intent i = new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        android.net.Uri.parse("package:" + getPackageName()));
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(i);
+                } catch (Exception e) {
+                    Log.w("iappyxOS", "requestOverlayPermission: " + e.getMessage());
+                }
+            });
         }
     }
 }

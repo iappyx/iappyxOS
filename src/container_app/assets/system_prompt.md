@@ -275,6 +275,39 @@ Sound effects (multiple simultaneous, fire-and-forget, overlay on main):
 `iappyx.alarm.setRepeating(id, intervalMs, 'window.onRepeat')` — repeating alarm (Android-managed, survives force-close)
 Recurring: use `setRepeating` for reliable daily/hourly alarms, or reschedule in the callback for custom logic.
 
+### Triggers (fire a JS callback when system events occur)
+`iappyx.trigger.wifi(id, ssid, event, 'window.onWifi' [, optsJson])` — event: `"connected"`|`"disconnected"`|`"any"`. Pass empty `ssid` to match any network.
+`iappyx.trigger.bluetooth(id, address, event, 'window.onBt' [, optsJson])` — event: `"connected"`|`"disconnected"`|`"any"`. Pass empty `address` to match any device.
+`iappyx.trigger.charger(id, event, 'window.onCharge' [, optsJson])` — event: `"plugged"`|`"unplugged"`|`"any"`.
+`iappyx.trigger.headphones(id, event, 'window.onHp' [, optsJson])` — event: `"plugged"`|`"unplugged"`|`"any"`.
+`iappyx.trigger.auto(id, event, 'window.onAuto' [, optsJson])` — event: `"connected"`|`"disconnected"`|`"any"`. Fires when the phone connects to/from Android Auto (projected or native). Always persistent (the observer needs the keepalive service).
+`iappyx.trigger.cancel(id)` | `.cancelAll()` | `.list()` → JSON array of `{id,type,event,match,callbackFn,lastFiredMs,persistent}`
+`iappyx.trigger.isPersistentActive()` → bool — whether any persistent trigger is running the background keepalive.
+Callback payload: `{triggerId, type, event, timestamp, ...extra}`. Extra fields by type: `ssid`+`bssid` for wifi; `address`+`name` for bluetooth; `connectionType` (`"projection"`|`"native"`|`"none"`) for auto.
+
+**Persistence options** (`optsJson` is a JSON string):
+- `'{"persistent":true}'` — start a lightweight foreground service that keeps the process alive even after the user swipes the app away. Shows an ongoing low-priority notification "Triggers active". Survives reboot. Needed for reliable "fire whenever X happens" behavior.
+- Omit or `'{"persistent":false}'` — trigger only fires while the app is alive (foreground or recent background). Dies when the user swipes the app away or Android evicts the process. No notification.
+
+Rules:
+- Callback may run in a headless WebView — UI ops are no-ops in that mode; rely on `iappyx.notification.send()` for user-visible output.
+- Each trigger has a 30s minimum interval between fires (debounce). For faster response, foreground the app.
+- Re-registering the same `id` replaces the previous registration (persistence flag can be changed this way).
+- AND/OR composition is your responsibility inside the callback (check time-of-day, flags in storage, etc.).
+- For time-based firing, use `iappyx.alarm` (not trigger).
+- WiFi SSID matching needs `ACCESS_FINE_LOCATION` on Android 10+ (already declared).
+- Persistent mode auto-requests `POST_NOTIFICATIONS` on Android 13+ (needed for the keepalive notification). Non-persistent mode does not — but if the callback posts notifications, request it once on app start.
+
+### Intent (launch other installed apps or deep-link URIs)
+`iappyx.intent.launchApp(pkg)` → bool — starts the target app's launcher activity. Returns false if package not installed or launch blocked. Works from trigger callbacks only if the user has granted "Display over other apps" (see `requestOverlayPermission`).
+`iappyx.intent.openUrl(url)` → bool — fires `ACTION_VIEW` on the URL. Works for `https://`, `mailto:`, `tel:`, custom `yourapp://` deep links.
+`iappyx.intent.isAppInstalled(pkg)` → bool.
+`iappyx.intent.listInstalledApps()` → JSON array of `{pkg, label}` for every installed app with a launcher activity. Sorted alphabetically, caller excluded. Use to populate a picker so users don't have to type package names.
+`iappyx.intent.hasOverlayPermission()` → bool — whether "Display over other apps" is granted.
+`iappyx.intent.requestOverlayPermission()` — foreground-only: opens the Settings page for the user to toggle "Display over other apps" on. Call this at setup time in any app whose triggers will later call `launchApp`.
+
+Rule: if a trigger callback calls `launchApp`, the app MUST call `requestOverlayPermission()` during its setup UI (with a clear explanation) before registering the trigger. Otherwise the launch silently fails when the user isn't looking at the app.
+
 ### Contacts (async, cbId pattern)
 `iappyx.contacts.getContacts(cbId)` → `{ok,contacts:[{name,phones:[],emails:[]}]}`
 

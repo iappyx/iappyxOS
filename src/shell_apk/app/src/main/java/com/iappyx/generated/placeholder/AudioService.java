@@ -56,6 +56,8 @@ public class AudioService extends Service {
     static ExoPlayer player;
     private MediaSession mediaSession;
     private String currentTitle = "Playing audio";
+    private String currentArtist = null;
+    private String currentAlbum = null;
     private boolean stateIsPlaying = false;
 
     @Override
@@ -130,6 +132,8 @@ public class AudioService extends Service {
         if (ACTION_SET_SESSION.equals(action)) {
             currentTitle = intent.getStringExtra("title");
             if (currentTitle == null) currentTitle = "Playing audio";
+            currentArtist = intent.getStringExtra("artist");
+            currentAlbum = intent.getStringExtra("album");
             startForeground(888, buildNotification());
             return START_STICKY;
         }
@@ -137,8 +141,12 @@ public class AudioService extends Service {
         if (ACTION_PLAY.equals(action)) {
             String url = intent.getStringExtra("url");
             String title = intent.getStringExtra("title");
+            String artist = intent.getStringExtra("artist");
+            String album = intent.getStringExtra("album");
             boolean loop = intent.getBooleanExtra("loop", false);
             if (title != null) currentTitle = title;
+            if (artist != null) currentArtist = artist;
+            if (album != null) currentAlbum = album;
             stateIsPlaying = true;
             startForeground(888, buildNotification());
             playUrl(url, loop);
@@ -203,10 +211,21 @@ public class AudioService extends Service {
         PendingIntent playPausePi = buildActionPi(stateIsPlaying ? "pause" : "play", 2);
         PendingIntent nextPi = buildActionPi("next", 3);
 
+        // Build "artist — album" line; fall back to generic text if neither was set.
+        String line2;
+        if (currentArtist != null && !currentArtist.isEmpty() && currentAlbum != null && !currentAlbum.isEmpty())
+            line2 = currentArtist + " — " + currentAlbum;
+        else if (currentArtist != null && !currentArtist.isEmpty())
+            line2 = currentArtist;
+        else if (currentAlbum != null && !currentAlbum.isEmpty())
+            line2 = currentAlbum;
+        else
+            line2 = "Tap to open app";
+
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CH)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(currentTitle)
-            .setContentText("Tap to open app")
+            .setContentText(line2)
             .setContentIntent(pi)
             .setOngoing(true)
             .setStyle(new MediaStyleNotificationHelper.MediaStyle(mediaSession)
