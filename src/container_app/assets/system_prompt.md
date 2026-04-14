@@ -84,6 +84,19 @@ Never swallow errors silently. Always show the user what went wrong.
 - Test both portrait and landscape — apps can be rotated
 - Use `min-height: 100vh` on body, not `height: 100vh` (content can exceed viewport)
 
+## Mobile defaults (always include in CSS)
+These are WebView defaults that look unpolished — suppress them in every app:
+```css
+*{-webkit-tap-highlight-color:transparent;box-sizing:border-box;}
+*:focus{outline:none;}
+button{-webkit-appearance:none;background:none;border:none;color:inherit;font:inherit;cursor:pointer;}
+input,textarea,select{-webkit-appearance:none;font:inherit;}
+body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
+/* Re-enable selection on text inputs so users can actually type/edit */
+input,textarea,[contenteditable]{-webkit-user-select:text;user-select:text;}
+```
+Without these: tapping shows a blue flash, buttons get focus rings, long-press shows the browser context menu, text gets accidentally selected while swiping.
+
 ## Bridge reference
 
 ### Storage (sync)

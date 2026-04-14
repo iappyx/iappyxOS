@@ -3514,6 +3514,13 @@ public class ShellActivity extends Activity {
                     if (equalizer != null) { try { equalizer.setEnabled(false); equalizer.release(); } catch (Exception ignored) {} equalizer = null; }
                     if (exoPlayer != null) { try { exoPlayer.pause(); exoPlayer.stop(); exoPlayer.release(); } catch (Exception ignored) {} }
                     exoPlayer = new androidx.media3.exoplayer.ExoPlayer.Builder(ShellActivity.this).build();
+                    // Pre-set audio session id so Visualizer can attach reliably — otherwise
+                    // getAudioSessionId() returns 0 (UNSET) and the visualizer binds to the system mix.
+                    try {
+                        AudioManager __am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+                        int __sid = __am.generateAudioSessionId();
+                        if (__sid > 0) exoPlayer.setAudioSessionId(__sid);
+                    } catch (Exception ignored) {}
                     exoPlayer.addListener(new androidx.media3.common.Player.Listener() {
                         @Override public void onPlaybackStateChanged(int state) {
                             if (state == androidx.media3.common.Player.STATE_ENDED && activityAlive && audioCompleteCallbackFn != null)
@@ -3948,11 +3955,26 @@ public class ShellActivity extends Activity {
                     new String[]{Manifest.permission.RECORD_AUDIO}, REQ_AUDIO_RECORD);
                 return;
             }
+            attachVisualizer(callbackFn, 0);
+        }
+
+        // Poll for a non-zero audio session id — ExoPlayer returns 0 until the AudioTrack
+        // is actually decoding. Attaching a Visualizer to session 0 captures the system mix
+        // and produces no per-player data, which looked like "viz sometimes doesn't show".
+        private void attachVisualizer(String callbackFn, int attempt) {
             runOnUiThread(() -> {
                 try {
-                    if (audioVisualizer != null) { try { audioVisualizer.release(); } catch (Exception ignored) {} }
+                    if (audioVisualizer != null) { try { audioVisualizer.release(); } catch (Exception ignored) {} audioVisualizer = null; }
                     androidx.media3.exoplayer.ExoPlayer p = activePlayer();
                     int sessionId = p != null ? p.getAudioSessionId() : 0;
+                    if (sessionId == 0) {
+                        if (attempt < 40) { // up to ~10s
+                            webView.postDelayed(() -> attachVisualizer(callbackFn, attempt + 1), 250);
+                        } else {
+                            Log.w("iappyxOS", "startVisualizer: gave up waiting for audio session id");
+                        }
+                        return;
+                    }
                     audioVisualizer = new android.media.audiofx.Visualizer(sessionId);
                     audioVisualizer.setCaptureSize(128); // small size = less overhead
                     audioVisualizer.setDataCaptureListener(new android.media.audiofx.Visualizer.OnDataCaptureListener() {
@@ -4872,6 +4894,13 @@ public class ShellActivity extends Activity {
                     if (audioVisualizer != null) { try { audioVisualizer.setEnabled(false); audioVisualizer.release(); } catch (Exception ignored) {} audioVisualizer = null; }
                     if (exoPlayer != null) { try { exoPlayer.pause(); exoPlayer.stop(); exoPlayer.release(); } catch (Exception ignored) {} }
                     exoPlayer = new androidx.media3.exoplayer.ExoPlayer.Builder(ShellActivity.this).build();
+                    // Pre-set audio session id so Visualizer can attach reliably — otherwise
+                    // getAudioSessionId() returns 0 (UNSET) and the visualizer binds to the system mix.
+                    try {
+                        AudioManager __am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+                        int __sid = __am.generateAudioSessionId();
+                        if (__sid > 0) exoPlayer.setAudioSessionId(__sid);
+                    } catch (Exception ignored) {}
                     exoPlayer.setMediaItem(androidx.media3.common.MediaItem.fromUri(uri));
                     exoPlayer.prepare();
                     exoPlayer.play();

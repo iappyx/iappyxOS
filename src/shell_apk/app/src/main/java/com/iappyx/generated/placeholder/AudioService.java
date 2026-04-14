@@ -62,6 +62,12 @@ public class AudioService extends Service {
     public void onCreate() {
         super.onCreate();
         player = new ExoPlayer.Builder(this).build();
+        // Pre-set audio session id so Visualizer can attach via getAudioSessionId()
+        try {
+            android.media.AudioManager am = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
+            int sid = am.generateAudioSessionId();
+            if (sid > 0) player.setAudioSessionId(sid);
+        } catch (Exception ignored) {}
         player.addListener(new Player.Listener() {
             @Override
             public void onPlaybackStateChanged(int state) {
