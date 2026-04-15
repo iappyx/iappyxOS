@@ -49,4 +49,6 @@ dependencies {
     implementation 'androidx.car.app:app:1.4.0'
     // LifecycleService — host for the CarConnection LiveData observer.
     implementation 'androidx.lifecycle:lifecycle-service:2.7.0'
+    // Play Services geofencing (efficient OS-managed geofence monitoring for trigger.geofence)
+    implementation 'com.google.android.gms:play-services-location:21.3.0'
 }

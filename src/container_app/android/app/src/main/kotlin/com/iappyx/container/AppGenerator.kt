@@ -6193,6 +6193,44 @@ input[type=text]{width:100%;padding:10px;border-radius:8px;background:#0d0d1a;bo
 </div>
 
 <div class="section">
+<h3>More triggers</h3>
+<div class="desc">One-tap registration with no match filter. All use the shared `window.onTrigger` callback — fires a notification on every event. Persistent mode applies to all.</div>
+<div class="persist-row"><input type="checkbox" id="pMore"><label for="pMore">Keep firing when app is closed</label></div>
+<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+  <button class="btn" style="flex:1;min-width:45%;margin-bottom:0" onclick="setupMore('screen')">Screen on/off</button>
+  <button class="btn" style="flex:1;min-width:45%;margin-bottom:0" onclick="setupMore('ringer')">Ringer changed</button>
+  <button class="btn" style="flex:1;min-width:45%;margin-bottom:0" onclick="setupMore('airplane')">Airplane mode</button>
+  <button class="btn" style="flex:1;min-width:45%;margin-bottom:0" onclick="setupMore('battery')">Battery low/okay</button>
+  <button class="btn" style="flex:1;min-width:45%;margin-bottom:0" onclick="setupMore('boot')">Device boot</button>
+  <button class="btn" style="flex:1;min-width:45%;margin-bottom:0" onclick="setupMore('timezone')">Timezone</button>
+  <button class="btn" style="flex:1;min-width:45%;margin-bottom:0" onclick="setupMore('locale')">Locale</button>
+</div>
+</div>
+
+<div class="section">
+<h3>Geofence trigger</h3>
+<div class="desc">Fires when you arrive at, leave, or dwell within a location. Tap "Use here" to fill in your current lat/lon.</div>
+<div class="desc" style="color:#FF8A65">Requires background location. Grant "Allow all the time" in Settings.</div>
+<div id="bgLocBanner" class="ka-banner off" style="margin-bottom:8px">Background location: <span id="bgLocState">checking…</span></div>
+<div style="display:flex;gap:6px;margin-bottom:6px">
+  <input id="gfLat" type="text" placeholder="Lat" style="flex:1">
+  <input id="gfLon" type="text" placeholder="Lon" style="flex:1">
+</div>
+<div style="display:flex;gap:6px;margin-bottom:8px">
+  <input id="gfRadius" type="text" placeholder="Radius m (min 100)" style="flex:2">
+  <select id="gfEvent" style="flex:1;padding:10px;border-radius:8px;background:#0d0d1a;border:1px solid rgba(255,255,255,0.1);color:#eaeaea;font-size:13px">
+    <option value="enter">enter</option>
+    <option value="exit">exit</option>
+    <option value="dwell">dwell</option>
+    <option value="any">any</option>
+  </select>
+</div>
+<button class="btn" onclick="useHereGeofence()">Use current location</button>
+<button class="btn" onclick="openBgLoc()">Grant background location</button>
+<button class="btn" onclick="setupGeofence()">Enable geofence trigger</button>
+</div>
+
+<div class="section">
 <h3>Android Auto → launch app</h3>
 <div class="desc">When the phone connects to Android Auto, automatically open another installed app on your phone. Always persistent.</div>
 <div class="desc" style="color:#FF8A65">Needs "Display over other apps" permission to launch silently when the phone is backgrounded. Grant it once in Settings.</div>
@@ -6285,6 +6323,56 @@ function cancelAll(){
   log('Cancelled all triggers');
   refreshList();
 }
+function refreshBgLocBanner(){
+  var on=false;
+  try{on=iappyx.location.hasBackgroundLocation();}catch(e){}
+  var b=document.getElementById('bgLocBanner'),s=document.getElementById('bgLocState');
+  if(!s)return;
+  s.textContent=on?'granted':'not granted';
+  b.className='ka-banner'+(on?'':' off');
+}
+function openBgLoc(){
+  try{iappyx.location.openBackgroundSettings();log('Opened Settings — toggle location to "Allow all the time", then return.');}
+  catch(e){log('bgLoc failed: '+e.message,'err');}
+}
+function useHereGeofence(){
+  iappyx.location.getLocation('geocb');
+  window._iappyxCb=window._iappyxCb||{};
+  window._iappyxCb.geocb=function(r){
+    if(!r.ok){log('location failed: '+(r.error||'unknown'),'err');return;}
+    document.getElementById('gfLat').value=r.lat.toFixed(6);
+    document.getElementById('gfLon').value=r.lon.toFixed(6);
+    if(!document.getElementById('gfRadius').value)document.getElementById('gfRadius').value='150';
+    log('Filled current location: '+r.lat.toFixed(4)+', '+r.lon.toFixed(4));
+  };
+}
+function setupGeofence(){
+  var lat=parseFloat(document.getElementById('gfLat').value);
+  var lon=parseFloat(document.getElementById('gfLon').value);
+  var rad=parseFloat(document.getElementById('gfRadius').value);
+  var ev=document.getElementById('gfEvent').value;
+  if(isNaN(lat)||isNaN(lon)||isNaN(rad)){log('Invalid lat/lon/radius','err');return;}
+  if(rad<100){log('Radius must be at least 100m','err');return;}
+  iappyx.trigger.geofence('demo_geo',lat,lon,rad,ev,'window.onTrigger','{"persistent":true}');
+  log('Registered geofence trigger: '+ev+' @ '+lat.toFixed(3)+','+lon.toFixed(3)+' r='+rad+'m');
+  refreshList();
+}
+function setupMore(kind){
+  var opts=JSON.stringify({persistent:document.getElementById('pMore').checked});
+  var id='demo_'+kind;
+  var fn='window.onTrigger';
+  try{
+    if(kind==='screen')iappyx.trigger.screen(id,'any',fn,opts);
+    else if(kind==='ringer')iappyx.trigger.ringer(id,'any',fn,opts);
+    else if(kind==='airplane')iappyx.trigger.airplane(id,'any',fn,opts);
+    else if(kind==='battery')iappyx.trigger.battery(id,'any',fn,opts);
+    else if(kind==='boot')iappyx.trigger.boot(id,fn,opts);
+    else if(kind==='timezone')iappyx.trigger.timezone(id,fn,opts);
+    else if(kind==='locale')iappyx.trigger.locale(id,fn,opts);
+    log('Registered '+kind+' trigger'+(document.getElementById('pMore').checked?' (persistent)':''));
+    refreshList();
+  }catch(e){log(kind+' failed: '+e.message,'err');}
+}
 function requestOverlay(){
   try{iappyx.intent.requestOverlayPermission();log('Opened Settings — toggle "Display over other apps" on, then return.');}
   catch(e){log('overlay request failed: '+e.message,'err');}
@@ -6366,8 +6454,9 @@ waitBridge(function(){
   populateAppPicker();
   refreshList();
   refreshOverlayBanner();
-  // Re-check overlay permission on resume (user may have toggled it in Settings)
-  window.addEventListener('focus',refreshOverlayBanner);
+  refreshBgLocBanner();
+  // Re-check perms on resume (user may have toggled them in Settings)
+  window.addEventListener('focus',function(){refreshOverlayBanner();refreshBgLocBanner();});
 });
 </script></body></html>""".trimIndent()
 

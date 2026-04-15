@@ -64,7 +64,12 @@ class MyAppsScreenState extends State<MyAppsScreen> {
     final counts = <String, int>{};
     for (final app in apps) {
       final versions = await AppStorage.getVersions(app.id);
-      if (versions.isNotEmpty) counts[app.id] = versions.length + 1; // current = versions + 1
+      if (versions.isNotEmpty) {
+        // History is capped at 10 entries but version numbers keep incrementing.
+        // Use the highest stored version, not list length. Current = latest stored + 1.
+        final latest = (versions.last['version'] as int?) ?? versions.length;
+        counts[app.id] = latest + 1;
+      }
     }
     if (mounted) setState(() { _apps = apps; _versionCounts = counts; _loading = false; });
   }

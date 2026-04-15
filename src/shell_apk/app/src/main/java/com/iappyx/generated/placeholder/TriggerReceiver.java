@@ -28,6 +28,7 @@ import android.bluetooth.BluetoothDevice;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.media.AudioManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.wifi.WifiInfo;
@@ -140,6 +141,37 @@ public class TriggerReceiver extends BroadcastReceiver {
                     if (!connected) lastWifiSsid = null; // only valid until next connect
                     break;
                 }
+                case Intent.ACTION_SCREEN_ON:
+                    dispatch(context, "screen", "on", null, null);
+                    break;
+                case Intent.ACTION_SCREEN_OFF:
+                    dispatch(context, "screen", "off", null, null);
+                    break;
+                case AudioManager.RINGER_MODE_CHANGED_ACTION: {
+                    int mode = intent.getIntExtra(AudioManager.EXTRA_RINGER_MODE, -1);
+                    String ev = mode == AudioManager.RINGER_MODE_SILENT ? "silent"
+                        : mode == AudioManager.RINGER_MODE_VIBRATE ? "vibrate"
+                        : mode == AudioManager.RINGER_MODE_NORMAL ? "normal" : null;
+                    if (ev != null) dispatch(context, "ringer", ev, null, null);
+                    break;
+                }
+                case Intent.ACTION_AIRPLANE_MODE_CHANGED: {
+                    boolean on = intent.getBooleanExtra("state", false);
+                    dispatch(context, "airplane", on ? "on" : "off", null, null);
+                    break;
+                }
+                case Intent.ACTION_BATTERY_LOW:
+                    dispatch(context, "battery", "low", null, null);
+                    break;
+                case Intent.ACTION_BATTERY_OKAY:
+                    dispatch(context, "battery", "okay", null, null);
+                    break;
+                case Intent.ACTION_TIMEZONE_CHANGED:
+                    dispatch(context, "timezone", "fired", null, null);
+                    break;
+                case Intent.ACTION_LOCALE_CHANGED:
+                    dispatch(context, "locale", "fired", null, null);
+                    break;
                 default:
                     break;
             }
@@ -267,6 +299,26 @@ public class TriggerReceiver extends BroadcastReceiver {
      * Charger + headphones are declared statically in the manifest.
      */
     public static void registerDynamic(Context context) {
+        // Prime the WiFi edge-detector baseline from the current system state before any
+        // broadcast arrives. Without this, `lastWifiConnected` stays false-by-default and
+        // the first real disconnect (when we started already connected) gets dropped by
+        // the `connected == lastWifiConnected` edge check.
+        try {
+            WifiManager wm = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            if (wm != null) {
+                WifiInfo wi = wm.getConnectionInfo();
+                boolean connectedNow = wi != null && wi.getNetworkId() != -1;
+                lastWifiConnected = connectedNow;
+                if (connectedNow && wi.getSSID() != null) {
+                    String s = wi.getSSID();
+                    if (s.startsWith("\"") && s.endsWith("\"")) s = s.substring(1, s.length() - 1);
+                    if (!"<unknown ssid>".equals(s)) lastWifiSsid = s;
+                }
+            }
+        } catch (Exception ignored) {
+            // No location permission, missing service, etc. — fall back to default-false baseline
+        }
+
         try {
             TriggerReceiver r = new TriggerReceiver();
             android.content.IntentFilter f = new android.content.IntentFilter();
@@ -279,6 +331,18 @@ public class TriggerReceiver extends BroadcastReceiver {
             f.addAction(BluetoothDevice.ACTION_ACL_CONNECTED);
             f.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
             f.addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION);
+            // Dynamic-only: SCREEN_ON/OFF cannot be received via manifest on any API level.
+            f.addAction(Intent.ACTION_SCREEN_ON);
+            f.addAction(Intent.ACTION_SCREEN_OFF);
+            // RINGER / AIRPLANE / BATTERY_LOW / BATTERY_OKAY / TIMEZONE / LOCALE all work
+            // via manifest on the exempt list, but we also register dynamically for parity
+            // with Phase 1 — static manifest is unreliable on Android 15+ anyway.
+            f.addAction(AudioManager.RINGER_MODE_CHANGED_ACTION);
+            f.addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED);
+            f.addAction(Intent.ACTION_BATTERY_LOW);
+            f.addAction(Intent.ACTION_BATTERY_OKAY);
+            f.addAction(Intent.ACTION_TIMEZONE_CHANGED);
+            f.addAction(Intent.ACTION_LOCALE_CHANGED);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 context.getApplicationContext().registerReceiver(r, f, Context.RECEIVER_EXPORTED);
             } else {

@@ -216,10 +216,19 @@
             android:exported="false"
             android:foregroundServiceType="location" />
 
-        <!-- Geofence transition receiver -->
+        <!-- Geofence transition receiver (legacy iappyx.location.addGeofence) -->
         <receiver
             android:name="com.iappyx.generated.placeholder.GeofenceReceiver"
             android:exported="false" />
+
+        <!-- Geofence transition receiver for iappyx.trigger.geofence (Play Services) -->
+        <receiver
+            android:name="com.iappyx.generated.placeholder.GeofenceTransitionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.iappyx.trigger.GEOFENCE_TRANSITION" />
+            </intent-filter>
+        </receiver>
 
         <!-- Trigger bridge: broadcast-based triggers (charger, headphones).
              Static registration needed for charger/headphones because they must fire even
@@ -243,6 +252,16 @@
             <intent-filter>
                 <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
                 <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
+            </intent-filter>
+            <!-- Exempt-list broadcasts: allowed to manifest receivers even from a cold
+                 process. Give these a fallback static entry so they can wake the app
+                 before the user has opened it post-install. -->
+            <intent-filter>
+                <action android:name="android.intent.action.AIRPLANE_MODE" />
+                <action android:name="android.intent.action.BATTERY_LOW" />
+                <action android:name="android.intent.action.BATTERY_OKAY" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.LOCALE_CHANGED" />
             </intent-filter>
         </receiver>
 

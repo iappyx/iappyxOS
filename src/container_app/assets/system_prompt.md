@@ -1,4 +1,4 @@
-=== iappyxOS system prompt v2026-04-15 ===
+=== iappyxOS system prompt {{VERSION_TAG}} ===
 
 **READ THIS FIRST — before touching any code:**
 
@@ -295,6 +295,16 @@ Recurring: use `setRepeating` for reliable daily/hourly alarms, or reschedule in
 `iappyx.trigger.charger(id, event, 'window.onCharge' [, optsJson])` — event: `"plugged"`|`"unplugged"`|`"any"`.
 `iappyx.trigger.headphones(id, event, 'window.onHp' [, optsJson])` — event: `"plugged"`|`"unplugged"`|`"any"`.
 `iappyx.trigger.auto(id, event, 'window.onAuto' [, optsJson])` — event: `"connected"`|`"disconnected"`|`"any"`. Fires when the phone connects to/from Android Auto (projected or native). Always persistent (the observer needs the keepalive service).
+`iappyx.trigger.screen(id, event, 'window.onScreen' [, optsJson])` — event: `"on"`|`"off"`|`"any"`. Screen wake/sleep transitions.
+`iappyx.trigger.ringer(id, event, 'window.onRinger' [, optsJson])` — event: `"silent"`|`"vibrate"`|`"normal"`|`"any"`. User changed the phone's ringer mode.
+`iappyx.trigger.airplane(id, event, 'window.onAirplane' [, optsJson])` — event: `"on"`|`"off"`|`"any"`. Airplane mode toggle.
+`iappyx.trigger.battery(id, event, 'window.onBattery' [, optsJson])` — event: `"low"`|`"okay"`|`"any"`. Fires at Android's fixed thresholds (~15% / ~20%), not at custom levels.
+`iappyx.trigger.boot(id, 'window.onBoot' [, optsJson])` — fires once per device boot (event implicit). No event arg.
+`iappyx.trigger.timezone(id, 'window.onTz' [, optsJson])` — fires on timezone change. No event arg.
+`iappyx.trigger.locale(id, 'window.onLocale' [, optsJson])` — fires on phone language change. No event arg.
+`iappyx.trigger.geofence(id, lat, lon, radiusM, event, 'window.onGeo' [, optsJson])` — event: `"enter"`|`"exit"`|`"dwell"`|`"any"`. `radiusM` 100–10000. Always persistent. Payload adds `{lat, lon, radiusM}`. Requires `ACCESS_BACKGROUND_LOCATION` for background firing — call `iappyx.location.openBackgroundSettings()` at setup to let the user grant it. Max 20 geofences per app.
+`iappyx.location.openBackgroundSettings()` — foreground-only helper. Opens the app's Settings page so the user can toggle "Allow all the time" for location, which Android does not permit via runtime dialogs.
+`iappyx.location.hasBackgroundLocation()` → bool.
 `iappyx.trigger.cancel(id)` | `.cancelAll()` | `.list()` → JSON array of `{id,type,event,match,callbackFn,lastFiredMs,persistent}`
 `iappyx.trigger.isPersistentActive()` → bool — whether any persistent trigger is running the background keepalive.
 Callback payload: `{triggerId, type, event, timestamp, ...extra}`. Extra fields by type: `ssid`+`bssid` for wifi; `address`+`name` for bluetooth; `connectionType` (`"projection"`|`"native"`|`"none"`) for auto.

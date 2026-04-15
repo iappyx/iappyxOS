@@ -133,6 +133,15 @@ Triggers come in two modes:
 
 If your trigger was working and then stopped, either use persistent mode, or re-open the app before you need it to fire. Aggressive OEM battery-savers (Samsung, Xiaomi, Huawei) may also kill the app even in persistent mode — whitelist it in the OS battery settings if needed.
 
+### My geofence trigger only fires when the app is open, not in the background
+Go to Settings → the generated app → Permissions → Location → **Allow all the time**. Android does not let apps request this via a runtime dialog — the user must toggle it manually. Call `iappyx.location.openBackgroundSettings()` from your app to jump them straight to the right Settings page.
+
+### Why does my geofence take a minute or two to fire after I cross the boundary
+Android debounces geofence transitions to avoid drive-by false positives. "Dwell" events wait for the configured `dwellDelayMs` (default 60 seconds). This is OS behavior, not an iappyxOS limitation.
+
+### Battery impact of geofence triggers
+Using `iappyx.trigger.geofence` is built on Android's `GeofencingClient`, which the OS optimizes heavily (cell/WiFi inference, hardware offload on some chips). One or two geofences typically cost 1–2% battery per 24 hours of background operation. Aggressive OEMs (Xiaomi, Huawei) may throttle Play Services even then — whitelist the app in the OS battery settings if transitions seem to miss.
+
 ### My `iappyx.intent.launchApp()` call from a trigger doesn't launch anything
 Android blocks background activity starts by default. To launch another app silently from a trigger callback while your app isn't visible, the user must grant "Display over other apps" for your app (Settings → Special access). Call `iappyx.intent.requestOverlayPermission()` once at setup time to jump them to the right Settings page. Without this grant, the call returns `false` silently.
 

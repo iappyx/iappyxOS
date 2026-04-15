@@ -56,6 +56,11 @@ public class AlarmReceiver extends BroadcastReceiver {
                     if (TriggerStore.hasAnyPersistent(ctx)) {
                         TriggerKeepaliveService.start(ctx);
                     }
+                    // Play Services does not persist geofences across reboot —
+                    // re-register each stored geofence with the system.
+                    reRegisterGeofences(ctx);
+                    // Fire registered boot triggers exactly once per boot.
+                    TriggerReceiver.dispatchExternal(ctx, "boot", "fired", null, null);
                 }
                 finally { pendingResult.finish(); }
             }).start();
@@ -117,6 +122,63 @@ public class AlarmReceiver extends BroadcastReceiver {
         } else {
             // One-shot alarm — clean up everything
             alarmPrefs.edit().remove("callbackFn_" + id).remove("ts_" + id).remove("interval_" + id).apply();
+        }
+    }
+
+    /**
+     * Re-register every stored geofence trigger with Play Services. Google's
+     * GeofencingClient does NOT persist registrations across reboot — this is a
+     * real gap that most naive integrations miss.
+     */
+    private void reRegisterGeofences(Context context) {
+        try {
+            java.util.List<org.json.JSONObject> geos = TriggerStore.byType(context, "geofence");
+            if (geos.isEmpty()) return;
+            if (context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                android.util.Log.w("iappyxOS", "reRegisterGeofences: no location permission, skipping");
+                return;
+            }
+            java.util.List<com.google.android.gms.location.Geofence> fences = new java.util.ArrayList<>();
+            for (org.json.JSONObject t : geos) {
+                String id = t.optString("id", null);
+                if (id == null) continue;
+                double lat = t.optDouble("lat", 0);
+                double lon = t.optDouble("lon", 0);
+                double rM  = t.optDouble("radiusM", 100);
+                long dwell = t.optLong("dwellDelayMs", 60_000L);
+                String event = t.optString("event", "any");
+                int transitions;
+                if ("enter".equals(event))      transitions = com.google.android.gms.location.Geofence.GEOFENCE_TRANSITION_ENTER;
+                else if ("exit".equals(event))  transitions = com.google.android.gms.location.Geofence.GEOFENCE_TRANSITION_EXIT;
+                else if ("dwell".equals(event)) transitions = com.google.android.gms.location.Geofence.GEOFENCE_TRANSITION_DWELL;
+                else transitions = com.google.android.gms.location.Geofence.GEOFENCE_TRANSITION_ENTER
+                        | com.google.android.gms.location.Geofence.GEOFENCE_TRANSITION_EXIT
+                        | com.google.android.gms.location.Geofence.GEOFENCE_TRANSITION_DWELL;
+                fences.add(new com.google.android.gms.location.Geofence.Builder()
+                    .setRequestId(id)
+                    .setCircularRegion(lat, lon, (float) rM)
+                    .setExpirationDuration(com.google.android.gms.location.Geofence.NEVER_EXPIRE)
+                    .setTransitionTypes(transitions)
+                    .setLoiteringDelay((int) Math.min(dwell, Integer.MAX_VALUE))
+                    .build());
+            }
+            if (fences.isEmpty()) return;
+            com.google.android.gms.location.GeofencingRequest req =
+                new com.google.android.gms.location.GeofencingRequest.Builder()
+                    .setInitialTrigger(0)
+                    .addGeofences(fences)
+                    .build();
+            Intent intent = new Intent(context, GeofenceTransitionReceiver.class);
+            intent.setAction(GeofenceTransitionReceiver.ACTION);
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_MUTABLE;
+            PendingIntent pi = PendingIntent.getBroadcast(context, 0x6e0f0c, intent, flags);
+            com.google.android.gms.location.LocationServices.getGeofencingClient(context)
+                .addGeofences(req, pi);
+            android.util.Log.i("iappyxOS", "re-registered " + fences.size() + " geofence(s) after boot");
+        } catch (Exception e) {
+            android.util.Log.w("iappyxOS", "reRegisterGeofences: " + e.getMessage());
         }
     }
 

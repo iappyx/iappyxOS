@@ -393,6 +393,8 @@ class _PreviewScreenState extends State<PreviewScreen> {
     startTrackingWithOptions:function(fn,opts){console.warn('[Preview] location tracking not available');},
     stopTracking:function(){},
     addGeofence:function(id,lat,lon,radius,fn){console.warn('[Preview] Geofencing not available');},
+    openBackgroundSettings:function(){console.log('[Preview] openBackgroundSettings (no-op)');},
+    hasBackgroundLocation:function(){return true;},
     removeGeofence:function(id){},
     removeAllGeofences:function(){}
   };
@@ -573,12 +575,22 @@ class _PreviewScreenState extends State<PreviewScreen> {
   // Triggers — simulated. Registrations are accepted and stored in-memory so
   // list()/cancel() behave sensibly, but no real broadcasts fire in preview.
   var _triggers={};
+  function _persistFromOpts(o){return o&&o.indexOf('"persistent":true')>=0;}
+  function _regTrig(id,data,name){_triggers[id]=data;console.log('[Preview] trigger.'+name+' registered (will not fire in preview)');}
   var trigger={
-    charger:function(id,ev,fn,opts){_triggers[id]={id:id,type:'charger',event:ev,callbackFn:fn,persistent:(opts&&opts.indexOf('"persistent":true')>=0)||false,lastFiredMs:0};console.log('[Preview] trigger.charger registered (will not fire in preview)');},
-    headphones:function(id,ev,fn,opts){_triggers[id]={id:id,type:'headphones',event:ev,callbackFn:fn,persistent:(opts&&opts.indexOf('"persistent":true')>=0)||false,lastFiredMs:0};console.log('[Preview] trigger.headphones registered (will not fire in preview)');},
-    wifi:function(id,ssid,ev,fn,opts){_triggers[id]={id:id,type:'wifi',event:ev,match:ssid,callbackFn:fn,persistent:(opts&&opts.indexOf('"persistent":true')>=0)||false,lastFiredMs:0};console.log('[Preview] trigger.wifi registered (will not fire in preview)');},
-    bluetooth:function(id,addr,ev,fn,opts){_triggers[id]={id:id,type:'bluetooth',event:ev,match:addr,callbackFn:fn,persistent:(opts&&opts.indexOf('"persistent":true')>=0)||false,lastFiredMs:0};console.log('[Preview] trigger.bluetooth registered (will not fire in preview)');},
-    auto:function(id,ev,fn,opts){_triggers[id]={id:id,type:'auto',event:ev,callbackFn:fn,persistent:true,lastFiredMs:0};console.log('[Preview] trigger.auto registered (will not fire in preview)');},
+    charger:function(id,ev,fn,opts){_regTrig(id,{id:id,type:'charger',event:ev,callbackFn:fn,persistent:_persistFromOpts(opts),lastFiredMs:0},'charger');},
+    headphones:function(id,ev,fn,opts){_regTrig(id,{id:id,type:'headphones',event:ev,callbackFn:fn,persistent:_persistFromOpts(opts),lastFiredMs:0},'headphones');},
+    wifi:function(id,ssid,ev,fn,opts){_regTrig(id,{id:id,type:'wifi',event:ev,match:ssid,callbackFn:fn,persistent:_persistFromOpts(opts),lastFiredMs:0},'wifi');},
+    bluetooth:function(id,addr,ev,fn,opts){_regTrig(id,{id:id,type:'bluetooth',event:ev,match:addr,callbackFn:fn,persistent:_persistFromOpts(opts),lastFiredMs:0},'bluetooth');},
+    auto:function(id,ev,fn,opts){_regTrig(id,{id:id,type:'auto',event:ev,callbackFn:fn,persistent:true,lastFiredMs:0},'auto');},
+    screen:function(id,ev,fn,opts){_regTrig(id,{id:id,type:'screen',event:ev,callbackFn:fn,persistent:_persistFromOpts(opts),lastFiredMs:0},'screen');},
+    ringer:function(id,ev,fn,opts){_regTrig(id,{id:id,type:'ringer',event:ev,callbackFn:fn,persistent:_persistFromOpts(opts),lastFiredMs:0},'ringer');},
+    airplane:function(id,ev,fn,opts){_regTrig(id,{id:id,type:'airplane',event:ev,callbackFn:fn,persistent:_persistFromOpts(opts),lastFiredMs:0},'airplane');},
+    battery:function(id,ev,fn,opts){_regTrig(id,{id:id,type:'battery',event:ev,callbackFn:fn,persistent:_persistFromOpts(opts),lastFiredMs:0},'battery');},
+    boot:function(id,fn,opts){_regTrig(id,{id:id,type:'boot',event:'fired',callbackFn:fn,persistent:_persistFromOpts(opts),lastFiredMs:0},'boot');},
+    timezone:function(id,fn,opts){_regTrig(id,{id:id,type:'timezone',event:'fired',callbackFn:fn,persistent:_persistFromOpts(opts),lastFiredMs:0},'timezone');},
+    locale:function(id,fn,opts){_regTrig(id,{id:id,type:'locale',event:'fired',callbackFn:fn,persistent:_persistFromOpts(opts),lastFiredMs:0},'locale');},
+    geofence:function(id,lat,lon,r,ev,fn,opts){_regTrig(id,{id:id,type:'geofence',event:ev,match:id,lat:lat,lon:lon,radiusM:r,callbackFn:fn,persistent:true,lastFiredMs:0},'geofence');},
     cancel:function(id){delete _triggers[id];},
     cancelAll:function(){_triggers={};},
     list:function(){var a=[];for(var k in _triggers)a.push(_triggers[k]);return JSON.stringify(a);},

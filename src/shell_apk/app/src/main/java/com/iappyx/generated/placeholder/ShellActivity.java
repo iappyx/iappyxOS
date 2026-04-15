@@ -2543,6 +2543,33 @@ public class ShellActivity extends Activity {
     private LocationListener activeLocationListener;
 
     class LocationBridge {
+        /**
+         * Opens the system's per-app Permissions Settings so the user can toggle
+         * "Allow all the time" for location — required for trigger.geofence to fire
+         * while the app is backgrounded on Android 10+. Android does not allow this
+         * permission to be requested via a runtime dialog.
+         */
+        @JavascriptInterface public void openBackgroundSettings() {
+            runOnUiThread(() -> {
+                try {
+                    Intent i = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        android.net.Uri.parse("package:" + getPackageName()));
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(i);
+                } catch (Exception e) {
+                    Log.w("iappyxOS", "openBackgroundSettings: " + e.getMessage());
+                }
+            });
+        }
+        @JavascriptInterface public boolean hasBackgroundLocation() {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                return ContextCompat.checkSelfPermission(ShellActivity.this,
+                    Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+            }
+            return ContextCompat.checkSelfPermission(ShellActivity.this,
+                Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        }
+
         private String locationJson(Location l) {
             return "{\"ok\":true,\"lat\":" + l.getLatitude() +
                 ",\"lon\":" + l.getLongitude() + ",\"accuracy\":" + l.getAccuracy() +
@@ -8022,6 +8049,170 @@ public class ShellActivity extends Activity {
         @JavascriptInterface public void auto(String id, String event, String callbackFn) {
             register("auto", id, null, event, callbackFn, "{\"persistent\":true}");
         }
+        // Geofence: enter/exit/dwell at a specific lat/lon/radius.
+        // Always persistent; the Play Services PendingIntent wakes our receiver
+        // from cold-kill regardless, but the keepalive ensures consistency with
+        // other trigger types and enables BOOT_COMPLETED re-registration.
+        @JavascriptInterface public void geofence(String id, double lat, double lon,
+                double radiusM, String event, String callbackFn) {
+            registerGeofence(id, lat, lon, radiusM, event, callbackFn, null);
+        }
+        @JavascriptInterface public void geofence(String id, double lat, double lon,
+                double radiusM, String event, String callbackFn, String optsJson) {
+            registerGeofence(id, lat, lon, radiusM, event, callbackFn, optsJson);
+        }
+
+        private void registerGeofence(String id, double lat, double lon, double radiusM,
+                String event, String callbackFn, String optsJson) {
+            if (id == null || id.isEmpty() || callbackFn == null) return;
+            if (!isSafeCallbackName(callbackFn)) return;
+            if (event == null || event.isEmpty()) event = "any";
+            if (radiusM < 100) { Log.w("iappyxOS", "geofence: radius < 100m rejected"); return; }
+            if (radiusM > 10000) radiusM = 10000;
+
+            // Enforce per-app cap (20, below Google's 100 to leave headroom)
+            int geofenceCount = TriggerStore.byType(ShellActivity.this, "geofence").size();
+            if (geofenceCount >= 20 && TriggerStore.get(ShellActivity.this, id) == null) {
+                Log.w("iappyxOS", "geofence: cap of 20 reached, registration rejected");
+                return;
+            }
+
+            long dwellDelayMs = 60_000L;
+            try {
+                if (optsJson != null && !optsJson.isEmpty()) {
+                    JSONObject o = new JSONObject(optsJson);
+                    dwellDelayMs = o.optLong("dwellDelayMs", 60_000L);
+                }
+            } catch (JSONException ignored) {}
+
+            // Persist to TriggerStore. match = id so dispatch picks exactly this trigger
+            // when Play Services fires for this fence.
+            try {
+                JSONObject t = new JSONObject();
+                t.put("id", id);
+                t.put("type", "geofence");
+                t.put("event", event);
+                t.put("match", id);
+                t.put("callbackFn", callbackFn);
+                t.put("lastFiredMs", 0);
+                t.put("debounceMs", TriggerStore.DEFAULT_DEBOUNCE_MS);
+                t.put("persistent", true);
+                t.put("lat", lat);
+                t.put("lon", lon);
+                t.put("radiusM", radiusM);
+                t.put("dwellDelayMs", dwellDelayMs);
+                TriggerStore.put(ShellActivity.this, t);
+            } catch (JSONException e) { return; }
+
+            // Auto-request FINE_LOCATION. BACKGROUND_LOCATION must be granted via
+            // Settings on Android 10+ — JS should call iappyx.location.openBackgroundSettings().
+            if (ContextCompat.checkSelfPermission(ShellActivity.this,
+                    Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(ShellActivity.this,
+                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, REQ_LOCATION);
+                Log.i("iappyxOS", "geofence: fine location not granted yet, will register after grant");
+                return;
+            }
+
+            registerGeofenceWithPlayServices(id, lat, lon, (float) radiusM, dwellDelayMs, event);
+            ensureNotificationPermission();
+            TriggerKeepaliveService.start(ShellActivity.this);
+        }
+
+        private void registerGeofenceWithPlayServices(String id, double lat, double lon,
+                float radiusM, long dwellDelayMs, String event) {
+            try {
+                int transitionTypes;
+                if ("enter".equals(event))      transitionTypes = com.google.android.gms.location.Geofence.GEOFENCE_TRANSITION_ENTER;
+                else if ("exit".equals(event))  transitionTypes = com.google.android.gms.location.Geofence.GEOFENCE_TRANSITION_EXIT;
+                else if ("dwell".equals(event)) transitionTypes = com.google.android.gms.location.Geofence.GEOFENCE_TRANSITION_DWELL;
+                else transitionTypes = com.google.android.gms.location.Geofence.GEOFENCE_TRANSITION_ENTER
+                        | com.google.android.gms.location.Geofence.GEOFENCE_TRANSITION_EXIT
+                        | com.google.android.gms.location.Geofence.GEOFENCE_TRANSITION_DWELL;
+
+                com.google.android.gms.location.Geofence fence =
+                    new com.google.android.gms.location.Geofence.Builder()
+                        .setRequestId(id)
+                        .setCircularRegion(lat, lon, radiusM)
+                        .setExpirationDuration(com.google.android.gms.location.Geofence.NEVER_EXPIRE)
+                        .setTransitionTypes(transitionTypes)
+                        .setLoiteringDelay((int) Math.min(dwellDelayMs, Integer.MAX_VALUE))
+                        .build();
+
+                com.google.android.gms.location.GeofencingRequest req =
+                    new com.google.android.gms.location.GeofencingRequest.Builder()
+                        .setInitialTrigger(
+                            com.google.android.gms.location.GeofencingRequest.INITIAL_TRIGGER_ENTER
+                            | com.google.android.gms.location.GeofencingRequest.INITIAL_TRIGGER_DWELL)
+                        .addGeofence(fence)
+                        .build();
+
+                Intent intent = new Intent(ShellActivity.this, GeofenceTransitionReceiver.class);
+                intent.setAction(GeofenceTransitionReceiver.ACTION);
+                int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_MUTABLE;
+                PendingIntent pi = PendingIntent.getBroadcast(
+                    ShellActivity.this, id.hashCode() & 0x7FFFFFFF, intent, flags);
+
+                com.google.android.gms.location.LocationServices
+                    .getGeofencingClient(ShellActivity.this)
+                    .addGeofences(req, pi);
+                Log.i("iappyxOS", "geofence registered: " + id);
+            } catch (SecurityException se) {
+                Log.w("iappyxOS", "geofence register failed (permission): " + se.getMessage());
+            } catch (Exception e) {
+                Log.w("iappyxOS", "geofence register failed: " + e.getMessage());
+            }
+        }
+
+        // Screen on/off.
+        @JavascriptInterface public void screen(String id, String event, String callbackFn) {
+            register("screen", id, null, event, callbackFn, null);
+        }
+        @JavascriptInterface public void screen(String id, String event, String callbackFn, String optsJson) {
+            register("screen", id, null, event, callbackFn, optsJson);
+        }
+        // Ringer mode: silent/vibrate/normal.
+        @JavascriptInterface public void ringer(String id, String event, String callbackFn) {
+            register("ringer", id, null, event, callbackFn, null);
+        }
+        @JavascriptInterface public void ringer(String id, String event, String callbackFn, String optsJson) {
+            register("ringer", id, null, event, callbackFn, optsJson);
+        }
+        // Airplane mode on/off.
+        @JavascriptInterface public void airplane(String id, String event, String callbackFn) {
+            register("airplane", id, null, event, callbackFn, null);
+        }
+        @JavascriptInterface public void airplane(String id, String event, String callbackFn, String optsJson) {
+            register("airplane", id, null, event, callbackFn, optsJson);
+        }
+        // Battery low/okay.
+        @JavascriptInterface public void battery(String id, String event, String callbackFn) {
+            register("battery", id, null, event, callbackFn, null);
+        }
+        @JavascriptInterface public void battery(String id, String event, String callbackFn, String optsJson) {
+            register("battery", id, null, event, callbackFn, optsJson);
+        }
+        // Boot / timezone / locale — event-less (single implicit "fired" event).
+        @JavascriptInterface public void boot(String id, String callbackFn) {
+            register("boot", id, null, "fired", callbackFn, null);
+        }
+        @JavascriptInterface public void boot(String id, String callbackFn, String optsJson) {
+            register("boot", id, null, "fired", callbackFn, optsJson);
+        }
+        @JavascriptInterface public void timezone(String id, String callbackFn) {
+            register("timezone", id, null, "fired", callbackFn, null);
+        }
+        @JavascriptInterface public void timezone(String id, String callbackFn, String optsJson) {
+            register("timezone", id, null, "fired", callbackFn, optsJson);
+        }
+        @JavascriptInterface public void locale(String id, String callbackFn) {
+            register("locale", id, null, "fired", callbackFn, null);
+        }
+        @JavascriptInterface public void locale(String id, String callbackFn, String optsJson) {
+            register("locale", id, null, "fired", callbackFn, optsJson);
+        }
+
         @JavascriptInterface public void auto(String id, String event, String callbackFn, String optsJson) {
             // Silently force persistent — log for debuggability.
             String forced;
@@ -8039,10 +8230,31 @@ public class ShellActivity extends Activity {
 
         @JavascriptInterface public void cancel(String id) {
             if (id == null) return;
+            JSONObject t = TriggerStore.get(ShellActivity.this, id);
+            if (t != null && "geofence".equals(t.optString("type"))) {
+                try {
+                    com.google.android.gms.location.LocationServices
+                        .getGeofencingClient(ShellActivity.this)
+                        .removeGeofences(java.util.Collections.singletonList(id));
+                } catch (Exception ignored) {}
+            }
             TriggerStore.remove(ShellActivity.this, id);
             TriggerKeepaliveService.refresh(ShellActivity.this);
         }
         @JavascriptInterface public void cancelAll() {
+            // Collect geofence ids before clearing, then remove them from Play Services.
+            java.util.List<String> geofenceIds = new java.util.ArrayList<>();
+            for (JSONObject t : TriggerStore.byType(ShellActivity.this, "geofence")) {
+                String id = t.optString("id", null);
+                if (id != null) geofenceIds.add(id);
+            }
+            if (!geofenceIds.isEmpty()) {
+                try {
+                    com.google.android.gms.location.LocationServices
+                        .getGeofencingClient(ShellActivity.this)
+                        .removeGeofences(geofenceIds);
+                } catch (Exception ignored) {}
+            }
             TriggerStore.clear(ShellActivity.this);
             TriggerKeepaliveService.stop(ShellActivity.this);
         }
