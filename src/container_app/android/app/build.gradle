@@ -59,3 +59,22 @@ android {
 flutter {
     source = "../.."
 }
+
+// Keep /SPEC.md (repo root, published canonical copy) in sync with the bundled
+// system prompt. Runs before every Gradle build, so any `flutter build apk`
+// physically guarantees the two files match — no chance of drift.
+task syncSpecMd {
+    def src = file("$projectDir/../../assets/system_prompt.md")
+    def dst = file("$projectDir/../../../../SPEC.md")
+    inputs.file src
+    outputs.file dst
+    doLast {
+        if (src.exists()) {
+            dst.text = src.text
+            println "✓ SPEC.md synced from system_prompt.md (${src.length()} bytes)"
+        } else {
+            println "⚠ syncSpecMd: source missing at ${src.absolutePath}"
+        }
+    }
+}
+preBuild.dependsOn syncSpecMd
