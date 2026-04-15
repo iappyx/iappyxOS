@@ -84,8 +84,17 @@ Every generated app is a real signed APK that appears in your Android launcher. 
 3. Open iappyxOS → Create → pick a mode → build
 
 **AI generation (two options):**
-- **Manual (recommended)** — copy the generated prompt, paste it into any AI chat (Claude, ChatGPT, Gemini, etc.), paste the HTML back, preview, build
+- **Manual (recommended)** — copy the generated prompt, paste it into any AI chat (Claude, ChatGPT, Gemini, etc.), paste the HTML back, preview, build. The Manual flow offers two prompt variants:
+  - **Full (~45 KB)** — works with any AI, no internet needed on the AI's side.
+  - **Linked (~600 chars)** — tiny prompt that points the AI at [`SPEC.md`](SPEC.md) via its canonical raw URL. Works with AIs that can fetch URLs (Claude.ai, ChatGPT with browsing, Gemini). Useful when your AI's paste limit rejects the full prompt.
 - **Automatic** — add your API key in Settings (Anthropic or OpenRouter), then tap "Generate" in the Create flow
+
+### Using the spec from any AI tool
+`SPEC.md` at the repo root is the canonical iappyxOS bridge reference, always fetchable at:
+```
+https://raw.githubusercontent.com/iappyx/iappyxOS/main/SPEC.md
+```
+If you're chatting with Claude.ai or ChatGPT directly (outside the container), include that URL in your prompt and the AI will fetch it. When you get the HTML back, import it via Create → paste HTML.
 
 ## Sharing apps
 

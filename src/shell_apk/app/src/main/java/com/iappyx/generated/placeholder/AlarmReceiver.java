@@ -141,27 +141,34 @@ public class AlarmReceiver extends BroadcastReceiver {
             }
             java.util.List<com.google.android.gms.location.Geofence> fences = new java.util.ArrayList<>();
             for (org.json.JSONObject t : geos) {
-                String id = t.optString("id", null);
-                if (id == null) continue;
-                double lat = t.optDouble("lat", 0);
-                double lon = t.optDouble("lon", 0);
-                double rM  = t.optDouble("radiusM", 100);
-                long dwell = t.optLong("dwellDelayMs", 60_000L);
-                String event = t.optString("event", "any");
-                int transitions;
-                if ("enter".equals(event))      transitions = com.google.android.gms.location.Geofence.GEOFENCE_TRANSITION_ENTER;
-                else if ("exit".equals(event))  transitions = com.google.android.gms.location.Geofence.GEOFENCE_TRANSITION_EXIT;
-                else if ("dwell".equals(event)) transitions = com.google.android.gms.location.Geofence.GEOFENCE_TRANSITION_DWELL;
-                else transitions = com.google.android.gms.location.Geofence.GEOFENCE_TRANSITION_ENTER
-                        | com.google.android.gms.location.Geofence.GEOFENCE_TRANSITION_EXIT
-                        | com.google.android.gms.location.Geofence.GEOFENCE_TRANSITION_DWELL;
-                fences.add(new com.google.android.gms.location.Geofence.Builder()
-                    .setRequestId(id)
-                    .setCircularRegion(lat, lon, (float) rM)
-                    .setExpirationDuration(com.google.android.gms.location.Geofence.NEVER_EXPIRE)
-                    .setTransitionTypes(transitions)
-                    .setLoiteringDelay((int) Math.min(dwell, Integer.MAX_VALUE))
-                    .build());
+                // Per-fence try/catch: a single corrupted entry must not prevent the rest
+                // from being re-registered on boot. Geofence.Builder validates lat/lon/radius
+                // and throws IllegalArgumentException on bad data; we skip those and log.
+                try {
+                    String id = t.optString("id", null);
+                    if (id == null) continue;
+                    double lat = t.optDouble("lat", 0);
+                    double lon = t.optDouble("lon", 0);
+                    double rM  = t.optDouble("radiusM", 100);
+                    long dwell = t.optLong("dwellDelayMs", 60_000L);
+                    String event = t.optString("event", "any");
+                    int transitions;
+                    if ("enter".equals(event))      transitions = com.google.android.gms.location.Geofence.GEOFENCE_TRANSITION_ENTER;
+                    else if ("exit".equals(event))  transitions = com.google.android.gms.location.Geofence.GEOFENCE_TRANSITION_EXIT;
+                    else if ("dwell".equals(event)) transitions = com.google.android.gms.location.Geofence.GEOFENCE_TRANSITION_DWELL;
+                    else transitions = com.google.android.gms.location.Geofence.GEOFENCE_TRANSITION_ENTER
+                            | com.google.android.gms.location.Geofence.GEOFENCE_TRANSITION_EXIT
+                            | com.google.android.gms.location.Geofence.GEOFENCE_TRANSITION_DWELL;
+                    fences.add(new com.google.android.gms.location.Geofence.Builder()
+                        .setRequestId(id)
+                        .setCircularRegion(lat, lon, (float) rM)
+                        .setExpirationDuration(com.google.android.gms.location.Geofence.NEVER_EXPIRE)
+                        .setTransitionTypes(transitions)
+                        .setLoiteringDelay((int) Math.min(dwell, Integer.MAX_VALUE))
+                        .build());
+                } catch (Exception perFenceErr) {
+                    android.util.Log.w("iappyxOS", "reRegisterGeofences: skipping corrupted fence: " + perFenceErr.getMessage());
+                }
             }
             if (fences.isEmpty()) return;
             com.google.android.gms.location.GeofencingRequest req =

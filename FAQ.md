@@ -24,6 +24,12 @@ Only for AI generation (sending prompts to the AI). Everything else — building
 - **Website as App** — Enter a URL, and iappyxOS wraps it into a lightweight standalone app (~1MB). The website opens full-screen with its own launcher icon, separate from your browser. No native bridges — just a clean, sandboxed WebView.
 - **Demo App** — 60+ pre-built apps that showcase what's possible. Useful for testing native features (camera, NFC, BLE, sensors, networking, etc.) and as starting points for your own ideas.
 
+### What's the difference between "Full" and "Linked" prompt in Manual mode?
+- **Full** copies the entire system prompt (~45 KB) plus your app description. Works with any AI. Use this when your AI has no browser or doesn't accept URLs.
+- **Linked** copies a short (~600 char) prompt that points the AI at the canonical `SPEC.md` URL on GitHub. The AI fetches the full spec itself. Works with Claude.ai, ChatGPT (with browsing enabled), and Gemini. Useful when your AI rejects large pastes or when you want a lighter clipboard payload.
+
+Both variants carry the same date-stamped version tag and the same anti-hallucination rules; the Linked one just offloads the bridge reference to a URL fetch.
+
 ### How does AI generation work?
 iappyxOS generates a detailed prompt that includes your app description plus documentation for all available native features. You send this prompt to an AI, and it returns complete HTML/JavaScript code. There are two ways:
 

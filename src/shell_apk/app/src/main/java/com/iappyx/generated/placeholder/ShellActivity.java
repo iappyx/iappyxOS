@@ -8108,6 +8108,14 @@ public class ShellActivity extends Activity {
             // Settings on Android 10+ — JS should call iappyx.location.openBackgroundSettings().
             if (ContextCompat.checkSelfPermission(ShellActivity.this,
                     Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                // Capture the params so onRequestPermissionsResult can complete the registration
+                // after the user grants — otherwise the TriggerStore entry stays orphaned.
+                final String fId = id;
+                final double fLat = lat, fLon = lon;
+                final float fRad = (float) radiusM;
+                final long fDwell = dwellDelayMs;
+                final String fEv = event;
+                pendingLocationAction = () -> registerGeofenceWithPlayServices(fId, fLat, fLon, fRad, fDwell, fEv);
                 ActivityCompat.requestPermissions(ShellActivity.this,
                     new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, REQ_LOCATION);
                 Log.i("iappyxOS", "geofence: fine location not granted yet, will register after grant");

@@ -76,6 +76,11 @@ class CreateScreenState extends State<CreateScreen> {
   final _demoFilterController = TextEditingController();
   String _demoFilter = '';
 
+  // Manual-flow prompt variant: 'full' (~45KB, works anywhere) or
+  // 'linked' (~600 chars, references the hosted SPEC.md — needs an AI that can fetch URLs).
+  String _promptVariant = 'full';
+  String _generatedLinkedPrompt = '';
+
   // AI generation
   String _genMethod = ''; // 'api', 'manual'
   AiProvider? _activeProvider;
@@ -509,6 +514,7 @@ class CreateScreenState extends State<CreateScreen> {
     try {
       final existingHtml = _editingId != null ? _htmlController.text.trim() : null;
       _generatedPrompt = await PromptBuilder.buildPrompt(appName: name, description: desc, existingHtml: existingHtml);
+      _generatedLinkedPrompt = await PromptBuilder.buildLinkedPrompt(appName: name, description: desc, existingHtml: existingHtml);
       setState(() { _promptVisible = true; _promptExpanded = true; _descExpanded = false; _htmlExpanded = true; });
     } catch (e) { _snack('Prompt generation failed: $e'); }
   }
@@ -871,36 +877,78 @@ class CreateScreenState extends State<CreateScreen> {
               const SizedBox(height: 8),
               const Text('Send this prompt to an AI assistant. The prompt contains the bridge documentation and your app description.',
                   style: TextStyle(fontSize: 11, color: Colors.white38)),
+              const SizedBox(height: 10),
+              // Variant toggle — Full (works anywhere) vs Linked (short, needs an AI that can fetch URLs).
+              Row(children: [
+                Expanded(child: GestureDetector(
+                  onTap: () => setState(() => _promptVariant = 'full'),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      color: _promptVariant == 'full' ? const Color(0xFF1E3A5F) : const Color(0xFF0A0A14),
+                      borderRadius: const BorderRadius.horizontal(left: Radius.circular(8)),
+                      border: Border.all(color: _promptVariant == 'full' ? const Color(0xFF4FC3F7) : const Color(0xFF222232)),
+                    ),
+                    child: Center(child: Text('Full (${(_generatedPrompt.length / 1024).toStringAsFixed(1)} KB)',
+                        style: TextStyle(fontSize: 11, color: _promptVariant == 'full' ? Colors.white : Colors.white54))),
+                  ),
+                )),
+                Expanded(child: GestureDetector(
+                  onTap: () => setState(() => _promptVariant = 'linked'),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      color: _promptVariant == 'linked' ? const Color(0xFF1E3A5F) : const Color(0xFF0A0A14),
+                      borderRadius: const BorderRadius.horizontal(right: Radius.circular(8)),
+                      border: Border.all(color: _promptVariant == 'linked' ? const Color(0xFF4FC3F7) : const Color(0xFF222232)),
+                    ),
+                    child: Center(child: Text('Linked (${(_generatedLinkedPrompt.length / 1024).toStringAsFixed(1)} KB)',
+                        style: TextStyle(fontSize: 11, color: _promptVariant == 'linked' ? Colors.white : Colors.white54))),
+                  ),
+                )),
+              ]),
+              const SizedBox(height: 6),
+              Text(
+                _promptVariant == 'full'
+                  ? 'Full prompt works with any AI. Large.'
+                  : 'Short prompt that points to the hosted spec. Use with Claude.ai, ChatGPT (browsing), Gemini.',
+                style: const TextStyle(fontSize: 10, color: Colors.white38),
+              ),
               const SizedBox(height: 8),
               Container(
                 width: double.infinity, constraints: const BoxConstraints(maxHeight: 180),
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(color: const Color(0xFF0A0A14), borderRadius: BorderRadius.circular(10)),
-                child: SingleChildScrollView(child: Text(_generatedPrompt, style: const TextStyle(fontSize: 10, fontFamily: 'monospace', color: Colors.white38))),
+                child: SingleChildScrollView(child: Text(
+                  _promptVariant == 'full' ? _generatedPrompt : _generatedLinkedPrompt,
+                  style: const TextStyle(fontSize: 10, fontFamily: 'monospace', color: Colors.white38))),
               ),
               const SizedBox(height: 10),
               Row(children: [
                 Expanded(child: h.buildActionButton(label: 'Copy', icon: Icons.copy, onPressed: () {
-                  Clipboard.setData(ClipboardData(text: _generatedPrompt));
+                  final text = _promptVariant == 'full' ? _generatedPrompt : _generatedLinkedPrompt;
+                  Clipboard.setData(ClipboardData(text: text));
                   setState(() { _promptCopied = true; _promptExpanded = false; });
                   _snack('Copied! Paste into your AI assistant.');
                 })),
                 const SizedBox(width: 10),
                 Expanded(child: h.buildActionButton(label: 'Share', icon: Icons.share, secondary: true, onPressed: () {
+                  final text = _promptVariant == 'full' ? _generatedPrompt : _generatedLinkedPrompt;
                   final name = _nameController.text.trim().replaceAll(RegExp(r'[^\w]'), '_').toLowerCase();
-                  Generator.shareText(content: _generatedPrompt, filename: '${name.isEmpty ? "prompt" : name}_prompt.txt');
+                  Generator.shareText(content: text, filename: '${name.isEmpty ? "prompt" : name}_prompt.txt');
                   setState(() { _promptCopied = true; });
                 })),
               ]),
               const SizedBox(height: 8),
               h.buildActionButton(label: 'Save to Downloads', icon: Icons.download, secondary: true, onPressed: () async {
                 try {
+                  final text = _promptVariant == 'full' ? _generatedPrompt : _generatedLinkedPrompt;
                   final name = _nameController.text.trim().replaceAll(RegExp(r'[^\w]'), '_').toLowerCase();
                   final filename = '${name.isEmpty ? "prompt" : name}_prompt.txt';
                   final dir = Directory('/storage/emulated/0/Download');
                   if (!dir.existsSync()) dir.createSync(recursive: true);
                   final file = File('${dir.path}/$filename');
-                  file.writeAsStringSync(_generatedPrompt);
+                  file.writeAsStringSync(text);
                   setState(() { _promptCopied = true; });
                   _snack('Saved to Downloads/$filename');
                 } catch (e) {

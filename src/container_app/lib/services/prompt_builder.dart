@@ -68,6 +68,48 @@ class PromptBuilder {
     return 'v${now.year}-${pad(now.month)}-${pad(now.day)}';
   }
 
+  /// Short "linked" prompt variant for the Manual flow. Works with AIs that can
+  /// fetch URLs autonomously (Claude.ai, ChatGPT with browsing, Gemini). Contains
+  /// the task, the canonical spec URL, and just enough core rules that the model
+  /// can still produce something sane if the fetch fails.
+  ///
+  /// Keep this under ~600 chars so it fits in any chat tool's paste limit.
+  static Future<String> buildLinkedPrompt({
+    required String appName,
+    required String description,
+    String? existingHtml,
+  }) async {
+    final versionTag = _todayVersionTag();
+    final update = existingHtml != null && existingHtml.trim().startsWith('<');
+    final buf = StringBuffer();
+    buf.writeln('Build a complete single-file HTML app for iappyxOS ($versionTag).');
+    buf.writeln();
+    buf.writeln('App name: $appName');
+    buf.writeln('Task: $description');
+    buf.writeln();
+    buf.writeln('The full iappyxOS spec (bridge reference + rules) is here:');
+    buf.writeln('https://raw.githubusercontent.com/iappyx/iappyxOS/main/SPEC.md');
+    buf.writeln('Fetch it before generating. Only use iappyx.* methods documented there.');
+    buf.writeln();
+    buf.writeln('Core rules (in case you cannot fetch):');
+    buf.writeln('- Return ONLY the complete HTML file. First char `<`, last char `>`. No fences, no prose.');
+    buf.writeln('- Wait for the bridge with a poll: `function _init(){if(typeof iappyx===\'undefined\'){setTimeout(_init,50);return}onReady()}; window.addEventListener(\'load\',function(){setTimeout(_init,200)})`.');
+    buf.writeln('- Use `iappyx.save(k,v)`/`iappyx.load(k)` for storage (NOT localStorage).');
+    buf.writeln('- Use `iappyx.httpClient.request(optsJson, cbId)` for external APIs (fetch() fails from file://).');
+    buf.writeln('- No `alert()`/`confirm()`/`prompt()` — they are blocked in WebView; use HTML modals.');
+    buf.writeln('- Do NOT invent iappyx.* methods. If a capability is not in the spec, it does not exist.');
+    if (update) {
+      buf.writeln();
+      buf.writeln('Current app code (update it, preserving existing functionality unless the task asks to change it):');
+      buf.writeln('```html');
+      buf.write(existingHtml);
+      buf.writeln();
+      buf.writeln('```');
+      buf.writeln('Re-verify every iappyx.* call in the existing code against the spec; earlier AI generations may have hallucinated methods.');
+    }
+    return buf.toString();
+  }
+
   static Future<String> buildPrompt({
     required String appName,
     required String description,
