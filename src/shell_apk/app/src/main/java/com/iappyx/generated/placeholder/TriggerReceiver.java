@@ -52,6 +52,13 @@ import org.json.JSONObject;
 public class TriggerReceiver extends BroadcastReceiver {
     private static final String TAG = "iappyxOS";
 
+    // Track the last SSID we saw CONNECTED so that a subsequent disconnect event
+    // (which can't read the SSID — WifiInfo is already gone) can still match
+    // SSID-filtered disconnect triggers. Volatile: receivers run on the main thread
+    // but static state is process-global.
+    private static volatile String lastWifiSsid;
+    private static volatile boolean lastWifiConnected;
+
     @Override
     public void onReceive(Context context, Intent intent) {
         if (intent == null || intent.getAction() == null) return;
@@ -93,10 +100,14 @@ public class TriggerReceiver extends BroadcastReceiver {
                     NetworkInfo ni = intent.getParcelableExtra(WifiManager.EXTRA_NETWORK_INFO);
                     if (ni == null) return;
                     boolean connected = ni.isConnected();
-                    // Only fire on edge: CONNECTED or DISCONNECTED; ignore CONNECTING/SUSPENDED
-                    NetworkInfo.DetailedState dstate = ni.getDetailedState();
-                    if (dstate != NetworkInfo.DetailedState.CONNECTED
-                        && dstate != NetworkInfo.DetailedState.DISCONNECTED) return;
+
+                    // Edge detection: only act when the binary connected/disconnected state
+                    // actually changes. Android fires NETWORK_STATE_CHANGED many times during
+                    // a single transition (SCANNING → DISCONNECTING → IDLE → DISCONNECTED,
+                    // or CONNECTING → OBTAINING_IPADDR → CONNECTED) — we want one dispatch
+                    // per logical transition, not per intermediate state.
+                    if (connected == lastWifiConnected) return;
+                    lastWifiConnected = connected;
 
                     String ssid = null;
                     String bssid = null;
@@ -114,13 +125,19 @@ public class TriggerReceiver extends BroadcastReceiver {
                                 }
                             }
                         } catch (SecurityException se) {
-                            // No location permission → we can dispatch "connected" without ssid filter match
+                            // No location permission → dispatch connected without ssid filter match
                         }
+                        if (ssid != null) lastWifiSsid = ssid;
                     }
+                    // On disconnect, the system has already torn down WifiInfo — we can't
+                    // read the SSID we just left. Use the cached lastWifiSsid so SSID-
+                    // filtered disconnect triggers still match.
+                    String matchSsid = connected ? ssid : lastWifiSsid;
                     JSONObject extra = new JSONObject();
-                    extra.put("ssid", ssid == null ? "" : ssid);
+                    extra.put("ssid", matchSsid == null ? "" : matchSsid);
                     extra.put("bssid", bssid == null ? "" : bssid);
-                    dispatch(context, "wifi", connected ? "connected" : "disconnected", ssid, extra);
+                    dispatch(context, "wifi", connected ? "connected" : "disconnected", matchSsid, extra);
+                    if (!connected) lastWifiSsid = null; // only valid until next connect
                     break;
                 }
                 default:

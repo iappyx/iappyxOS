@@ -351,8 +351,10 @@ class _PreviewScreenState extends State<PreviewScreen> {
       version:1,sdk:33,preview:true,
       bridges:{storage:true,device:true,vibration:true,clipboard:true,notification:true,
         screen:true,tts:true,audio:true,sensor:true,alarm:true,sqlite:true,
+        tasks:true,widget:true,capabilities:true,
+        trigger:true,intent:true,
         camera:false,location:false,contacts:false,sms:false,calendar:false,
-        biometric:false,nfc:false,ble:false,ssh:false,smb:false,
+        biometric:false,nfc:false,ble:false,bluetooth:false,ssh:false,smb:false,
         httpServer:false,httpClient:false,tcp:false,udp:false,nsd:false,
         wifiDirect:false,push:false,download:false,media:false},
       permissions:{}
@@ -568,6 +570,35 @@ class _PreviewScreenState extends State<PreviewScreen> {
     pickImage:function(cbId){_unsupported('media.pickImage',cbId);}
   };
 
+  // Triggers — simulated. Registrations are accepted and stored in-memory so
+  // list()/cancel() behave sensibly, but no real broadcasts fire in preview.
+  var _triggers={};
+  var trigger={
+    charger:function(id,ev,fn,opts){_triggers[id]={id:id,type:'charger',event:ev,callbackFn:fn,persistent:(opts&&opts.indexOf('"persistent":true')>=0)||false,lastFiredMs:0};console.log('[Preview] trigger.charger registered (will not fire in preview)');},
+    headphones:function(id,ev,fn,opts){_triggers[id]={id:id,type:'headphones',event:ev,callbackFn:fn,persistent:(opts&&opts.indexOf('"persistent":true')>=0)||false,lastFiredMs:0};console.log('[Preview] trigger.headphones registered (will not fire in preview)');},
+    wifi:function(id,ssid,ev,fn,opts){_triggers[id]={id:id,type:'wifi',event:ev,match:ssid,callbackFn:fn,persistent:(opts&&opts.indexOf('"persistent":true')>=0)||false,lastFiredMs:0};console.log('[Preview] trigger.wifi registered (will not fire in preview)');},
+    bluetooth:function(id,addr,ev,fn,opts){_triggers[id]={id:id,type:'bluetooth',event:ev,match:addr,callbackFn:fn,persistent:(opts&&opts.indexOf('"persistent":true')>=0)||false,lastFiredMs:0};console.log('[Preview] trigger.bluetooth registered (will not fire in preview)');},
+    auto:function(id,ev,fn,opts){_triggers[id]={id:id,type:'auto',event:ev,callbackFn:fn,persistent:true,lastFiredMs:0};console.log('[Preview] trigger.auto registered (will not fire in preview)');},
+    cancel:function(id){delete _triggers[id];},
+    cancelAll:function(){_triggers={};},
+    list:function(){var a=[];for(var k in _triggers)a.push(_triggers[k]);return JSON.stringify(a);},
+    isPersistentActive:function(){for(var k in _triggers)if(_triggers[k].persistent)return true;return false;}
+  };
+
+  // Intent — simulated. launchApp/openUrl log the intended action; listInstalledApps
+  // returns a small fake catalog so pickers populate; overlay perm reports as granted.
+  var intent={
+    launchApp:function(pkg){console.log('[Preview] intent.launchApp → '+pkg+' (no-op in preview)');return true;},
+    openUrl:function(url){console.log('[Preview] intent.openUrl → '+url+' (no-op in preview)');return true;},
+    isAppInstalled:function(pkg){return false;},
+    hasOverlayPermission:function(){return true;},
+    requestOverlayPermission:function(){console.log('[Preview] intent.requestOverlayPermission (no-op in preview)');},
+    listInstalledApps:function(){return JSON.stringify([
+      {pkg:'com.example.placeholder1',label:'Example App 1'},
+      {pkg:'com.example.placeholder2',label:'Example App 2'}
+    ]);}
+  };
+
   // ── Assemble the iappyx object (same structure as ShellActivity wrapper) ──
   window.iappyx={
     storage:storage, device:device, camera:camera,
@@ -582,6 +613,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
     tcp:tcp, udp:udp, nsd:nsd,
     wifiDirect:wifiDirect, push:push,
     download:download, media:media, bluetooth:bluetooth, tasks:tasks, widget:widget,
+    trigger:trigger, intent:intent,
     // Top-level convenience methods (same as ShellActivity)
     save:function(k,v){storage.save(k,v);},
     load:function(k){return storage.load(k);},
