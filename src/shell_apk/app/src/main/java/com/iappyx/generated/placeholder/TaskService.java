@@ -134,6 +134,70 @@ public class TaskService extends Service {
                     @JavascriptInterface public String getConnectivity() { return BridgeUtils.getConnectivity(ctx); }
                 }, "iappyxDevice");
 
+                // Bundled asset files (read-only, from APK assets/app/data/)
+                webView.addJavascriptInterface(new Object() {
+                    @JavascriptInterface public String listAssets() {
+                        try {
+                            String[] files = ctx.getAssets().list("app/data");
+                            if (files == null || files.length == 0) return "[]";
+                            org.json.JSONArray arr = new org.json.JSONArray();
+                            for (String n : files) {
+                                java.io.InputStream is2 = ctx.getAssets().open("app/data/" + n);
+                                int sz = is2.available(); is2.close();
+                                org.json.JSONObject o = new org.json.JSONObject();
+                                o.put("name", n); o.put("size", sz); arr.put(o);
+                            }
+                            return arr.toString();
+                        } catch (Exception e) { return "[]"; }
+                    }
+                    @JavascriptInterface public void readAsset(String name, String cbId) {
+                        if (name == null || cbId == null) return;
+                        new Thread(() -> {
+                            try {
+                                java.io.InputStream is2 = ctx.getAssets().open("app/data/" + name.replace("/","_").replace("\\","_"));
+                                java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+                                byte[] buf = new byte[8192]; int n2;
+                                while ((n2 = is2.read(buf)) != -1) baos.write(buf, 0, n2);
+                                is2.close(); byte[] bytes = baos.toByteArray();
+                                String b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP);
+                                org.json.JSONObject r = new org.json.JSONObject();
+                                r.put("ok", true); r.put("text", new String(bytes, "UTF-8"));
+                                r.put("base64", b64); r.put("size", bytes.length);
+                                if (webView != null && !done) {
+                                    String safeCb2 = ShellActivity.escapeJson(cbId).replace("'", "\\'");
+                                    String js2 = "if(window._iappyxCb&&window._iappyxCb['" + safeCb2 + "']){window._iappyxCb['" + safeCb2 + "'](" + r.toString() + ");delete window._iappyxCb['" + safeCb2 + "'];}";
+                                    handler.post(() -> { if (webView != null && !done) webView.evaluateJavascript(js2, null); });
+                                }
+                            } catch (Exception e) {
+                                if (webView != null && !done) {
+                                    String safeCb2 = ShellActivity.escapeJson(cbId).replace("'", "\\'");
+                                    handler.post(() -> { if (webView != null && !done) webView.evaluateJavascript("if(window._iappyxCb&&window._iappyxCb['" + safeCb2 + "']){window._iappyxCb['" + safeCb2 + "']({ok:false,error:'" + ShellActivity.escapeJson(e.getMessage()) + "'});delete window._iappyxCb['" + safeCb2 + "'];}", null); });
+                                }
+                            }
+                        }).start();
+                    }
+                    @JavascriptInterface public void extractAsset(String name, String destName, String cbId) {
+                        if (name == null || destName == null || cbId == null) return;
+                        new Thread(() -> {
+                            try {
+                                java.io.File dest = new java.io.File(ctx.getFilesDir(), destName.replace("/","_").replace("\\","_"));
+                                java.io.InputStream is2 = ctx.getAssets().open("app/data/" + name.replace("/","_").replace("\\","_"));
+                                java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+                                byte[] buf = new byte[8192]; int n2;
+                                while ((n2 = is2.read(buf)) != -1) baos.write(buf, 0, n2);
+                                is2.close();
+                                try (java.io.FileOutputStream fos = new java.io.FileOutputStream(dest)) { fos.write(baos.toByteArray()); }
+                                String safeCb2 = ShellActivity.escapeJson(cbId).replace("'", "\\'");
+                                String js2 = "if(window._iappyxCb&&window._iappyxCb['" + safeCb2 + "']){window._iappyxCb['" + safeCb2 + "']({ok:true,path:'" + ShellActivity.escapeJson(dest.getAbsolutePath()) + "'});delete window._iappyxCb['" + safeCb2 + "'];}";
+                                handler.post(() -> { if (webView != null && !done) webView.evaluateJavascript(js2, null); });
+                            } catch (Exception e) {
+                                String safeCb2 = ShellActivity.escapeJson(cbId).replace("'", "\\'");
+                                handler.post(() -> { if (webView != null && !done) webView.evaluateJavascript("if(window._iappyxCb&&window._iappyxCb['" + safeCb2 + "']){window._iappyxCb['" + safeCb2 + "']({ok:false,error:'" + ShellActivity.escapeJson(e.getMessage()) + "'});delete window._iappyxCb['" + safeCb2 + "'];}", null); });
+                            }
+                        }).start();
+                    }
+                }, "iappyxAssets");
+
                 // Intent bridge — launch other apps / URIs from headless callbacks
                 webView.addJavascriptInterface(new Object() {
                     @JavascriptInterface public boolean launchApp(String pkg) {
@@ -202,6 +266,7 @@ public class TaskService extends Service {
                             "notification:iappyxNotification," +
                             "device:iappyxDevice," +
                             "intent:iappyxIntent," +
+                            "assets:iappyxAssets," +
                             "httpClient:iappyxHttpClient," +
                             "save:function(k,v){iappyxStorage.save(k,v)}," +
                             "load:function(k){return iappyxStorage.load(k)}," +

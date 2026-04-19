@@ -1863,6 +1863,73 @@ public class ShellActivity extends Activity {
                 }
             } catch (Exception e) { return null; }
         }
+
+        // ── Bundled asset files (read-only, baked into APK at build time) ──
+
+        @JavascriptInterface
+        public String listAssets() {
+            try {
+                String[] files = getAssets().list("app/data");
+                if (files == null || files.length == 0) return "[]";
+                JSONArray arr = new JSONArray();
+                for (String name : files) {
+                    java.io.InputStream is = getAssets().open("app/data/" + name);
+                    int size = is.available(); is.close();
+                    JSONObject o = new JSONObject();
+                    o.put("name", name);
+                    o.put("size", size);
+                    arr.put(o);
+                }
+                return arr.toString();
+            } catch (Exception e) { return "[]"; }
+        }
+
+        @JavascriptInterface
+        public void readAsset(String name, String cbId) {
+            if (name == null || cbId == null) return;
+            httpClientPool.submit(() -> {
+                try {
+                    java.io.InputStream is = getAssets().open("app/data/" + safeFilename(name));
+                    byte[] bytes = readAllBytes(is); is.close();
+                    String text = new String(bytes, "UTF-8");
+                    String b64 = Base64.encodeToString(bytes, Base64.NO_WRAP);
+                    JSONObject r = new JSONObject();
+                    r.put("ok", true);
+                    r.put("text", text);
+                    r.put("base64", b64);
+                    r.put("size", bytes.length);
+                    deliverResult(cbId, r.toString());
+                } catch (Exception e) {
+                    deliverResult(cbId, "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void extractAsset(String name, String destName, String cbId) {
+            if (name == null || destName == null || cbId == null) return;
+            httpClientPool.submit(() -> {
+                try {
+                    File dest = new File(getFilesDir(), safeFilename(destName));
+                    java.io.InputStream is = getAssets().open("app/data/" + safeFilename(name));
+                    byte[] bytes = readAllBytes(is); is.close();
+                    try (java.io.FileOutputStream fos = new java.io.FileOutputStream(dest)) {
+                        fos.write(bytes);
+                    }
+                    deliverResult(cbId, "{\"ok\":true,\"path\":\"" + escapeJson(dest.getAbsolutePath()) + "\"}");
+                } catch (Exception e) {
+                    deliverResult(cbId, "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+                }
+            });
+        }
+
+        private byte[] readAllBytes(java.io.InputStream is) throws Exception {
+            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = is.read(buf)) != -1) baos.write(buf, 0, n);
+            return baos.toByteArray();
+        }
     }
 
     // ── Device ──

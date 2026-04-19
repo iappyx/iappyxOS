@@ -27,6 +27,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/app_storage.dart';
+import '../services/bundle_storage.dart';
 import '../services/generator.dart';
 import '../services/p2p_service.dart';
 import '../widgets/build_log.dart';
@@ -95,6 +96,7 @@ class MyAppsScreenState extends State<MyAppsScreen> {
           onProgress: _addLog,
         );
       } else {
+        final bundlePaths = await BundleStorage.paths(app.id);
         result = await Generator.injectHtml(
           label: app.name,
           htmlContent: app.html,
@@ -102,6 +104,7 @@ class MyAppsScreenState extends State<MyAppsScreen> {
           iconConfig: ic,
           firebaseConfig: app.firebaseConfig.isNotEmpty ? app.firebaseConfig : null,
           webOnly: app.appType == 'web' || app.description.startsWith('Web app: '),
+          bundleFiles: bundlePaths,
           onProgress: _addLog,
         );
       }
@@ -145,6 +148,7 @@ class MyAppsScreenState extends State<MyAppsScreen> {
     );
     if (confirmed == true) {
       await AppStorage.delete(app.id);
+      await BundleStorage.clearBundle(app.id);
       refresh();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -175,6 +179,7 @@ class MyAppsScreenState extends State<MyAppsScreen> {
     if (confirmed == true) {
       try { await Generator.uninstallApp(packageName: app.packageName); } catch (_) {}
       await AppStorage.delete(app.id);
+      await BundleStorage.clearBundle(app.id);
       refresh();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

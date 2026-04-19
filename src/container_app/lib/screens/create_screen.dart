@@ -28,6 +28,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import '../services/generator.dart';
+import '../services/bundle_storage.dart';
 import '../services/prompt_builder.dart';
 import '../services/app_storage.dart';
 import '../services/ai_service.dart';
@@ -81,6 +82,10 @@ class CreateScreenState extends State<CreateScreen> {
   String _promptVariant = 'full';
   String _generatedLinkedPrompt = '';
 
+  // Bundled app files (databases, JSON, images, etc.)
+  List<Map<String, dynamic>> _bundleFiles = [];
+  bool _bundleExpanded = false;
+
   // AI generation
   String _genMethod = ''; // 'api', 'manual'
   AiProvider? _activeProvider;
@@ -123,6 +128,7 @@ class CreateScreenState extends State<CreateScreen> {
     _descExpanded = true;
     _htmlExpanded = true;
     _conversation.clear();
+    _loadBundleFiles();
     _aiGenerating = false;
     _selectedHtml = null;
     _followUpController.clear();
@@ -479,7 +485,8 @@ class CreateScreenState extends State<CreateScreen> {
         }
       }
       final ic = _ensureIconConfig(label);
-      final result = await Generator.injectHtml(label: label, htmlContent: html, packageName: _existingPackageName, iconConfig: ic.toJsonString(), firebaseConfig: _firebaseConfig.isNotEmpty ? _firebaseConfig : null, onProgress: _addLog, webOnly: appType == 'web');
+      final bundlePaths = _editingId != null ? await BundleStorage.paths(_editingId!) : <String, String>{};
+      final result = await Generator.injectHtml(label: label, htmlContent: html, packageName: _existingPackageName, iconConfig: ic.toJsonString(), firebaseConfig: _firebaseConfig.isNotEmpty ? _firebaseConfig : null, onProgress: _addLog, webOnly: appType == 'web', bundleFiles: bundlePaths);
       final now = DateTime.now();
       final appId = _editingId ?? '${now.millisecondsSinceEpoch}_${Random().nextInt(9999)}';
       await AppStorage.save(AppData(
@@ -505,6 +512,43 @@ class CreateScreenState extends State<CreateScreen> {
       _addLog('\u274C Unexpected error: $e');
     }
     finally { if (mounted) setState(() => _isBuilding = false); }
+  }
+
+  Future<void> _loadBundleFiles() async {
+    if (_editingId == null) return;
+    final files = await BundleStorage.listFiles(_editingId!);
+    if (mounted) setState(() => _bundleFiles = files);
+  }
+
+  Future<void> _addBundleFile() async {
+    final appId = _editingId;
+    if (appId == null) { _snack('Save the app first, then add files.'); return; }
+    final r = await FilePicker.platform.pickFiles(type: FileType.any);
+    if (r == null || r.files.single.path == null) return;
+    final picked = File(r.files.single.path!);
+    var name = r.files.single.name;
+    // Sanitize filename
+    name = name.replaceAll(RegExp(r'[^\w.\-]'), '_');
+    if (name.length > 100) name = name.substring(0, 100);
+    final bytes = await picked.readAsBytes();
+    if (bytes.length > 50 * 1024 * 1024) { _snack('File too large (max 50 MB).'); return; }
+    await BundleStorage.addFile(appId, name, bytes);
+    await _loadBundleFiles();
+    _snack('Added $name (${(bytes.length / 1024).toStringAsFixed(0)} KB)');
+  }
+
+  Future<void> _removeBundleFile(String name) async {
+    if (_editingId == null) return;
+    await BundleStorage.removeFile(_editingId!, name);
+    await _loadBundleFiles();
+  }
+
+  String _bundleTotalSize() {
+    int total = 0;
+    for (final f in _bundleFiles) total += f['size'] as int;
+    if (total < 1024) return '$total B';
+    if (total < 1024 * 1024) return '${(total / 1024).toStringAsFixed(1)} KB';
+    return '${(total / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
   Future<void> _generatePrompt() async {
@@ -992,6 +1036,56 @@ class CreateScreenState extends State<CreateScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
               )),
             ]),
+          ]),
+        ),
+      ],
+
+      // App Files — optional bundled data files (databases, JSON, images, etc.)
+      if (_editingId != null) ...[
+        const SizedBox(height: 6),
+        _section(
+          'App Files${_bundleFiles.isNotEmpty ? ' (${_bundleFiles.length} file${_bundleFiles.length == 1 ? '' : 's'}, ${_bundleTotalSize()})' : ''}',
+          _bundleExpanded,
+          () { setState(() => _bundleExpanded = !_bundleExpanded); if (_bundleExpanded && _bundleFiles.isEmpty) _loadBundleFiles(); },
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const SizedBox(height: 8),
+            const Text('Add files to bundle into the APK (databases, JSON, images). Accessible via iappyx.storage.readAsset() or extractAsset() at runtime.',
+                style: TextStyle(fontSize: 11, color: Colors.white38)),
+            const SizedBox(height: 10),
+            if (_bundleFiles.isEmpty)
+              const Padding(padding: EdgeInsets.symmetric(vertical: 12),
+                child: Center(child: Text('No files added', style: TextStyle(fontSize: 12, color: Colors.white24))))
+            else
+              ...List.generate(_bundleFiles.length, (i) {
+                final f = _bundleFiles[i];
+                final name = f['name'] as String;
+                final size = f['size'] as int;
+                final sizeStr = size < 1024 ? '$size B' : size < 1024 * 1024 ? '${(size / 1024).toStringAsFixed(0)} KB' : '${(size / (1024 * 1024)).toStringAsFixed(1)} MB';
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(color: const Color(0xFF0A0A14), borderRadius: BorderRadius.circular(8)),
+                    child: Row(children: [
+                      const Icon(Icons.insert_drive_file, size: 16, color: Color(0xFF4FC3F7)),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(name, style: const TextStyle(fontSize: 12, color: Colors.white70), overflow: TextOverflow.ellipsis)),
+                      Text(sizeStr, style: const TextStyle(fontSize: 11, color: Colors.white30)),
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: () => _removeBundleFile(name),
+                        child: const Icon(Icons.close, size: 16, color: Color(0xFFFF6B6B)),
+                      ),
+                    ]),
+                  ),
+                );
+              }),
+            const SizedBox(height: 8),
+            h.buildActionButton(label: '+ Add file', icon: Icons.add, secondary: true, onPressed: _addBundleFile),
+            if (_bundleFiles.fold<int>(0, (sum, f) => sum + (f['size'] as int)) > 10 * 1024 * 1024)
+              const Padding(padding: EdgeInsets.only(top: 6),
+                child: Text('Large bundles increase APK size (files are stored uncompressed in the APK).',
+                  style: TextStyle(fontSize: 10, color: Color(0xFFFF8A65)))),
           ]),
         ),
       ],

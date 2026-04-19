@@ -117,12 +117,16 @@ class MainActivity : FlutterActivity() {
                     val iconConfig = call.argument<String>("iconConfig")
                     val firebaseConfig = call.argument<String>("firebaseConfig")
                     val webOnly = call.argument<Boolean>("webOnly") ?: false
+                    // Bundle file paths: {filename: absolutePath} — read by Kotlin, not passed as bytes
+                    @Suppress("UNCHECKED_CAST")
+                    val bundleFiles = call.argument<Map<String, String>>("bundleFiles") ?: emptyMap()
                     if (label.isBlank()) { result.error("INVALID", "label required", null); return@setMethodCallHandler }
                     if (html.isBlank()) { result.error("INVALID", "html required", null); return@setMethodCallHandler }
                     scope.launch {
                         try {
                             val info = generator.injectAndInstall(
                                 label, html, packageName, iconConfig, firebaseConfig, webOnly,
+                                bundleFiles,
                             ) { msg ->
                                 channel.invokeMethod("onProgress", msg)
                             }

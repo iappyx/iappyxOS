@@ -63,6 +63,7 @@ Every generated app is a real signed APK that appears in your Android launcher. 
 
 - **AI generation** — automatic via API (Anthropic, OpenRouter) or manual copy-paste to any AI
 - **37 native bridge classes (140+ methods)** — camera, location, sensors, audio, notifications, push notifications (FCM), NFC, Bluetooth LE, Bluetooth Classic (serial), SSH/SFTP, SMB network shares, HTTP server/client, TCP/UDP sockets, WiFi Direct, mDNS, biometric, SQLite, contacts, SMS, calendar, clipboard, TTS, screen, vibration, alarms, media gallery, download manager, home screen widgets, scheduled background tasks, event triggers (charger / headphones / Bluetooth / WiFi / Android Auto), app-launch intents, and more
+- **Bundled app files** — attach databases, JSON, images, or any data file to your app at build time. Accessible at runtime via `readAsset()` / `extractAsset()` — no download needed
 - **Icon editor** — emoji, text, images, custom colors, gradients, shadows, filters, rotation, multiple layers
 - **App management** — launch, rebuild, edit, share (APK, HTML, QR code, WiFi Direct), uninstall
 - **QR code transfer** — share apps between devices via animated QR codes (no internet needed)

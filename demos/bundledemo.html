@@ -1,0 +1,165 @@
+<!--
+  iappyxOS Demo App
+  MIT License - Copyright (c) 2026 iappyx
+  https://github.com/iappyx/iappyxOS
+-->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Bundle Explorer</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+*:focus{outline:none}
+button{-webkit-appearance:none;background:none;border:none;color:inherit;font:inherit;cursor:pointer}
+body{background:#0d0d1a;color:#eaeaea;font-family:-apple-system,sans-serif;padding:20px;min-height:100vh;
+  -webkit-user-select:none;user-select:none}
+input,textarea{-webkit-user-select:text;user-select:text}
+h2{font-size:18px;margin-bottom:16px;text-align:center}
+.section{background:#1a1a2e;border-radius:14px;padding:16px;margin-bottom:16px}
+.section h3{font-size:14px;color:#4FC3F7;margin-bottom:12px}
+.desc{font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:12px;line-height:1.5}
+.btn{background:#0f3460;color:#fff;border:none;padding:12px 20px;border-radius:10px;font-size:14px;
+  width:100%;margin-bottom:8px;cursor:pointer}
+.btn:active{opacity:0.7}
+.btn.sm{width:auto;padding:8px 14px;font-size:12px;margin-bottom:0}
+.empty{text-align:center;padding:32px 16px;color:rgba(255,255,255,0.2)}
+.empty-icon{font-size:48px;margin-bottom:12px}
+.file-row{background:#0d0d1a;border-radius:8px;padding:12px;margin-bottom:8px;display:flex;align-items:center;gap:10px}
+.file-icon{font-size:20px;flex-shrink:0}
+.file-info{flex:1;min-width:0}
+.file-name{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-size{font-size:11px;color:rgba(255,255,255,0.3);margin-top:2px}
+.file-actions{display:flex;gap:6px;flex-shrink:0}
+.preview-box{background:#0d0d1a;border-radius:8px;padding:12px;margin-top:10px;font-size:11px;
+  font-family:monospace;color:rgba(255,255,255,0.5);max-height:200px;overflow-y:auto;
+  white-space:pre-wrap;word-break:break-all}
+.preview-img{max-width:100%;max-height:200px;border-radius:8px;margin-top:10px}
+.status{color:#4FC3F7;font-size:12px;text-align:center;margin-top:8px}
+</style></head><body>
+<h2>Bundle Explorer</h2>
+
+<div class="section">
+<h3>Bundled Files</h3>
+<div class="desc">Files added via "App Files" in the Create/Edit screen are baked into the APK and listed here. If empty, edit this app in iappyxOS, expand App Files, add a file, and rebuild.</div>
+<div id="fileList"><div class="empty"><div class="empty-icon">📦</div>Loading…</div></div>
+</div>
+
+<div class="section" id="previewSection" style="display:none">
+<h3 id="previewTitle">Preview</h3>
+<div id="previewContent"></div>
+</div>
+
+<div class="section" id="sqlSection" style="display:none">
+<h3>SQLite Schema</h3>
+<div class="desc">Extracted and opened the database. Tables found:</div>
+<div class="preview-box" id="sqlResult"></div>
+</div>
+
+<div class="section">
+<h3>Status</h3>
+<div class="status" id="statusEl">Starting…</div>
+</div>
+
+<script>
+function _initBridge(){if(typeof iappyx==='undefined'){setTimeout(_initBridge,50);return;}onReady();}
+window.addEventListener('load',function(){setTimeout(_initBridge,200)});
+
+function setStatus(msg){document.getElementById('statusEl').textContent=msg;}
+function fmtSize(n){return n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(1)+' MB';}
+function fileIcon(name){
+  var ext=(name.split('.').pop()||'').toLowerCase();
+  if(ext==='json')return '📋';if(ext==='db'||ext==='sqlite'||ext==='sqlite3')return '🗄️';
+  if(ext==='png'||ext==='jpg'||ext==='jpeg'||ext==='gif'||ext==='webp')return '🖼️';
+  if(ext==='csv'||ext==='tsv')return '📊';if(ext==='mp3'||ext==='m4a'||ext==='wav')return '🎵';
+  if(ext==='pdf')return '📄';return '📎';
+}
+function isImage(name){return /\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i.test(name);}
+function isDb(name){return /\.(db|sqlite|sqlite3)$/i.test(name);}
+
+function onReady(){
+  var raw=iappyx.storage.listAssets();
+  var files=[];
+  try{files=JSON.parse(raw);}catch(e){}
+  var el=document.getElementById('fileList');
+  if(!files.length){
+    el.innerHTML='<div class="empty"><div class="empty-icon">📦</div><div style="font-size:14px;margin-bottom:8px">No files bundled</div><div class="desc">Edit this app in iappyxOS → expand App Files → add a file → rebuild.</div></div>';
+    setStatus('No bundled files found');
+    return;
+  }
+  el.innerHTML='';
+  files.forEach(function(f){
+    var row=document.createElement('div');row.className='file-row';
+    var acts='<button class="btn sm" onclick="readFile(\''+f.name+'\')">Read</button>';
+    acts+='<button class="btn sm" onclick="extractFile(\''+f.name+'\')">Extract</button>';
+    if(isDb(f.name))acts+='<button class="btn sm" onclick="openDb(\''+f.name+'\')">SQLite</button>';
+    row.innerHTML='<div class="file-icon">'+fileIcon(f.name)+'</div>'+
+      '<div class="file-info"><div class="file-name">'+f.name+'</div><div class="file-size">'+fmtSize(f.size)+'</div></div>'+
+      '<div class="file-actions">'+acts+'</div>';
+    el.appendChild(row);
+  });
+  setStatus(files.length+' file'+(files.length===1?'':'s')+' bundled');
+}
+
+function readFile(name){
+  setStatus('Reading '+name+'…');
+  iappyx.storage.readAsset(name,'readCb_'+name.replace(/[^a-zA-Z0-9]/g,''));
+  window._iappyxCb=window._iappyxCb||{};
+  window._iappyxCb['readCb_'+name.replace(/[^a-zA-Z0-9]/g,'')]=function(r){
+    var sec=document.getElementById('previewSection');
+    var title=document.getElementById('previewTitle');
+    var content=document.getElementById('previewContent');
+    sec.style.display='block';
+    title.textContent='Preview: '+name;
+    if(!r.ok){content.innerHTML='<div class="preview-box">Error: '+(r.error||'unknown')+'</div>';setStatus('Read failed');return;}
+    if(isImage(name)){
+      var ext=(name.split('.').pop()||'png').toLowerCase();
+      var mime=ext==='jpg'||ext==='jpeg'?'image/jpeg':ext==='png'?'image/png':ext==='gif'?'image/gif':ext==='webp'?'image/webp':'image/png';
+      content.innerHTML='<img class="preview-img" src="data:'+mime+';base64,'+r.base64+'">';
+    } else {
+      var preview=r.text.length>2000?r.text.substring(0,2000)+'…\n\n[truncated at 2000 chars]':r.text;
+      content.innerHTML='<div class="preview-box">'+preview.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</div>';
+    }
+    setStatus('Read '+name+' ('+fmtSize(r.size)+')');
+  };
+}
+
+function extractFile(name){
+  setStatus('Extracting '+name+'…');
+  iappyx.storage.extractAsset(name,name,'extractCb_'+name.replace(/[^a-zA-Z0-9]/g,''));
+  window._iappyxCb=window._iappyxCb||{};
+  window._iappyxCb['extractCb_'+name.replace(/[^a-zA-Z0-9]/g,'')]=function(r){
+    var sec=document.getElementById('previewSection');
+    var title=document.getElementById('previewTitle');
+    var content=document.getElementById('previewContent');
+    sec.style.display='block';
+    title.textContent='Extracted: '+name;
+    if(!r.ok){content.innerHTML='<div class="preview-box">Error: '+(r.error||'unknown')+'</div>';setStatus('Extract failed');return;}
+    content.innerHTML='<div class="preview-box">Copied to writable storage:\n'+r.path+'\n\nThis file can now be opened with iappyx.sqlite.open() or read with iappyx.storage.loadFile().</div>';
+    setStatus('Extracted '+name+' → '+r.path);
+  };
+}
+
+function openDb(name){
+  setStatus('Extracting + opening '+name+'…');
+  iappyx.storage.extractAsset(name,name,'dbExtract_'+name.replace(/[^a-zA-Z0-9]/g,''));
+  window._iappyxCb=window._iappyxCb||{};
+  window._iappyxCb['dbExtract_'+name.replace(/[^a-zA-Z0-9]/g,'')]=function(r){
+    if(!r.ok){setStatus('Extract failed: '+(r.error||''));return;}
+    try{
+      var openR=JSON.parse(iappyx.sqlite.open(name));
+      if(!openR.ok){setStatus('SQLite open failed: '+(openR.error||''));return;}
+      var qr=JSON.parse(iappyx.sqlite.query("SELECT type,name,sql FROM sqlite_master WHERE type IN ('table','view') ORDER BY name",null));
+      if(!qr.ok){setStatus('Schema query failed');return;}
+      var sec=document.getElementById('sqlSection');
+      sec.style.display='block';
+      var box=document.getElementById('sqlResult');
+      if(!qr.rows||!qr.rows.length){box.textContent='No tables found (empty database).';setStatus('Database opened, no tables');return;}
+      var txt='';
+      qr.rows.forEach(function(row){txt+=row.type+': '+row.name+'\n'+(row.sql||'')+'\n\n';});
+      box.textContent=txt.trim();
+      setStatus('Database opened: '+qr.rows.length+' table(s)');
+    }catch(e){setStatus('SQLite error: '+e.message);}
+  };
+}
+</script></body></html>

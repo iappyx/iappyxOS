@@ -113,7 +113,10 @@ class _PreviewScreenState extends State<PreviewScreen> {
     readFileBase64:function(path){return null;},
     moveFile:function(src,dst){if(_files[src]){_files[dst]=_files[src];delete _files[src];return true;}return false;},
     copyFileToDownloads:function(){console.warn('[Preview] copyFileToDownloads not available');return false;},
-    pickFile:function(cbId){_unsupported('storage.pickFile',cbId);}
+    pickFile:function(cbId){_unsupported('storage.pickFile',cbId);},
+    listAssets:function(){return '[]';},
+    readAsset:function(name,cbId){_unsupported('storage.readAsset (no bundled files in preview)',cbId);},
+    extractAsset:function(name,dest,cbId){_unsupported('storage.extractAsset (no bundled files in preview)',cbId);}
   };
 
   // ── Device (mock data) ──

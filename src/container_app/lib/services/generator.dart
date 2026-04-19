@@ -72,6 +72,7 @@ class Generator {
     String? iconConfig,
     String? firebaseConfig,
     bool webOnly = false,
+    Map<String, String>? bundleFiles,
   }) async {
     if (_building) throw PlatformException(code: 'BUSY', message: 'A build is already in progress');
     _building = true;
@@ -86,6 +87,7 @@ class Generator {
         if (iconConfig != null) 'iconConfig': iconConfig,
         if (firebaseConfig != null && firebaseConfig.isNotEmpty) 'firebaseConfig': firebaseConfig,
         'webOnly': webOnly,
+        if (bundleFiles != null && bundleFiles.isNotEmpty) 'bundleFiles': bundleFiles,
       });
       return BuildResult(
         packageName: result?['packageName'] as String? ?? '',
