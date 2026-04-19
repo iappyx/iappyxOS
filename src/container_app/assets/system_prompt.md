@@ -71,6 +71,8 @@ When `pickFile` returns a `content://` URI, pass it directly to other bridges (`
 - `rotate(heading)` for compass → use `rotate(-heading)` to point north
 - `navigator.geolocation` → use `iappyx.location.getLocation()` (navigator API is blocked)
 - Not waiting for bridge init → always use the bridge init pattern before calling any `iappyx.*` method
+- Sync bridges returning JSON (`listFiles()`, `listAssets()`, `sqlite.query()`, `sqlite.open()`, `trigger.list()`, `intent.listInstalledApps()`, etc.) return **strings**, not objects — always wrap with `JSON.parse()`. Without it, you iterate characters, not data.
+- Bridge methods expecting port numbers or status codes (`udp.open`, `udp.send`, `tcp.open`, `httpServer.start`, `httpServer.respond`) take **String** parameters in Java. Always pass as strings: `udp.open('5005', cb)` not `udp.open(5005, cb)`. Numeric values may arrive as null and silently fail.
 
 ## Do NOT use
 - `fetch()` for external APIs — use `iappyx.httpClient.request()` (fetch fails from file:// origin)
@@ -112,6 +114,8 @@ input,textarea,[contenteditable]{-webkit-user-select:text;user-select:text;}
 Without these: tapping shows a blue flash, buttons get focus rings, long-press shows the browser context menu, text gets accidentally selected while swiping.
 
 ## Bridge reference
+
+**Return types:** Async bridges deliver results via callback (`cbId` pattern). Sync bridges that show `→ JSON` or `→ [{...}]` in their signature return a **JSON string**, not a parsed object. Always `JSON.parse()` the return value.
 
 ### Storage (sync)
 `iappyx.save(key,value)` — persist string. `iappyx.load(key)` → string or null. `iappyx.remove(key)`. `iappyx.storage.clear()`.
@@ -186,8 +190,9 @@ For live scanning: `getUserMedia({video:{facingMode:'environment'}})` → `<vide
 `iappyx.location.stopWatching()`
 Foreground tracking (survives backgrounding/screen off, shows notification):
 `iappyx.location.startTracking('window.onTrack')` — starts foreground service, pushes location updates
-`iappyx.location.startTrackingWithOptions('window.onTrack', intervalMs, minDistanceM, 'Tracking...')` — customizable
+`iappyx.location.startTrackingWithOptions('window.onTrack', intervalMs, minDistanceM, 'Notification title')` — customizable interval (ms), minimum distance (meters), and persistent notification text. `intervalMs` and `minDistanceM` are doubles (not strings).
 `iappyx.location.stopTracking()` — stops foreground service
+Permission: call `getLocation(cbId)` once before `startTracking` or `watchPosition` — it triggers the Android permission dialog. `startTracking` and `watchPosition` do not request permission themselves; they silently produce no updates if location is not granted.
 Geofencing (virtual boundaries, fires on enter/exit):
 `iappyx.location.addGeofence(id, lat, lon, radiusMeters, 'window.onFence')` → `{id,transition:"enter"|"exit",lat,lon}`
 `iappyx.location.removeGeofence(id)` | `.removeAllGeofences()`
@@ -265,7 +270,7 @@ Equalizer:
 `iappyx.audio.requestFocus('window.onFocus')` — request audio focus (pauses/ducks other apps). Callback: `{type:"gain"|"loss"|"duck"|"lossTransient"}`
 `iappyx.audio.abandonFocus()` — release audio focus
 `iappyx.audio.setMediaSession(json)` — lock screen/headphone controls: `JSON.stringify({title:'Song',artist:'Artist',album:'Album'})`
-  Once called, all audio routes through a foreground service (survives backgrounding). Can be called before or after `play()`.
+  Once called, all audio routes through a foreground service (survives backgrounding). Can be called before or after `play()`. Recommended: call `setMediaSession()` **before** `play()` for cleanest lock-screen behavior — calling play() first works but may cause a brief audio glitch during the handoff to the foreground service.
   Listen for external controls: `window.onMediaButton = function(e) { /* e.action = play|pause|stop|next|previous */ }`
   Update metadata anytime (e.g. new song title) by calling `setMediaSession()` again.
 `iappyx.audio.onComplete('window.onDone')` → `{done:true}`
@@ -358,6 +363,7 @@ Rule: if a trigger callback calls `launchApp`, the app MUST call `requestOverlay
 `iappyx.nfc.writeText(text,cbId)` / `.writeUri(uri,cbId)` → `{ok}`
 
 ### SQLite (sync, returns JSON strings)
+`iappyx.sqlite.open(name)` → `{ok}` — switch to a named database file in app-private storage. Use after `extractAsset()` to open a pre-built database. Default (if never called): `iappyx_app.db`.
 `iappyx.sqlite.exec(sql,paramsJson)` → `{ok}` | `iappyx.sqlite.query(sql,paramsJson)` → `{ok,rows:[...],truncated?:true}` — max 5000 rows per query; use LIMIT/OFFSET in SQL for pagination if needed
 Params: `JSON.stringify(["val1","val2"])` or null. Transactions: `.beginTransaction()` / `.commit()` / `.rollback()`
 
@@ -382,12 +388,12 @@ Downloads survive app close, show progress in notification bar.
 ### HTTP Server (async — run a local web server from JS)
 `iappyx.httpServer.start(port, useTls, cbId)` → `{ok,port,fingerprint}` — start HTTP or HTTPS server. Pass useTls as string `"true"`/`"false"`.
 `iappyx.httpServer.stop()` — stop server
-`iappyx.httpServer.onRequest('window.onReq')` — register persistent request handler. Each request fires:
+`iappyx.httpServer.onRequest('window.onReq')` — register persistent request handler. Call once — each call replaces the previous handler (not additive). Each request fires:
   `{requestId, method, path, query, headers:{}, bodyLength, body?, bodyFile?}`
   Small text bodies (≤2MB, text/* or application/json) arrive as `body` string.
   Large/binary bodies are streamed to disk — `bodyFile` contains the absolute path.
-`iappyx.httpServer.respond(requestId, statusCode, headersJson, body)` — send text response
-`iappyx.httpServer.respondFile(requestId, statusCode, headersJson, filePath)` — stream file as response
+`iappyx.httpServer.respond(requestId, statusCode, headersJson, body)` — send text response. `statusCode` is a **string**: `respond(id, '404', headers, body)`. Passing a number silently defaults to 200.
+`iappyx.httpServer.respondFile(requestId, statusCode, headersJson, filePath)` — stream file as response. `statusCode` is a string (same as respond).
   filePath: absolute path, or `"downloads:filename"` for Downloads folder, or plain filename for app-private files
 `iappyx.httpServer.getCertificatePem()` → PEM string (null if no TLS)
 `iappyx.httpServer.getCertificateFingerprint()` → SHA-256 hex (null if no TLS)

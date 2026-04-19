@@ -4516,6 +4516,30 @@ public class ShellActivity extends Activity {
         }
 
         @JavascriptInterface
+        public synchronized String open(String name) {
+            if (name == null || name.isEmpty()) return "{\"ok\":false,\"error\":\"name required\"}";
+            try {
+                // Sanitize: keep alphanumeric, dots, hyphens, underscores
+                String safe = name.replace('/', '_').replace('\\', '_').replace('\0', '_');
+                if (safe.isEmpty() || safe.matches("^\\.+$")) safe = "db_" + Math.abs(name.hashCode());
+                // Close previous database if open
+                if (sqliteDb != null && sqliteDb.isOpen()) {
+                    try { sqliteDb.close(); } catch (Exception ignored) {}
+                }
+                File dbFile = new File(getFilesDir(), safe);
+                sqliteDb = android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(dbFile, null);
+                return "{\"ok\":true}";
+            } catch (Exception e) {
+                try {
+                    JSONObject err = new JSONObject();
+                    err.put("ok", false);
+                    err.put("error", e.getMessage());
+                    return err.toString();
+                } catch (Exception e2) { return "{\"ok\":false,\"error\":\"open failed\"}"; }
+            }
+        }
+
+        @JavascriptInterface
         public synchronized String exec(String sql, String paramsJson) {
             if (sql == null || sql.isEmpty()) return "{\"ok\":false,\"error\":\"empty SQL\"}";
             try {

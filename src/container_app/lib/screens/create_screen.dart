@@ -531,7 +531,7 @@ class CreateScreenState extends State<CreateScreen> {
     name = name.replaceAll(RegExp(r'[^\w.\-]'), '_');
     if (name.length > 100) name = name.substring(0, 100);
     final bytes = await picked.readAsBytes();
-    if (bytes.length > 50 * 1024 * 1024) { _snack('File too large (max 50 MB).'); return; }
+    if (bytes.length > 100 * 1024 * 1024) { _snack('File too large (max 100 MB).'); return; }
     await BundleStorage.addFile(appId, name, bytes);
     await _loadBundleFiles();
     _snack('Added $name (${(bytes.length / 1024).toStringAsFixed(0)} KB)');
