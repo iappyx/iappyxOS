@@ -416,18 +416,32 @@ class MyAppsScreenState extends State<MyAppsScreen> {
       var slug = nameController.text.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '-').replaceAll(RegExp(r'-+'), '-').replaceAll(RegExp(r'^-|-$'), '');
       if (slug.isEmpty) slug = 'app-${DateTime.now().millisecondsSinceEpoch}';
       final github = GithubService(token);
-      final prUrl = await github.submitApp(
+      final (prUrl, skipped) = await github.submitApp(
         slug: slug,
         appHtml: AppStorage.tagHtml(app.html),
         name: nameController.text.trim(),
         description: descController.text.trim(),
         author: (await github.getUsername()),
         bridges: bridgeList,
+        appId: app.id,
       );
       if (mounted) {
         Navigator.pop(context); // dismiss loading
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('PR created! $prUrl'), backgroundColor: const Color(0xFF1A1A2E), duration: const Duration(seconds: 6)));
+        if (skipped.isNotEmpty) {
+          showDialog(context: context, builder: (ctx) => AlertDialog(
+            backgroundColor: const Color(0xFF1A1A2E),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Text('PR created', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            content: Text(
+              'Some resource files were too large for the GitHub API (> 25 MB) and need to be added manually:\n\n${skipped.map((s) => '• $s').join('\n')}\n\nAdd them to the resources/ folder in the PR.',
+              style: const TextStyle(fontSize: 13, color: Colors.white70),
+            ),
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK', style: TextStyle(color: Color(0xFF4FC3F7))))],
+          ));
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('PR created! $prUrl'), backgroundColor: const Color(0xFF1A1A2E), duration: const Duration(seconds: 6)));
+        }
       }
     } catch (e) {
       if (mounted) {

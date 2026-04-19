@@ -142,8 +142,18 @@ public class TaskService extends Service {
                             if (files == null || files.length == 0) return "[]";
                             org.json.JSONArray arr = new org.json.JSONArray();
                             for (String n : files) {
-                                java.io.InputStream is2 = ctx.getAssets().open("app/data/" + n);
-                                int sz = is2.available(); is2.close();
+                                long sz = 0;
+                                try {
+                                    android.content.res.AssetFileDescriptor afd = ctx.getAssets().openFd("app/data/" + n);
+                                    sz = afd.getLength(); afd.close();
+                                } catch (Exception e2) {
+                                    try {
+                                        java.io.InputStream is3 = ctx.getAssets().open("app/data/" + n);
+                                        byte[] buf = new byte[8192]; int rd; long tot = 0;
+                                        while ((rd = is3.read(buf)) != -1) tot += rd;
+                                        is3.close(); sz = tot;
+                                    } catch (Exception ignored) {}
+                                }
                                 org.json.JSONObject o = new org.json.JSONObject();
                                 o.put("name", n); o.put("size", sz); arr.put(o);
                             }

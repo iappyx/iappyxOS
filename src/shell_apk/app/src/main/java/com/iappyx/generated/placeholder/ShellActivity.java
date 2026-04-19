@@ -1873,8 +1873,20 @@ public class ShellActivity extends Activity {
                 if (files == null || files.length == 0) return "[]";
                 JSONArray arr = new JSONArray();
                 for (String name : files) {
-                    java.io.InputStream is = getAssets().open("app/data/" + name);
-                    int size = is.available(); is.close();
+                    long size = 0;
+                    try {
+                        android.content.res.AssetFileDescriptor afd = getAssets().openFd("app/data/" + name);
+                        size = afd.getLength();
+                        afd.close();
+                    } catch (Exception e) {
+                        // Compressed assets don't support openFd — fall back to reading the stream
+                        try {
+                            java.io.InputStream is2 = getAssets().open("app/data/" + name);
+                            byte[] buf = new byte[8192]; int n; long total = 0;
+                            while ((n = is2.read(buf)) != -1) total += n;
+                            is2.close(); size = total;
+                        } catch (Exception ignored) {}
+                    }
                     JSONObject o = new JSONObject();
                     o.put("name", name);
                     o.put("size", size);
