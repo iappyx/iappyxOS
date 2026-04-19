@@ -138,6 +138,16 @@ Bundled asset files (only when the user has added files via the App Files sectio
 `iappyx.storage.readAsset(name, cbId)` → `{ok, text, base64, size}` — read a bundled file. Use `text` for JSON/CSV; use `base64` for binary (images, audio). Read-only — assets are inside the signed APK.
 `iappyx.storage.extractAsset(name, destName, cbId)` → `{ok, path}` — copy a bundled file to writable app-private storage. Use this for SQLite databases or any file the app needs to modify. After extraction, open with `iappyx.sqlite.open(destName)` or read/write with `loadFile`/`saveFile`.
 By default, generate a single self-contained HTML file with all data inline. Only use asset methods when the user explicitly says they've added files via the App Files section.
+Bundled database first-launch pattern (use when user provides a .db file):
+```js
+var assets=JSON.parse(iappyx.storage.listAssets());
+var hasDb=assets.some(function(a){return a.name==='mydata.db';});
+if(!hasDb){/* show "db not bundled" error */return;}
+var files=JSON.parse(iappyx.storage.listFiles());
+var extracted=files.some(function(f){return f.name==='mydata.db';});
+if(!extracted){iappyx.storage.extractAsset('mydata.db','mydata.db',cbId);/* open in callback */}
+else{JSON.parse(iappyx.sqlite.open('mydata.db'));/* ready to query */}
+```
 
 ### Caching external JS libraries (offline-capable CDN pattern)
 Apps that need large JS libraries (pdf-lib, chart.js, etc.) can download once and cache:
@@ -184,7 +194,7 @@ For live scanning: `getUserMedia({video:{facingMode:'environment'}})` → `<vide
 `iappyx.shareText(text, subject)` — opens Android share sheet
 
 ### Location
-`iappyx.location.getLocation(cbId)` → `{ok,lat,lon,accuracy,altitude,speed,bearing}`
+`iappyx.location.getLocation(cbId)` → `{ok,lat,lon,accuracy,altitude,speed,bearing}` — `speed` is in m/s (multiply by 3.6 for km/h)
 `iappyx.location.watchPosition('window.onLocFn')` — push model, continuous
 `iappyx.location.watchPositionWithError('window.onLocFn','window.onLocErr')` — recommended
 `iappyx.location.stopWatching()`
@@ -296,7 +306,7 @@ Sound effects (multiple simultaneous, fire-and-forget, overlay on main):
 
 ### Alarm (fires even when app is closed)
 `iappyx.alarm.set(timestampMs,'window.onAlarm')` | `.setWithId(id,timestampMs,'window.onAlarmFn')`
-`iappyx.alarm.cancel()` | `.cancelById(id)` | `.getScheduled()` → timestamp string or null
+`iappyx.alarm.cancel()` | `.cancelById(id)` | `.getScheduled()` → timestamp string or null | `.getScheduledById(id)` → timestamp string, `{repeating:true,intervalMs:N}`, or null
 `iappyx.alarm.setRepeating(id, intervalMs, 'window.onRepeat')` — repeating alarm (Android-managed, survives force-close)
 Recurring: use `setRepeating` for reliable daily/hourly alarms, or reschedule in the callback for custom logic.
 
@@ -366,6 +376,7 @@ Rule: if a trigger callback calls `launchApp`, the app MUST call `requestOverlay
 `iappyx.sqlite.open(name)` → `{ok}` — switch to a named database file in app-private storage. Use after `extractAsset()` to open a pre-built database. Default (if never called): `iappyx_app.db`.
 `iappyx.sqlite.exec(sql,paramsJson)` → `{ok}` | `iappyx.sqlite.query(sql,paramsJson)` → `{ok,rows:[...],truncated?:true}` — max 5000 rows per query; use LIMIT/OFFSET in SQL for pagination if needed
 Params: `JSON.stringify(["val1","val2"])` or null. Transactions: `.beginTransaction()` / `.commit()` / `.rollback()`
+Full SQL supported: JOINs, LEFT JOINs, subqueries, aggregates, CREATE TABLE, ALTER TABLE, parameterized IN clauses — standard SQLite syntax.
 
 ### Media Gallery (async, cbId pattern)
 `iappyx.media.pickImage(cbId)` → `{ok,dataUrl}` — opens gallery picker, returns selected image (max 1200px)
