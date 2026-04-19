@@ -133,7 +133,17 @@ class AiService {
     final body = jsonEncode({
       'model': provider.selectedModel,
       'max_tokens': 16000,
-      'system': systemPrompt,
+      // System prompt as a cached content block — Anthropic stores the tokenized
+      // prefix server-side for 5 minutes. Repeat calls (edits, retries) within
+      // that window skip re-processing the ~51KB bridge reference: ~90% cheaper
+      // on input tokens, slightly faster.
+      'system': [
+        {
+          'type': 'text',
+          'text': systemPrompt,
+          'cache_control': {'type': 'ephemeral'},
+        }
+      ],
       'messages': messages.map((m) => {'role': m.role, 'content': m.content}).toList(),
     });
 
@@ -143,6 +153,7 @@ class AiService {
         'Content-Type': 'application/json',
         'x-api-key': provider.apiKey,
         'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'prompt-caching-2024-07-31',
       },
       body: body,
     ).timeout(const Duration(seconds: 300));
