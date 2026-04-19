@@ -57,6 +57,10 @@ iappyx.someMethod(cbId);
 ```
 Always set a 30s timeout to clean up if callback never fires.
 
+**Two callback models — don't mix them:**
+- **`cbId` (one-shot):** for request/response operations (camera, contacts, HTTP). Callback fires once, auto-deleted from `_iappyxCb`. Use the pattern above.
+- **`window.onX` (persistent):** for streaming/push operations (sensors, location watch, UDP receive, BLE scan, audio metadata). Callback fires repeatedly, stays registered until you call the matching `stop*()` method. Register as `'window.onMyHandler'`.
+
 ## File paths
 All file bridges accept these path formats interchangeably:
 - **Plain filename** (`notes.json`) — app-private storage, survives app restarts
@@ -571,11 +575,12 @@ Note: User must manually add the widget to their home screen via long-press → 
 
 ## Variable naming
 Never shadow window globals: `history`, `location`, `name`, `status`, `event`, `screen`, `navigator`, `top`, `parent`, `self`, `length`, `origin`. Use app-prefixed names (appHistory, currentLocation, itemStatus).
+Also avoid `window.onMessage`, `window.onData`, `window.onError` as callback names — some bridges use these internally. Prefix your callbacks: `window.onMyAppData`, `window.onSensorUpdate`, etc.
 
 ## Critical rules
 1. ALWAYS use bridge init pattern — `iappyx` is undefined before injection
 2. Handle empty state in every render ("No items yet")
-3. Clean up timers (clearInterval) — no orphaned intervals
+3. Clean up timers (clearInterval) — no orphaned intervals. Also stop push-model listeners (sensors, BLE scan, location watch, UDP receive) when leaving a view or switching tabs — they keep firing into stale UI otherwise.
 4. Save data immediately on every mutation — no save buttons
 5. Give feedback on every tap (visual change within 100ms)
 6. Use `-webkit-tap-highlight-color: transparent` on interactive elements (buttons, cards, sliders, toggles) to avoid the default WebView tap highlight

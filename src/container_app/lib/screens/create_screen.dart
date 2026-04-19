@@ -85,6 +85,7 @@ class CreateScreenState extends State<CreateScreen> {
   // Bundled app files (databases, JSON, images, etc.)
   List<Map<String, dynamic>> _bundleFiles = [];
   bool _bundleExpanded = false;
+  String? _pendingShowcaseBundleId; // set when loading a showcase app with resources
 
   // AI generation
   String _genMethod = ''; // 'api', 'manual'
@@ -485,10 +486,21 @@ class CreateScreenState extends State<CreateScreen> {
         }
       }
       final ic = _ensureIconConfig(label);
-      final bundlePaths = _editingId != null ? await BundleStorage.paths(_editingId!) : <String, String>{};
+      // If a showcase app was loaded with resources, move the temp bundle to the real appId
+      final appId = _editingId ?? '${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(9999)}';
+      if (_pendingShowcaseBundleId != null && _editingId == null) {
+        // First build of a showcase app — move temp bundle to the new appId
+        final tempFiles = await BundleStorage.readAll(_pendingShowcaseBundleId!);
+        for (final entry in tempFiles.entries) {
+          await BundleStorage.addFile(appId, entry.key, entry.value);
+        }
+        await BundleStorage.clearBundle(_pendingShowcaseBundleId!);
+        _pendingShowcaseBundleId = null;
+        _editingId = appId; // set early so bundlePaths picks it up
+      }
+      final bundlePaths = await BundleStorage.paths(appId);
       final result = await Generator.injectHtml(label: label, htmlContent: html, packageName: _existingPackageName, iconConfig: ic.toJsonString(), firebaseConfig: _firebaseConfig.isNotEmpty ? _firebaseConfig : null, onProgress: _addLog, webOnly: appType == 'web', bundleFiles: bundlePaths);
       final now = DateTime.now();
-      final appId = _editingId ?? '${now.millisecondsSinceEpoch}_${Random().nextInt(9999)}';
       await AppStorage.save(AppData(
         id: appId, name: label,
         description: description, prompt: prompt, html: AppStorage.tagHtml(html), appType: appType,
@@ -667,7 +679,8 @@ class CreateScreenState extends State<CreateScreen> {
 
   Widget _showcaseView() => Padding(
     padding: const EdgeInsets.fromLTRB(24, 32, 24, 0),
-    child: ShowcaseScreen(onBack: () => setState(() => _mode = null), onLoadApp: (name, html) {
+    child: ShowcaseScreen(onBack: () => setState(() => _mode = null), onLoadApp: (name, html, {String? bundleAppId}) {
+      _pendingShowcaseBundleId = bundleAppId;
       _nameController.text = name;
       _htmlController.text = html;
       _descController.text = 'Showcase app: $name';

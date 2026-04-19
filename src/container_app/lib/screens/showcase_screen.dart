@@ -23,9 +23,11 @@
 /// Browse and install community-submitted apps from the showcase repository.
 
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../services/settings_service.dart';
+import '../services/bundle_storage.dart';
 
 class ShowcaseApp {
   final String slug;
@@ -33,8 +35,10 @@ class ShowcaseApp {
   final String description;
   final String author;
   final List<String> bridges;
+  final int resourceCount;
+  final int resourceSize;
 
-  ShowcaseApp({required this.slug, required this.name, required this.description, required this.author, required this.bridges});
+  ShowcaseApp({required this.slug, required this.name, required this.description, required this.author, required this.bridges, this.resourceCount = 0, this.resourceSize = 0});
 
   factory ShowcaseApp.fromJson(Map<String, dynamic> json) => ShowcaseApp(
     slug: json['slug'] ?? '',
@@ -42,11 +46,19 @@ class ShowcaseApp {
     description: json['description'] ?? '',
     author: json['author'] ?? '',
     bridges: (json['bridges'] as List?)?.map((e) => e.toString()).toList() ?? [],
+    resourceCount: json['resourceCount'] ?? 0,
+    resourceSize: json['resourceSize'] ?? 0,
   );
+
+  String get resourceSizeStr {
+    if (resourceSize < 1024) return '$resourceSize B';
+    if (resourceSize < 1024 * 1024) return '${(resourceSize / 1024).toStringAsFixed(0)} KB';
+    return '${(resourceSize / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
 }
 
 class ShowcaseScreen extends StatefulWidget {
-  final void Function(String name, String html) onLoadApp;
+  final void Function(String name, String html, {String? bundleAppId}) onLoadApp;
   final VoidCallback? onBack;
   const ShowcaseScreen({super.key, required this.onLoadApp, this.onBack});
   @override
@@ -81,23 +93,75 @@ class _ShowcaseScreenState extends State<ShowcaseScreen> {
   }
 
   Future<void> _loadApp(ShowcaseApp app) async {
+    // If the app has resources, confirm download first
+    if (app.resourceCount > 0) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A2E),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text('Download resources', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          content: Text(
+            '${app.name} includes ${app.resourceCount} resource file${app.resourceCount == 1 ? '' : 's'} (${app.resourceSizeStr}).\n\nDownload now?',
+            style: const TextStyle(fontSize: 14, color: Colors.white70),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel', style: TextStyle(color: Colors.white38))),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Download', style: TextStyle(color: Color(0xFF4FC3F7)))),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+
+    // Show progress dialog
+    String progressText = 'Downloading app…';
+    final progressKey = GlobalKey<_ProgressDialogState>();
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator(color: Color(0xFF4FC3F7))),
+      builder: (_) => _ProgressDialog(key: progressKey, initialText: progressText),
     );
+
     try {
+      // Download HTML
       final url = '$_baseUrl/${app.slug}/app.html';
       final resp = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
       if (!mounted) return;
-      Navigator.pop(context); // dismiss loading
-      if (resp.statusCode != 200) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load: HTTP ${resp.statusCode}'), backgroundColor: const Color(0xFF1A1A2E)),
-        );
-        return;
+      if (resp.statusCode != 200) throw Exception('HTTP ${resp.statusCode}');
+      final html = resp.body;
+
+      // Download resources if any
+      if (app.resourceCount > 0) {
+        progressKey.currentState?.update('Fetching resource list…');
+        // Fetch per-app showcase.json for resource filenames
+        final metaUrl = '$_baseUrl/${app.slug}/showcase.json';
+        final metaResp = await http.get(Uri.parse(metaUrl)).timeout(const Duration(seconds: 10));
+        if (metaResp.statusCode != 200) throw Exception('Could not fetch resource list');
+        final meta = jsonDecode(metaResp.body);
+        final resources = (meta['resources'] as List?) ?? [];
+
+        // Create a temporary app ID for bundle storage (will be assigned properly on build)
+        final tempAppId = 'showcase_${app.slug}';
+        await BundleStorage.clearBundle(tempAppId);
+
+        for (int i = 0; i < resources.length; i++) {
+          final res = resources[i];
+          final name = res['name'] as String;
+          progressKey.currentState?.update('Downloading $name (${i + 1}/${resources.length})…');
+          final resUrl = '$_baseUrl/${app.slug}/resources/$name';
+          final resResp = await http.get(Uri.parse(resUrl)).timeout(const Duration(seconds: 60));
+          if (resResp.statusCode != 200) throw Exception('Failed to download $name: HTTP ${resResp.statusCode}');
+          await BundleStorage.addFile(tempAppId, name, Uint8List.fromList(resResp.bodyBytes));
+        }
+
+        // Store the temp app ID so create_screen can pick up the bundle
+        _pendingBundleAppId = tempAppId;
       }
-      widget.onLoadApp(app.name, resp.body);
+
+      if (!mounted) return;
+      Navigator.pop(context); // dismiss progress
+      widget.onLoadApp(app.name, html, bundleAppId: _pendingBundleAppId);
     } catch (e) {
       if (mounted) {
         Navigator.pop(context);
@@ -107,6 +171,8 @@ class _ShowcaseScreenState extends State<ShowcaseScreen> {
       }
     }
   }
+
+  String? _pendingBundleAppId;
 
   void _showDetail(ShowcaseApp app) {
     showModalBottomSheet(
@@ -123,6 +189,18 @@ class _ShowcaseScreenState extends State<ShowcaseScreen> {
           Text('by ${app.author}', style: const TextStyle(fontSize: 12, color: Colors.white38)),
           const SizedBox(height: 12),
           Text(app.description, style: const TextStyle(fontSize: 14, color: Colors.white70)),
+          if (app.resourceCount > 0) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(color: const Color(0xFF0D0D1A), borderRadius: BorderRadius.circular(8)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Text('📦 ', style: TextStyle(fontSize: 12)),
+                Text('${app.resourceCount} resource file${app.resourceCount == 1 ? '' : 's'} (${app.resourceSizeStr})',
+                  style: const TextStyle(fontSize: 12, color: Colors.white54)),
+              ]),
+            ),
+          ],
           const SizedBox(height: 16),
           Wrap(
             spacing: 6, runSpacing: 6,
@@ -237,6 +315,14 @@ class _ShowcaseScreenState extends State<ShowcaseScreen> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 Expanded(child: Text(app.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600))),
+                if (app.resourceCount > 0) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    margin: const EdgeInsets.only(right: 8),
+                    decoration: BoxDecoration(color: const Color(0xFF0D0D1A), borderRadius: BorderRadius.circular(6)),
+                    child: Text('📦 ${app.resourceSizeStr}', style: const TextStyle(fontSize: 9, color: Colors.white38)),
+                  ),
+                ],
                 Text(app.author, style: const TextStyle(fontSize: 11, color: Colors.white38)),
               ]),
               const SizedBox(height: 6),
@@ -261,5 +347,32 @@ class _ShowcaseScreenState extends State<ShowcaseScreen> {
         );
       },
     );
+  }
+}
+
+class _ProgressDialog extends StatefulWidget {
+  final String initialText;
+  const _ProgressDialog({super.key, required this.initialText});
+  @override
+  State<_ProgressDialog> createState() => _ProgressDialogState();
+}
+
+class _ProgressDialogState extends State<_ProgressDialog> {
+  late String _text;
+  @override
+  void initState() { super.initState(); _text = widget.initialText; }
+  void update(String text) { if (mounted) setState(() => _text = text); }
+  @override
+  Widget build(BuildContext context) {
+    return Center(child: Container(
+      margin: const EdgeInsets.symmetric(horizontal: 40),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(color: const Color(0xFF1A1A2E), borderRadius: BorderRadius.circular(16)),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const CircularProgressIndicator(color: Color(0xFF4FC3F7)),
+        const SizedBox(height: 16),
+        Text(_text, style: const TextStyle(fontSize: 13, color: Colors.white54, decoration: TextDecoration.none, fontWeight: FontWeight.normal), textAlign: TextAlign.center),
+      ]),
+    ));
   }
 }
