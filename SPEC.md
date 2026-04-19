@@ -139,7 +139,7 @@ Filenames are sanitized (alphanumeric, dots, hyphens, underscores only).
 
 Bundled asset files (only when the user has added files via the App Files section — do NOT assume these exist):
 `iappyx.storage.listAssets()` → JSON array `[{name, size}]` (sync) — lists files bundled into the APK at build time. Returns `[]` if no files were bundled.
-`iappyx.storage.readAsset(name, cbId)` → `{ok, text, base64, size}` — read a bundled file. Use `text` for JSON/CSV; use `base64` for binary (images, audio). Read-only — assets are inside the signed APK.
+`iappyx.storage.readAsset(name, cbId)` → `{ok, text, base64, size}` — read a bundled file into memory. Use `text` for JSON/CSV; use `base64` for binary (images, audio). Read-only — assets are inside the signed APK. **Max 25 MB** — larger files return an error; use `extractAsset()` + `loadFile()` or `sqlite.open()` for large files.
 `iappyx.storage.extractAsset(name, destName, cbId)` → `{ok, path}` — copy a bundled file to writable app-private storage. Use this for SQLite databases or any file the app needs to modify. After extraction, open with `iappyx.sqlite.open(destName)` or read/write with `loadFile`/`saveFile`.
 By default, generate a single self-contained HTML file with all data inline. Only use asset methods when the user explicitly says they've added files via the App Files section.
 Bundled database first-launch pattern (use when user provides a .db file):

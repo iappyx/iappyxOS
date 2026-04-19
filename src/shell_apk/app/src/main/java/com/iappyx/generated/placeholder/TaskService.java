@@ -169,6 +169,11 @@ public class TaskService extends Service {
                                 byte[] buf = new byte[8192]; int n2;
                                 while ((n2 = is2.read(buf)) != -1) baos.write(buf, 0, n2);
                                 is2.close(); byte[] bytes = baos.toByteArray();
+                                if (bytes.length > 25 * 1024 * 1024) {
+                                    String safeCb3 = ShellActivity.escapeJson(cbId).replace("'", "\\'");
+                                    handler.post(() -> { if (webView != null && !done) webView.evaluateJavascript("if(window._iappyxCb&&window._iappyxCb['" + safeCb3 + "']){window._iappyxCb['" + safeCb3 + "']({ok:false,error:'File too large for readAsset (>25 MB). Use extractAsset() instead.'});delete window._iappyxCb['" + safeCb3 + "'];}", null); });
+                                    return;
+                                }
                                 String b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP);
                                 org.json.JSONObject r = new org.json.JSONObject();
                                 r.put("ok", true); r.put("text", new String(bytes, "UTF-8"));

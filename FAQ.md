@@ -63,7 +63,7 @@ Camera (photo, video, QR scan, OCR, ML classification, background removal, EXIF,
 The AI knows about all of these and will use them when appropriate for your app description.
 
 ### Can I include data files in my app (databases, JSON, images)?
-Yes. In the Create/Edit flow, expand the "App Files" section and tap "+ Add file" to attach any file from your device. Files are baked into the APK at build time and available at runtime via `iappyx.storage.listAssets()`, `readAsset()`, and `extractAsset()`. Use `readAsset` for read-only access (JSON configs, images as base64); use `extractAsset` to copy a file to writable storage first (required for SQLite databases you want to modify). Files are stored uncompressed in the APK, so large bundles increase APK size — a 10 MB database adds 10 MB to the APK.
+Yes. In the Create/Edit flow, expand the "App Files" section and tap "+ Add file" to attach any file from your device. Files are baked into the APK at build time and available at runtime via `iappyx.storage.listAssets()`, `readAsset()`, and `extractAsset()`. Use `readAsset` for read-only access to small files (JSON configs, images as base64 — max 25 MB); use `extractAsset` to copy a file to writable storage first (required for SQLite databases or any file > 25 MB). Files are stored uncompressed in the APK, so large bundles increase APK size — a 10 MB database adds 10 MB to the APK.
 
 ### Can generated apps access the internet?
 Yes. Generated apps can load images, fetch APIs, and make network requests just like a regular web page. They can also cache external JavaScript libraries (like Chart.js or pdf-lib) for offline use after first download.

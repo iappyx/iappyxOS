@@ -1903,6 +1903,10 @@ public class ShellActivity extends Activity {
                 try {
                     java.io.InputStream is = getAssets().open("app/data/" + safeFilename(name));
                     byte[] bytes = readAllBytes(is); is.close();
+                    if (bytes.length > 25 * 1024 * 1024) {
+                        deliverResult(cbId, "{\"ok\":false,\"error\":\"File too large for readAsset (>25 MB). Use extractAsset() to copy to writable storage, then read with loadFile() or open with sqlite.open().\"}");
+                        return;
+                    }
                     String text = new String(bytes, "UTF-8");
                     String b64 = Base64.encodeToString(bytes, Base64.NO_WRAP);
                     JSONObject r = new JSONObject();
