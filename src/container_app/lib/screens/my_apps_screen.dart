@@ -362,49 +362,59 @@ class MyAppsScreenState extends State<MyAppsScreen> {
     final nameController = TextEditingController(text: app.name);
     final descController = TextEditingController(text: app.description);
 
-    final confirmed = await showModalBottomSheet<bool>(
-      context: context,
-      backgroundColor: const Color(0xFF1A1A2E),
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(24, 20, 24, MediaQuery.of(ctx).viewInsets.bottom + 32),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)))),
-          const SizedBox(height: 20),
-          const Text('Submit to Showcase', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
-          TextField(controller: nameController, style: const TextStyle(color: Colors.white),
-            decoration: const InputDecoration(labelText: 'App name', filled: true, fillColor: Color(0xFF0D0D1A),
-              border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8)), borderSide: BorderSide.none))),
-          const SizedBox(height: 12),
-          TextField(controller: descController, style: const TextStyle(color: Colors.white), maxLines: 2,
-            decoration: const InputDecoration(labelText: 'Short description', filled: true, fillColor: Color(0xFF0D0D1A),
-              border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8)), borderSide: BorderSide.none))),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 6, runSpacing: 6,
-            children: bridgeList.map((b) => Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(color: const Color(0xFF0D0D1A), borderRadius: BorderRadius.circular(12)),
-              child: Text(b, style: const TextStyle(fontSize: 11, color: Color(0xFF4FC3F7))),
-            )).toList(),
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF4FC3F7), foregroundColor: const Color(0xFF0D0D1A),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-              child: const Text('Submit', style: TextStyle(fontWeight: FontWeight.w600)),
+    final bool? confirmed;
+    final String name;
+    final String description;
+    try {
+      confirmed = await showModalBottomSheet<bool>(
+        context: context,
+        backgroundColor: const Color(0xFF1A1A2E),
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+        builder: (ctx) => Padding(
+          padding: EdgeInsets.fromLTRB(24, 20, 24, MediaQuery.of(ctx).viewInsets.bottom + 32),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)))),
+            const SizedBox(height: 20),
+            const Text('Submit to Showcase', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            TextField(controller: nameController, style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(labelText: 'App name', filled: true, fillColor: Color(0xFF0D0D1A),
+                border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8)), borderSide: BorderSide.none))),
+            const SizedBox(height: 12),
+            TextField(controller: descController, style: const TextStyle(color: Colors.white), maxLines: 2,
+              decoration: const InputDecoration(labelText: 'Short description', filled: true, fillColor: Color(0xFF0D0D1A),
+                border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8)), borderSide: BorderSide.none))),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 6, runSpacing: 6,
+              children: bridgeList.map((b) => Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: const Color(0xFF0D0D1A), borderRadius: BorderRadius.circular(12)),
+                child: Text(b, style: const TextStyle(fontSize: 11, color: Color(0xFF4FC3F7))),
+              )).toList(),
             ),
-          ),
-        ]),
-      ),
-    );
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF4FC3F7), foregroundColor: const Color(0xFF0D0D1A),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                child: const Text('Submit', style: TextStyle(fontWeight: FontWeight.w600)),
+              ),
+            ),
+          ]),
+        ),
+      );
+      name = nameController.text.trim();
+      description = descController.text.trim();
+    } finally {
+      nameController.dispose();
+      descController.dispose();
+    }
 
     if (confirmed != true || !mounted) return;
 
@@ -413,14 +423,14 @@ class MyAppsScreenState extends State<MyAppsScreen> {
       builder: (_) => const Center(child: CircularProgressIndicator(color: Color(0xFF4FC3F7))));
 
     try {
-      var slug = nameController.text.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '-').replaceAll(RegExp(r'-+'), '-').replaceAll(RegExp(r'^-|-$'), '');
+      var slug = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '-').replaceAll(RegExp(r'-+'), '-').replaceAll(RegExp(r'^-|-$'), '');
       if (slug.isEmpty) slug = 'app-${DateTime.now().millisecondsSinceEpoch}';
       final github = GithubService(token);
       final (prUrl, skipped) = await github.submitApp(
         slug: slug,
         appHtml: AppStorage.tagHtml(app.html),
-        name: nameController.text.trim(),
-        description: descController.text.trim(),
+        name: name,
+        description: description,
         author: (await github.getUsername()),
         bridges: bridgeList,
         appId: app.id,
