@@ -19,6 +19,7 @@ EXPORT.md
 **/.gradle/
 **/.dart_tool/
 *.hprof
+build-tools/
 
 # IDE
 .idea/
