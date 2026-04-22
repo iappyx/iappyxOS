@@ -215,6 +215,12 @@ If a bookmark is enough for your use case, make a bookmark. If you want somethin
 ### Can I publish a generated app on Google Play?
 Technically, nothing stops you. The APK is properly signed and installable. But Google Play has review policies, and a single-file WebView app may not pass them depending on what it does. For personal use, sharing with friends, or sideloading in an organization — no problem. For app store distribution, you'd want to polish it further.
 
+### Will iappyxOS still work under Google's new sideloading rules?
+Starting September 2026, Google plans to require developer verification for Android apps on certified devices — including sideloaded ones. The policy is still evolving and the impact on iappyxOS isn't fully clear yet. Two potential paths:
+
+1. **Enable Android's "advanced flow"** — one-time per device: Developer Mode → "Allow Unverified Packages" → reboot → 24-hour wait → biometric confirm → "indefinitely". After that, installs work normally with a warning dialog.
+2. **Use an uncertified Android** (GrapheneOS, CalyxOS, /e/OS, LineageOS, any custom ROM) — no verification required, no setup friction.
+
 ### Are the generated apps any good?
 That depends entirely on the AI and your description. A well-described app with clear requirements produces surprisingly capable results — dashboards, calculators, trackers, games, tools. A vague "make me something cool" produces something vague. The native bridges (camera, sensors, SQLite, etc.) give the AI a lot to work with. The quality ceiling is high; the quality floor is your prompt.
 
