@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Adaptive icon background. Matches the legacy PNG's dark gradient
+         floor so adaptive surfaces blend with the icon's own visual
+         without a contrasting halo. -->
+    <color name="ic_launcher_background">#0D0D1A</color>
+</resources>
