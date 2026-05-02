@@ -85,19 +85,22 @@ public class LocationService extends Service {
         locationListener = new LocationListener() {
             @Override
             public void onLocationChanged(Location l) {
-                // Store latest location in SharedPreferences for the WebView to pick up
-                getSharedPreferences("iappyx_location", MODE_PRIVATE).edit()
-                    .putString("latest", "{\"lat\":" + l.getLatitude() +
-                        ",\"lon\":" + l.getLongitude() + ",\"accuracy\":" + l.getAccuracy() +
-                        ",\"altitude\":" + l.getAltitude() + ",\"speed\":" + l.getSpeed() +
-                        ",\"bearing\":" + l.getBearing() +
-                        ",\"time\":" + l.getTime() + "}")
-                    .putString("callbackFn", callbackFn)
-                    .apply();
-
-                // Send broadcast to ShellActivity if it's running
+                String json = "{\"lat\":" + l.getLatitude() +
+                    ",\"lon\":" + l.getLongitude() + ",\"accuracy\":" + l.getAccuracy() +
+                    ",\"altitude\":" + l.getAltitude() + ",\"speed\":" + l.getSpeed() +
+                    ",\"bearing\":" + l.getBearing() +
+                    ",\"time\":" + l.getTime() + "}";
+                // Pass the JSON + callback name DIRECTLY in the broadcast
+                // extras. The previous design wrote to SharedPreferences
+                // and broadcast an empty intent — the receiver raced
+                // against prefs.apply() (async) and routinely read null.
+                // Same in-process broadcast, just race-free. Receiver-side
+                // change in ShellActivity.locationUpdateReceiver must land
+                // in the same commit to keep the contract intact.
                 Intent update = new Intent("com.iappyx.LOCATION_UPDATE");
                 update.setPackage(getPackageName());
+                update.putExtra("json", json);
+                update.putExtra("callbackFn", callbackFn);
                 sendBroadcast(update);
             }
             @Override public void onStatusChanged(String p, int s, Bundle e) {}
@@ -105,11 +108,32 @@ public class LocationService extends Service {
             @Override public void onProviderDisabled(String p) {}
         };
 
+        // Subscribe to BOTH providers. GPS is precise but unavailable
+        // indoors / in tunnels — NETWORK_PROVIDER (cell + wifi
+        // triangulation) fills those gaps. Same listener handles both;
+        // duplicate fixes within the interval are harmless (callers do
+        // their own dedupe / throttling). Each provider is wrapped in
+        // its own try/catch so a missing provider on a stripped-down
+        // device doesn't tank the whole subscription.
         try {
-            locationManager.requestLocationUpdates(
-                LocationManager.GPS_PROVIDER, interval, minDistance, locationListener);
+            if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                locationManager.requestLocationUpdates(
+                    LocationManager.GPS_PROVIDER, interval, minDistance, locationListener);
+            }
         } catch (SecurityException e) {
-            Log.e(TAG, "LocationService: " + e.getMessage());
+            Log.e(TAG, "LocationService GPS: " + e.getMessage());
+        } catch (IllegalArgumentException e) {
+            Log.w(TAG, "GPS_PROVIDER unavailable on this device");
+        }
+        try {
+            if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                locationManager.requestLocationUpdates(
+                    LocationManager.NETWORK_PROVIDER, interval, minDistance, locationListener);
+            }
+        } catch (SecurityException e) {
+            Log.e(TAG, "LocationService NETWORK: " + e.getMessage());
+        } catch (IllegalArgumentException e) {
+            Log.w(TAG, "NETWORK_PROVIDER unavailable on this device");
         }
     }
 

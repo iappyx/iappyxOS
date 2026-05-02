@@ -530,15 +530,18 @@ public class ShellActivity extends Activity {
 
         webView.loadUrl("file:///android_asset/app/index.html");
 
-        // Register broadcast receiver for foreground location updates
+        // Register broadcast receiver for foreground location updates.
+        // Reads payload from intent extras — the previous design round-
+        // tripped through SharedPreferences (apply() is async; the
+        // broadcast routinely out-raced the disk write and the receiver
+        // read null). Sender-side change in LocationService.onLocationChanged
+        // must land in the same commit to keep the contract intact.
         locationUpdateReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
                 if (!activityAlive) return;
-                android.content.SharedPreferences prefs =
-                    getSharedPreferences("iappyx_location", MODE_PRIVATE);
-                String json = prefs.getString("latest", null);
-                String fn = prefs.getString("callbackFn", null);
+                String json = intent.getStringExtra("json");
+                String fn = intent.getStringExtra("callbackFn");
                 if (json != null && fn != null) {
                     fireEvent(fn, json);
                 }
@@ -649,7 +652,17 @@ public class ShellActivity extends Activity {
 
     void deliverResult(String cbId, String json) {
         if (!activityAlive || cbId == null) return;
-        final String safeCb = cbId.replace("\\", "\\\\").replace("'", "\\'");
+        // Some widgets pass the callback as a fully-qualified JS path
+        // ("window._iappyxCb.lib_xxx") rather than the plain key
+        // ("lib_xxx"). Normalise to the plain key so the same bracket-
+        // lookup template works for both conventions — without this, the
+        // dotted form looks up _iappyxCb['window._iappyxCb.lib_xxx']
+        // which is always undefined and the callback never fires.
+        String key = cbId;
+        if (key.startsWith("window._iappyxCb.")) {
+            key = key.substring("window._iappyxCb.".length());
+        }
+        final String safeCb = key.replace("\\", "\\\\").replace("'", "\\'");
         final String js = "if(window._iappyxCb&&window._iappyxCb['" + safeCb + "']){" +
             "window._iappyxCb['" + safeCb + "'](" + json + ");" +
             "delete window._iappyxCb['" + safeCb + "'];}";
