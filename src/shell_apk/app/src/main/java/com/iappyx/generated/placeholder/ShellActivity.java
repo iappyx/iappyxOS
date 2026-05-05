@@ -200,8 +200,13 @@ public class ShellActivity extends ComponentActivity {
     /** Modern ActivityResult routing — see {@link #launchForResult}.
      *  Each launch pushes its request code; the launcher's callback pops in
      *  FIFO order (Android serializes foreground starts) and re-enters the
-     *  same {@link #onActivityResult} switch we used to dispatch into. */
-    private final java.util.ArrayDeque<Integer> pendingActivityRcs = new java.util.ArrayDeque<>();
+     *  same {@link #onActivityResult} switch we used to dispatch into.
+     *
+     *  Concurrent: bridge methods on the WebView background thread call
+     *  {@link #launchForResult}; the launcher callback runs on the main thread.
+     *  ConcurrentLinkedDeque gives lock-free addLast/pollFirst across threads. */
+    private final java.util.concurrent.ConcurrentLinkedDeque<Integer> pendingActivityRcs =
+        new java.util.concurrent.ConcurrentLinkedDeque<>();
 
     private final ActivityResultLauncher<Intent> activityLauncher = registerForActivityResult(
         new ActivityResultContracts.StartActivityForResult(),
@@ -214,10 +219,17 @@ public class ShellActivity extends ComponentActivity {
 
     /** Helper that replaces deprecated {@code startActivityForResult(intent, rc)}.
      *  Routes the launch through {@link #activityLauncher} and keeps the result
-     *  delivery flowing through the existing {@link #onActivityResult} switch. */
+     *  delivery flowing through the existing {@link #onActivityResult} switch.
+     *  Rolls back the deque entry if {@code launch()} throws so the orphan rc
+     *  doesn't misroute the next legitimate launch's callback. */
     private void launchForResult(Intent intent, int rc) {
         pendingActivityRcs.addLast(rc);
-        activityLauncher.launch(intent);
+        try {
+            activityLauncher.launch(intent);
+        } catch (Throwable t) {
+            pendingActivityRcs.removeLastOccurrence(rc);
+            throw t;
+        }
     }
 
     private final Map<Integer, String> pendingCallbacks = new HashMap<>();
@@ -2856,9 +2868,11 @@ public class ShellActivity extends ComponentActivity {
                 try {
                     final boolean[] delivered = {false};
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        // Use the activity's main executor — callback hops to UI
+                        // thread anyway, and a per-call newSingleThreadExecutor()
+                        // leaks a platform thread until GC.
                         android.os.CancellationSignal cancel = new android.os.CancellationSignal();
-                        java.util.concurrent.Executor exec = java.util.concurrent.Executors.newSingleThreadExecutor();
-                        lm.getCurrentLocation(LocationManager.NETWORK_PROVIDER, cancel, exec, l -> {
+                        lm.getCurrentLocation(LocationManager.NETWORK_PROVIDER, cancel, getMainExecutor(), l -> {
                             if (delivered[0]) return;
                             delivered[0] = true;
                             if (l != null) deliverResult(cbId, locationJson(l));
