@@ -4,10 +4,19 @@
 # macOS
 **/.DS_Store
 
-# Secrets
+# Secrets — local signing + SDK paths
 *.jks
+*.keystore
 **/key.properties
 **/local.properties
+
+# Secrets — third-party configs + env files (drop one in, never commit it)
+**/.env
+**/.env.*
+**/credentials.json
+**/google-services.json
+**/firebase_config.json
+**/firebase-adminsdk*.json
 
 # Personal
 start-session.sh
