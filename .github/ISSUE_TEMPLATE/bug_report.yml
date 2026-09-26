@@ -1,0 +1,93 @@
+name: "🐛 Bug report"
+description: Report something broken in iappyxOS itself (not a request for an app or feature)
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug in **iappyxOS**.
+
+        **This form is for bugs in the iappyxOS app itself** — crashes, generation
+        failures, install/signing errors, broken bridges, UI problems.
+
+        It is **not** the place to request an app or a feature. iappyxOS generates
+        apps on your own device: open the app → **Create** → describe what you want
+        to the AI. Requests filed here can't be acted on.
+
+  - type: checkboxes
+    id: acknowledgement
+    attributes:
+      label: Before you file
+      options:
+        - label: This is a bug in iappyxOS itself — **not** a request for an app or feature.
+          required: true
+        - label: I checked the [FAQ](https://github.com/iappyx/iappyxOS/blob/main/FAQ.md) and existing issues.
+          required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What went wrong? Include the exact error text if there was one.
+      placeholder: "e.g. Tapping Build fails with INSTALL_FAILED_… / the app crashes when …"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The minimal steps that trigger it.
+      placeholder: |
+        1. Open …
+        2. Tap …
+        3. See …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where did it happen?
+      options:
+        - Generating an app (AI or manual)
+        - The iappyxOS app itself (UI, settings, my apps)
+        - A generated app while running it
+        - Installing / signing a generated APK
+        - Showcase browse or submit
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device & Android version
+      placeholder: "e.g. Pixel 8, Android 15"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: iappyxOS version
+      description: Shown in Settings (or the APK filename you installed).
+      placeholder: "e.g. 1.x from bin/iappyxOS.apk, downloaded 2026-…"
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Logs, screenshots, or the generated HTML
+      description: Anything that helps — a screen recording, `adb logcat` output, or the app's HTML if generation produced something wrong.
+    validations:
+      required: false
