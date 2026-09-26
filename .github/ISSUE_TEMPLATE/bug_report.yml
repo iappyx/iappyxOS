@@ -11,16 +11,16 @@ body:
         **This form is for bugs in the iappyxOS app itself** — crashes, generation
         failures, install/signing errors, broken bridges, UI problems.
 
-        It is **not** the place to request an app or a feature. iappyxOS generates
-        apps on your own device: open the app → **Create** → describe what you want
-        to the AI. Requests filed here can't be acted on.
+        Not a bug? Use **✨ Feature request** to propose a change to iappyxOS
+        itself, or describe an **app you want** to the AI inside the app
+        (open it → **Create**) — app requests can't be acted on here.
 
   - type: checkboxes
     id: acknowledgement
     attributes:
       label: Before you file
       options:
-        - label: This is a bug in iappyxOS itself — **not** a request for an app or feature.
+        - label: This is a bug in iappyxOS itself — **not** a request to generate an app for me.
           required: true
         - label: I checked the [FAQ](https://github.com/iappyx/iappyxOS/blob/main/FAQ.md) and existing issues.
           required: true

@@ -1,0 +1,63 @@
+name: "✨ Feature request (for iappyxOS itself)"
+description: Suggest a change or capability for the iappyxOS platform — NOT an app you want generated
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this to propose a change to **iappyxOS the platform** — a new bridge or
+        capability, a new AI provider, broader device support, an editor/UI
+        improvement, and so on. These are welcome here.
+
+        ⚠️ This is **not** for requesting an app to be made for you. iappyxOS
+        generates apps on your own device: open the app → **Create** → describe
+        what you want to the AI. "Please make me an app that does X" can't be
+        acted on here — the app is the request mechanism.
+
+  - type: checkboxes
+    id: acknowledgement
+    attributes:
+      label: Before you file
+      options:
+        - label: This is a change to **iappyxOS itself** — not a request to generate an app for me.
+          required: true
+
+  - type: textarea
+    id: feature
+    attributes:
+      label: What would you like iappyxOS to do?
+      description: Describe the capability or change.
+      placeholder: "e.g. Support a custom OpenAI-compatible endpoint for generation; add a <bridge> for …"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does it solve?
+      description: The use case or limitation behind the request.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of iappyxOS?
+      options:
+        - AI generation (providers, prompts, models)
+        - Native bridges / device capabilities
+        - Device / platform support (Android versions, CPU ABIs, form factors)
+        - Editor / preview / UI
+        - Showcase
+        - Build / signing / install pipeline
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or workarounds you've considered
+    validations:
+      required: false
